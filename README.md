@@ -19,9 +19,6 @@
 
 - Python 3.10+
 - 依赖见 [`requirements.txt`](requirements.txt)
-
-## 安装
-
 ```bash
 pip install -r requirements.txt
 ```
