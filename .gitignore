@@ -1,0 +1,36 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+*.whl
+dist/
+build/
+
+# ── 日志与环境 ──
+*.log
+.env
+venv/
+.venv/
+
+# ── 编辑器 ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+
+# ── 用户配置文件（自动生成的路径记忆） ──
+.*_config.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
