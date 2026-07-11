@@ -8,7 +8,7 @@ from typing import Optional
 
 import UnityPy
 
-from tools import log
+from src.tools import log
 
 # 常见 Unity/纳诺精灵 路径模式（快速查找，避免递归）
 COMMON_PATTERNS = [

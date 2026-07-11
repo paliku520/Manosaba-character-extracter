@@ -19,14 +19,14 @@ from tkinter import ttk, filedialog, messagebox
 
 from PIL import Image, ImageTk
 
-from bundleloader import BundleLoader
-from compositor import (
+from src.bundleloader import BundleLoader
+from src.compositor import (
     has_component_data,
     extract_sprites,
     extract_character_data,
     SpriteCompositor,
 )
-from tools import log, configure
+from src.tools import log, configure
 
 
 # ===================================================================

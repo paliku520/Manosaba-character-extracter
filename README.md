@@ -38,7 +38,7 @@ pip install -r requirements.txt
 ## 使用
 
 ```bash
-python main_gui.py
+python run.py
 ```
 
 ### 工作流程
@@ -74,10 +74,10 @@ output/
 
 | 文件 | 说明 |
 |------|------|
-| `main_gui.py` | 主程序入口，GUI 界面 |
-| `bundleloader.py` | Bundle 文件加载器（目录搜索、路径记忆） |
-| `compositor.py` | 精灵提取、组件检测、角色数据提取、图像合成 |
-| `tools.py` | 日志工具 |
+| `run.py` | 主程序入口 |
+| `src/bundleloader.py` | Bundle 文件加载器（目录搜索、路径记忆） |
+| `src/compositor.py` | 精灵提取、组件检测、角色数据提取、图像合成 |
+| `src/tools.py` | 日志工具 |
 
 ## 技术栈
 
