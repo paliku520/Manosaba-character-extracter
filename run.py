@@ -177,7 +177,7 @@ class SpriteToolApp:
         )
         self.auto_update_cb.pack(side=tk.RIGHT, padx=(10, 5))
 
-        # ── 主区域：PanedWindow 左右分割 ──
+        # ── 主区域：PanedWindow 左中右三栏分割 ──
         paned = ttk.PanedWindow(self.selection_frame, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, pady=5)
 
@@ -194,8 +194,10 @@ class SpriteToolApp:
             scrollregion=self.parts_canvas.bbox("all")))
 
         self.parts_canvas.create_window((0, 0), window=self.parts_inner, anchor="nw", tags="inner")
-        self.parts_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        v_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.parts_canvas.grid(row=0, column=0, sticky=tk.NSEW)
+        v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
 
         self.parts_canvas.bind("<MouseWheel>", lambda e: self.parts_canvas.yview_scroll(
             int(-1 * (e.delta / 120)), "units"))
@@ -203,9 +205,30 @@ class SpriteToolApp:
         self.part_vars: List[tk.BooleanVar] = []
         self.part_labels: List[Dict] = []
 
+        # ===== 中：已选精灵列表 =====
+        sel_frame = ttk.Frame(paned)
+        paned.add(sel_frame, weight=1)
+
+        sel_header = ttk.Label(sel_frame, text="已选精灵", font=("Arial", 10, "bold"))
+        sel_header.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 5))
+
+        # 列表区域子容器，用于容纳 listbox + scrollbar
+        sel_body = ttk.Frame(sel_frame)
+        sel_body.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
+        sel_frame.columnconfigure(0, weight=1)
+        sel_frame.rowconfigure(1, weight=1)
+
+        self.sel_listbox = tk.Listbox(sel_body, font=("Consolas", 9), selectmode=tk.SINGLE)
+        sel_scrollbar = ttk.Scrollbar(sel_body, orient=tk.VERTICAL, command=self.sel_listbox.yview)
+        self.sel_listbox.configure(yscrollcommand=sel_scrollbar.set)
+        self.sel_listbox.grid(row=0, column=0, sticky=tk.NSEW)
+        sel_scrollbar.grid(row=0, column=1, sticky=tk.NS)
+        sel_body.columnconfigure(0, weight=1)
+        sel_body.rowconfigure(0, weight=1)
+
         # ===== 右：内嵌预览 =====
         preview_panel = ttk.Frame(paned)
-        paned.add(preview_panel, weight=1)
+        paned.add(preview_panel, weight=2)
 
         self.preview_status = ttk.Label(preview_panel, text="未生成预览", anchor=tk.CENTER)
         self.preview_status.pack(fill=tk.X, pady=(0, 5))
@@ -384,6 +407,8 @@ class SpriteToolApp:
         self.part_labels.clear()
         # 重置选择计数
         self.sel_count_label.config(text="已选择: 0 个部件")
+        # 清空已选精灵列表
+        self.sel_listbox.delete(0, tk.END)
         # 清空预览画布
         self.preview_canvas.delete("all")
         self.preview_status.config(text="未生成预览")
@@ -632,9 +657,19 @@ class SpriteToolApp:
         except Exception:
             return None
 
+    def _update_selected_sprites_list(self):
+        """刷新已选精灵列表（显示在右侧 Listbox 中）"""
+        self.sel_listbox.delete(0, tk.END)
+        for item in self.part_labels:
+            if item["var"].get():
+                name = item["part"]["name"]
+                self.sel_listbox.insert(tk.END, name)
+
     def _on_part_toggle(self):
         selected = sum(1 for v in self.part_vars if v.get())
         self.sel_count_label.config(text=f"已选择: {selected} 个部件")
+        # 刷新右侧已选精灵列表
+        self._update_selected_sprites_list()
         # 实时预览：勾选状态变化后自动调度合成（防抖 500ms）
         if self.auto_update.get():
             self._schedule_auto_preview()
@@ -655,6 +690,7 @@ class SpriteToolApp:
         for v in self.part_vars:
             v.set(True)
         self.sel_count_label.config(text=f"已选择: {len(self.part_vars)} 个部件")
+        self._update_selected_sprites_list()
         if self.auto_update.get():
             self._schedule_auto_preview()
 
@@ -662,6 +698,7 @@ class SpriteToolApp:
         for v in self.part_vars:
             v.set(False)
         self.sel_count_label.config(text="已选择: 0 个部件")
+        self._update_selected_sprites_list()
         if self.auto_update.get():
             self._schedule_auto_preview()
 
