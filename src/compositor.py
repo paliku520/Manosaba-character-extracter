@@ -18,6 +18,7 @@ import UnityPy
 from PIL import Image
 
 from src.tools import log
+from src.i18n import _
 
 
 # ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ def has_component_data(bundle_path: Path) -> bool:
                 return True
         return False
     except Exception as e:
-        log("error", f"检测组件数据失败 {bundle_path.name}: {e}")
+        log("error", _("log.component_detect_failed", name=bundle_path.name, e=e))
         return False
 
 
@@ -47,6 +48,7 @@ def has_component_data(bundle_path: Path) -> bool:
 def extract_sprites(
     bundle_path: Path,
     output_dir: Path,
+    progress_callback=None,
 ) -> List[Dict]:
     """
     从 bundle 中提取所有精灵，保存为 PNG 文件。
@@ -54,6 +56,7 @@ def extract_sprites(
     Args:
         bundle_path: bundle 文件路径
         output_dir:  输出目录
+        progress_callback: 可选进度回调 fn(current, total)
 
     Returns:
         [{ "name": str, "path_id": int, "file_path": str, "size": [w, h] }, ...]
@@ -63,11 +66,14 @@ def extract_sprites(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     env = UnityPy.load(str(bundle_path))
+
+    # 预先统计精灵对象总数用于进度显示
+    all_objects = list(env.objects)
+    sprite_objs = [obj for obj in all_objects if obj.type.name == "Sprite"]
+    total = len(sprite_objs)
     results = []
 
-    for obj in env.objects:
-        if obj.type.name != "Sprite":
-            continue
+    for idx, obj in enumerate(sprite_objs):
         try:
             data = obj.read()
             if not hasattr(data, "image") or data.image is None:
@@ -84,11 +90,14 @@ def extract_sprites(
                 "file_path": str(file_path),
                 "size": [data.image.size[0], data.image.size[1]],
             })
-            log("info", f"  导出精灵: {safe_name}.png")
+            log("info", _("log.exported_sprite", name=safe_name))
         except Exception as e:
-            log("error", f"  精灵提取失败 (path_id={obj.path_id}): {e}")
+            log("error", _("log.sprite_extract_failed", id=obj.path_id, e=e))
 
-    log("info", f"完成: 从 {bundle_path.name} 导出 {len(results)} 个精灵 -> {save_dir}")
+        if progress_callback:
+            progress_callback(idx + 1, total)
+
+    log("info", _("log.export_done", file=bundle_path.name, count=len(results), dir=save_dir))
     return results
 
 
@@ -99,6 +108,7 @@ def extract_sprites(
 def extract_character_data(
     bundle_path: Path,
     output_dir: Path,
+    progress_callback=None,
 ) -> Dict:
     """
     完整提取角色数据，包括精灵、变换（位置/排序）和层级结构。
@@ -106,6 +116,7 @@ def extract_character_data(
     Args:
         bundle_path: bundle 文件路径
         output_dir:  输出目录
+        progress_callback: 可选进度回调 fn(current, total)
 
     Returns:
         {
@@ -195,9 +206,9 @@ def extract_character_data(
 
     # ---- 第3步: 提取精灵图像 ----
     sprite_mapping: Dict[int, Dict] = {}
-    for obj in env.objects:
-        if obj.type.name != "Sprite":
-            continue
+    sprite_objs = [obj for obj in env.objects if obj.type.name == "Sprite"]
+    sprite_total = len(sprite_objs)
+    for idx, obj in enumerate(sprite_objs):
         try:
             data = obj.read()
             if not hasattr(data, "image") or data.image is None:
@@ -213,6 +224,9 @@ def extract_character_data(
             }
         except Exception:
             continue
+
+        if progress_callback:
+            progress_callback(idx + 1, sprite_total)
 
     # ---- 第4步: 组装 transform_data ----
     transform_data = []
@@ -258,15 +272,15 @@ def extract_character_data(
             if node:
                 hierarchy.append(node)
 
-    # ---- 保存 JSON 调试数据到 sprites 目录 ----
-    with open(sprites_dir / "character_data.json", "w", encoding="utf-8") as f:
+    # ---- 保存 JSON 调试数据到角色根目录（与 sprites/ 同级）----
+    with open(save_dir / "character_data.json", "w", encoding="utf-8") as f:
         json.dump({
             "character_name": character_name,
             "transform_data": transform_data,
             "hierarchy": hierarchy,
         }, f, indent=2, ensure_ascii=False)
 
-    log("info", f"角色数据已提取: {character_name} ({len(transform_data)} 个部件)")
+    log("info", _("log.char_data_extracted", name=character_name, count=len(transform_data)))
 
     return {
         "character_name": character_name,
@@ -294,6 +308,7 @@ class SpriteCompositor:
         transform_data: List[Dict],
         selected_names: Optional[List[str]] = None,
         custom_depths: Optional[Dict[str, int]] = None,
+        progress_callback=None,
     ) -> Optional[Image.Image]:
         """
         合成角色图像。
@@ -302,6 +317,7 @@ class SpriteCompositor:
             transform_data: extract_character_data 返回的 transform_data 列表
             selected_names: 要包含的部件名称列表，None 表示全部
             custom_depths:  自定义深度 {部件名: 排序值}，None 用原始顺序
+            progress_callback: 可选进度回调 fn(current, total)
 
         Returns:
             PIL Image (RGBA)，失败返回 None
@@ -313,7 +329,7 @@ class SpriteCompositor:
             selected_names = [p["name"] for p in transform_data]
 
         # 筛选并排序
-        if custom_depths and any(custom_depths.values()):
+        if custom_depths:
             sorted_parts = sorted(
                 [p for p in transform_data if p["name"] in selected_names],
                 key=lambda x: custom_depths.get(x["name"], x["sorting_order"]),
@@ -330,7 +346,8 @@ class SpriteCompositor:
         cx = canvas_size[0] // 2
         cy = canvas_size[1] // 2
 
-        for part in sorted_parts:
+        total = len(sorted_parts)
+        for i, part in enumerate(sorted_parts):
             try:
                 img = Image.open(part["sprite_path"]).convert("RGBA")
                 px = int(part["position"]["x"] * self.scale + cx)
@@ -347,7 +364,10 @@ class SpriteCompositor:
                 else:
                     composite.paste(img, (place_x, place_y), img)
             except Exception as e:
-                log("error", f"  拼接失败 {part['name']}: {e}")
+                log("error", _("log.composite_failed_part", name=part['name'], e=e))
+
+            if progress_callback:
+                progress_callback(i + 1, total)
 
         return composite
 
@@ -383,7 +403,7 @@ class SpriteCompositor:
 # 内部工具
 # ---------------------------------------------------------------------------
 
-def _read_vector3(v) -> Dict[str, float]:
+def _read_vector3(v: object) -> Dict[str, float]:
     try:
         if v and hasattr(v, "x"):
             return {"x": getattr(v, "x", 0.0), "y": getattr(v, "y", 0.0), "z": getattr(v, "z", 0.0)}
@@ -392,7 +412,7 @@ def _read_vector3(v) -> Dict[str, float]:
     return {"x": 0.0, "y": 0.0, "z": 0.0}
 
 
-def _read_color(c) -> Dict[str, float]:
+def _read_color(c: object) -> Dict[str, float]:
     try:
         if c and hasattr(c, "r"):
             return {"r": getattr(c, "r", 1.0), "g": getattr(c, "g", 1.0),

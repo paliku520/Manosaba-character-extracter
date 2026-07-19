@@ -9,6 +9,7 @@ from typing import Optional
 import UnityPy
 
 from src.tools import log
+from src.i18n import _
 
 # 常见 Unity/纳诺精灵 路径模式（快速查找，避免递归）
 COMMON_PATTERNS = [
@@ -55,17 +56,17 @@ class BundleLoader:
                 encoding="utf-8",
             )
         except OSError as e:
-            log("warning", f"保存路径记忆失败: {e}")
+            log("warning", _("log.saved_path_failed", e=e))
 
     # ── 目录选择 ──────────────────────────────────────────
 
-    def select_directory(self, title: str = "选择游戏目录") -> str | None:
+    def select_directory(self, title: str = "") -> str | None:
         """弹出文件夹选择对话框"""
         root = Tk()
         root.withdraw()
         root.attributes("-topmost", True)
 
-        dir_path = filedialog.askdirectory(title=title, initialdir=self.last_path)
+        dir_path = filedialog.askdirectory(title=title or _("dir.select_title"), initialdir=self.last_path)
         root.destroy()
 
         if dir_path:
@@ -84,7 +85,7 @@ class BundleLoader:
             return result
 
         # 2. 常见模式未命中 → 递归搜索
-        log("info", "常见路径未命中，开始递归搜索 characters 目录...")
+        log("info", _("log.recursive_search"))
         return self._search_dir_recursive(game_root, "characters", max_depth=8)
 
     @staticmethod
@@ -97,7 +98,7 @@ class BundleLoader:
 
             # 精确命中
             if target.name == "characters":
-                log("info", f"通过常见路径找到: {target}")
+                log("info", _("log.found_common", path=target))
                 return target
 
             # 遍历子目录查找 characters
@@ -105,12 +106,12 @@ class BundleLoader:
                 if not sub.is_dir():
                     continue
                 if sub.name == "characters":
-                    log("info", f"通过常见路径子目录找到: {sub}")
+                    log("info", _("log.found_sub", path=sub))
                     return sub
                 if "characters" in sub.name.lower():
                     for sub_sub in sub.iterdir():
                         if sub_sub.is_dir() and sub_sub.name == "characters":
-                            log("info", f"通过常见路径深层找到: {sub_sub}")
+                            log("info", _("log.found_deep", path=sub_sub))
                             return sub_sub
         return None
 
@@ -145,17 +146,18 @@ class BundleLoader:
             env = UnityPy.load(str(bundle_path))
             return any(obj.type.name == "Sprite" for obj in env.objects)
         except Exception as e:
-            log("error", f"加载失败 {bundle_path.name}: {e}")
+            log("error", _("log.load_failed", name=bundle_path.name, e=e))
             return False
 
     # ── 主流程 ────────────────────────────────────────────
 
-    def load_from_directory(self, directory: str) -> dict:
+    def load_from_directory(self, directory: str, progress_callback=None) -> dict:
         """
         从指定目录加载所有 bundle
 
         Args:
             directory: 游戏根目录或 characters 目录路径
+            progress_callback: 可选进度回调 fn(current, total)
 
         Returns:
             {"success": bool, "bundles": {角色名: 路径}, "count": int, "errors": [错误信息]}
@@ -169,7 +171,7 @@ class BundleLoader:
 
         root_path = Path(directory)
         if not root_path.exists():
-            result["errors"].append(f"路径不存在: {directory}")
+            result["errors"].append(_("dialog.bundle_not_found", path=directory))
             return result
 
         # 判断是游戏根目录还是 characters 目录
@@ -177,32 +179,35 @@ class BundleLoader:
         if characters_dir is None:
             return result
 
-        log("info", f"找到 characters 目录: {characters_dir}")
+        log("info", _("log.characters_dir_found", path=characters_dir))
 
         # 搜索所有 bundle 文件
         bundle_files = sorted(characters_dir.glob("*.bundle"))
         if not bundle_files:
-            result["errors"].append(f"未找到 bundle 文件: {characters_dir}")
+            result["errors"].append(_("dialog.no_bundle_files", path=characters_dir))
             return result
 
-        log("info", f"找到 {len(bundle_files)} 个 bundle 文件")
+        log("info", _("log.bundle_files_found", count=len(bundle_files)))
 
         # 加载每个 bundle
-        for bundle_path in bundle_files:
+        total = len(bundle_files)
+        for i, bundle_path in enumerate(bundle_files):
             name = bundle_path.stem
             if self.load_bundle(bundle_path):
                 result["bundles"][name] = str(bundle_path)
                 result["count"] += 1
-                log("info", f"加载角色成功: {name}")
+                log("info", _("log.loaded_char", name=name))
             else:
-                log("warning", f"跳过角色: {name} (未找到精灵资源)")
+                log("warning", _("log.skipped_char", name=name))
+            if progress_callback:
+                progress_callback(i + 1, total)
 
         if result["count"] > 0:
             result["success"] = True
             self.bundles = result["bundles"]
-            log("info", f"成功加载 {result['count']} 个角色")
+            log("info", _("log.loaded_all", count=result['count']))
         else:
-            result["errors"].append("没有成功加载任何 bundle")
+            result["errors"].append(_("dialog.no_bundle_loaded"))
 
         return result
 
@@ -217,14 +222,14 @@ class BundleLoader:
 
         characters_dir = self.find_characters_dir(root_path)
         if characters_dir is None:
-            result["errors"].append(f"未找到 characters 目录: {root_path}")
+            result["errors"].append(_("dialog.characters_not_found", path=root_path))
         return characters_dir
 
     def load_with_gui(self) -> dict:
         """使用 GUI 选择目录并加载"""
-        dir_path = self.select_directory("选择游戏根目录或 characters 目录")
+        dir_path = self.select_directory(_("dir.select_title"))
         if not dir_path:
-            log("warning", "用户取消了选择")
-            return {"success": False, "bundles": {}, "count": 0, "errors": ["用户取消"]}
+            log("warning", _("log.user_cancelled"))
+            return {"success": False, "bundles": {}, "count": 0, "errors": [_("dialog.user_cancelled")]}
 
         return self.load_from_directory(dir_path)

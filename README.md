@@ -1,7 +1,9 @@
 # Manosaba-character-extracter（魔法少女的魔女审判 - 角色立绘提取工具）
 
-从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 文件中提取角色精灵，支持自动检测组件数据、直接导出精灵或拼接完整立绘。
+[![English](https://img.shields.io/badge/English-README-blue)](/README.en.md) 
+[![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
+从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 文件中提取角色精灵，支持自动检测组件数据、直接导出精灵或拼接完整立绘。
 
 ## 功能
 
@@ -14,8 +16,13 @@
 - **部件选择** — 按分类分组显示部件，带缩略图预览，支持全选/取消
 - **角色立绘拼接** — 按组件位置和排序深度合成完整角色图像
 - **层级结构查看** — TreeView 树状展示角色组件层级
+- **进度条显示** — 所有耗时操作（加载、导出、合成）显示实际进度百分比
+- **多语言支持** — 内置简体中文/English/fiXmArge（架空语），自动跟随系统语言
+- **缓存复用** — 已提取的角色数据缓存到 `temp/` 目录，重复加载无需重新解包
+- **清除缓存按钮** — 一键清空缓存，释放磁盘空间
 - **自适应布局** — 窗口缩小时各面板仍保持可用，滚动条始终可见
 - **路径记忆** — 自动记住上次选择的游戏目录
+- **自定义输出路径** — 支持命令行参数指定输出目录，灵活整合到工作流中
 
 ## 环境要求
 
@@ -25,6 +32,16 @@
 ```bash
 pip install -r requirements.txt
 ```
+### 新增语言
+
+如需添加新语言，编辑 `src/i18n.py`：
+1. 定义语言常量（如 `LANG_JP = "ja_JP"`）
+2. 加入 `LANGUAGE_CODES` 列表
+3. 为每个翻译键补充该语言的条目
+4. 添加 `lang.ja_JP` 显示名称
+
+> 下拉框自动根据 `LANGUAGE_CODES` 动态生成，无需修改 `run.py`。
+
 ## 平台兼容性
 
 本项目主要针对 **Windows** 平台开发和测试，目前**尚未在其他操作系统上进行充分测试**。
@@ -37,10 +54,40 @@ pip install -r requirements.txt
 
 ## 使用
 
+### 基础运行
 ```bash
 python run.py
 ```
+### 命令行参数
 
+```bash
+python run.py --help
+```
+
+| 参数 | 说明 |
+|------|------|
+| `-h`, `--help` | 显示帮助信息 |
+| `-c`, `--clean` | 启动前清空输出目录（默认或自定义路径） |
+| `-o <路径>`, `--output <路径>` | 指定输出目录（支持绝对/相对路径，相对路径基于程序根目录） |
+| `--clear-cache` | 仅清除缓存文件夹后退出（不启动 GUI） |
+
+**示例：**
+```bash
+# 查看帮助
+python run.py --help
+
+# 清空默认输出目录后启动
+python run.py --clean
+
+# 指定自定义输出路径
+python run.py --output D:/game_exports
+
+# 仅清除缓存，不启动 GUI
+python run.py --clear-cache
+
+# 组合使用
+python run.py -c -o E:/exports
+```
 ### 工作流程
 
 1. 点击 **加载游戏目录** → 选择游戏根目录或 `characters` 目录
@@ -55,21 +102,25 @@ python run.py
    - 点击 **生成合成图像** 手动合成
    - 点击 **保存合成图像** 导出 PNG
 
-### 输出目录结构
+### 目录结构
 
 ```
-output/
-└── <角色名>/
-    ├── sprites/
-    │   ├── character_data.json   ← 层级 + 部件数据
-    │   ├── ArmL01.png
-    │   ├── Body.png
-    │   └── ...
-    └── <角色名>_composite.png    ← 合成结果
+程序根目录/
+├── output/                ← 最终合成结果（由用户主动保存）
+│   └── <角色名>_composite.png
+├── temp/                  ← 精灵缓存目录（可手动清除，重复角色时加速加载）
+│   └── <角色名>/
+│       ├── character_data.json   ← 层级 + 部件数据
+│       └── sprites/
+│           ├── ArmL01.png
+│           ├── Body.png
+│           └── ...
+├── src/                   ← 源码目录
+├── run.py                 ← 主程序入口
+└── ...
 ```
 
-> ⚠ **警告**: `output/<角色名>/sprites/` 目录为程序自动生成的**缓存目录**。
-> 切换角色或关闭程序时会自动清空该目录下的所有文件。**请勿在此存放个人文件！**
+> ℹ️ `temp/` 目录为自动生成的缓存。切换角色时不会自动删除，点击左侧「清除缓存文件夹」按钮可手动释放空间。
 
 ## 项目结构
 
@@ -77,6 +128,7 @@ output/
 |------|------|
 | `run.py` | 主程序入口（GUI 界面、事件处理） |
 | `src/__init__.py` | 包初始化 |
+| `src/i18n.py` | 国际化模块（中/英/架空语翻译表） |
 | `src/bundleloader.py` | Bundle 文件加载器（目录搜索、路径记忆） |
 | `src/compositor.py` | 精灵提取、组件检测、角色数据提取、图像合成 |
 | `src/tools.py` | 日志工具 |
