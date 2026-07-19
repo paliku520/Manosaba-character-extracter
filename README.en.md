@@ -73,6 +73,7 @@ python run.py --help
 | `-c`, `--clean` | Clear the output folder before startup |
 | `-o <path>`, `--output <path>` | Specify output directory (absolute or relative to script root) |
 | `--clear-cache` | Clear the cache folder and exit (without launching GUI) |
+| `--git-clean` | Remove `output/` and `temp/` directories and exit (for git commit cleanup) |
 
 **Examples:**
 ```bash
@@ -87,6 +88,9 @@ python run.py --output D:/game_exports
 
 # Clear cache only, no GUI
 python run.py --clear-cache
+
+# Cleanup for git commit
+python run.py --git-clean
 
 # Combined
 python run.py -c -o E:/exports

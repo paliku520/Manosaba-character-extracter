@@ -1037,6 +1037,11 @@ if __name__ == "__main__":
         action="store_true",
         help=_("cli.help.clear_cache")
     )
+    parser.add_argument(
+        "--git-clean",
+        action="store_true",
+        help=_("cli.help.git_clean")
+    )
     args = parser.parse_args()
 
     # 解析输出路径：相对路径基于脚本所在目录，绝对路径直接使用
@@ -1061,6 +1066,16 @@ if __name__ == "__main__":
             log("info", _("log.temp_cleared", path=cache_dir))
         else:
             log("info", "Cache folder does not exist.")
+        exit(0)
+
+    # --git-clean：清除 output 和 temp 目录后退出（用于 git 提交前清理）
+    if getattr(args, "git_clean", False):
+        script_dir = Path(__file__).parent
+        for d in ["output", "temp"]:
+            p = script_dir / d
+            if p.exists():
+                shutil.rmtree(p)
+                log("info", f"Removed: {p}")
         exit(0)
 
     # 系统语言自动检测

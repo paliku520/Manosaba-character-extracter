@@ -548,6 +548,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Clear cache folder and exit (without launching GUI)",
         LANG_MGL: "",
     },
+    "cli.help.git_clean": {
+        LANG_CN: "清除 output 和 temp 目录后退出（用于 git 提交前清理）",
+        LANG_EN: "Remove output and temp directories and exit (for git commit cleanup)",
+        LANG_MGL: "Ca-nay output & temp Ge-mon, then FineNd (for git commit cleanup)",
+    },
     "dialog.load_error_title": {
         LANG_CN: "加载失败",
         LANG_EN: "Load Failed",
