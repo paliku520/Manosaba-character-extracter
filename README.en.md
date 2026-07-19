@@ -124,7 +124,7 @@ project root/
 └── ...
 ```
 
-> ℹ️ `temp/` is an auto-generated cache folder. It is **not** deleted automatically on character switch. Click the **Clear Cache** button on the left panel to free up space.
+> `temp/` is an auto-generated cache folder. It is **not** deleted automatically on character switch. Click the **Clear Cache** button on the left panel to free up space.
 
 ## Project Structure
 
