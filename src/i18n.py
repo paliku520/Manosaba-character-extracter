@@ -300,9 +300,9 @@ T: Dict[str, Dict[str, str]] = {
         LANG_MGL: "   - 'gDie MEif' → assemble full JIO image\n\n",
     },
     "info.cache_warning": {
-        LANG_CN: "⚠ temp/ 目录为自动生成的缓存目录。切换角色或关闭程序时会自动清空，请勿存放个人文件！\n",
-        LANG_EN: "⚠ temp/ is an auto-generated cache folder. It will be emptied when switching characters or closing the app!\n",
-        LANG_MGL: "⚠ temp/ is auto-cache. It will be emptied when switching JIO or closing!\n",
+        LANG_CN: "注意： temp/ 目录为自动生成的缓存。切换角色时不会自动删除，点击左侧「清除缓存文件夹」按钮可手动释放空间。请勿存放个人文件！\n",
+        LANG_EN: "Note: temp/ is an auto-generated cache folder. It is NOT automatically deleted when switching characters. Click 'Clear Cache' on the left to manually free up space. Do not store personal files here!\n",
+        LANG_MGL: "hAquEi: temp/ is auto-cache Ge-mon. Nii auto Ca-nay when switching JIO. Alte left 'Ca-nay temp Ge-mon' to free space. Nii store personal Ge-mon!\n",
     },
 
     # ── 层级结构页 ──

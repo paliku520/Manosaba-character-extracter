@@ -947,20 +947,16 @@ class SpriteToolApp:
         if not self.character_data:
             return
 
-        default_name = f"{self.character_data['character_name']}_composite.png"
-        save_path = filedialog.asksaveasfilename(
-            title=_("save.file_title"),
-            initialfile=default_name,
-            defaultextension=".png",
-            filetypes=[(_("save.png_filter"), "*.png")]
-        )
-        if not save_path:
-            return
+        char_name = self.character_data['character_name']
+        save_dir = self.output_dir / char_name
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = save_dir / f"{char_name}_composite.png"
 
         try:
             self.composite_image.save(save_path)
+            log("info", f"Composite saved to: {save_path}")
             messagebox.showinfo(_("dialog.save_success_title"), _("dialog.save_success_msg", path=save_path))
-            os.startfile(str(Path(save_path).parent))
+            os.startfile(str(save_dir))
         except Exception as e:
             messagebox.showerror(_("dialog.save_error_title"), _("dialog.save_error_msg", msg=e))
 

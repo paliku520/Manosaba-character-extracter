@@ -1,4 +1,4 @@
-# Manosaba-character-extracter（魔法少女的魔女审判 - 角色立绘提取工具）
+# Manosaba-character-extracter
 
 [![English](https://img.shields.io/badge/English-README-blue)](/README.en.md) 
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
@@ -122,7 +122,34 @@ python run.py -c -o E:/exports
 ```
 
 >`temp/` 目录为自动生成的缓存。切换角色时不会自动删除，点击左侧「清除缓存文件夹」按钮可手动释放空间。
+## 已知问题
 
+### 立绘合成图层顺序/遮罩处理不完整
+
+**问题描述**
+- 当前版本的立绘合成功能无法完全还原游戏原作的立绘图层效果。部分角色的部件（如眼睛、头发、脸部遮罩等）合成后与游戏内实际显示存在差异。
+
+**具体表现**
+- 部分图层叠加顺序与游戏原作不一致
+- ClippingMask（剪切蒙版/遮罩图层）未被正确处理，遮罩图层被当作普通精灵渲染，而不是作为不可见的裁剪区域
+- 受此影响的角色部件包括但不限于：眼睛、头发、脸部表情部件等
+
+**对比效果**
+
+下图为游戏原作（右）与当前合成器输出（左）的对比：
+
+![立绘合成对比](./docs/images/comparison.png)
+
+**原因分析**
+- 游戏角色立绘使用了 Unity 的 `SpriteRenderer` + `ClippingMask` 机制来实现复杂的图层裁剪效果。当前合成器仅根据 `sorting_order` 进行简单的图层叠加，未实现以下功能：
+
+1. **剪切蒙版（Clipping Mask）**：`ClippingMask` 类型的精灵应作为不可见的遮罩，用于裁剪目标图层的显示区域，而非直接渲染
+2. **遮罩作用范围**：每个 `ClippingMask` 仅影响特定范围内的部件（如 `Facial` 遮罩只影响脸部区域），而非全局
+3. **半透明遮罩**：部分遮罩带有 `color.a < 1.0` 的半透明属性，需要正确处理
+
+**临时解决方案**
+1.直接导出所有精灵文件，使用`Adobe Photoshop`等图片软件手动编辑。
+2.等待后续修复。
 ## 项目结构
 
 | 文件 | 说明 |
@@ -142,16 +169,27 @@ python run.py -c -o E:/exports
 
 ## 致谢与许可证
 
-本项目是 [KabeNaki](https://github.com/lingk7/KabeNaki) 项目的**深度重构与性能优化版本**。感谢原项目作者 [lingk7](https://github.com/lingk7) 的杰出工作，为本项目提供了基础灵感与架构参考。
+### 原作信息
+
+本工具提取的内容来源于游戏 **「魔法少女の魔女审判」(Manosaba)**  
+© 2024 **Re,AER LLC. / Acacia** — 原游戏所有权利归其所有。
+
+### 本工具作者
+
+**paliku520（云野 风云）** — 开发与维护
+
+### 技术致谢
+
+本项目是 [KabeNaki](https://github.com/lingk7/KabeNaki) 项目的**深度重构与性能优化版本**，感谢原项目作者 [lingk7](https://github.com/lingk7) 的杰出工作。
 
 **重构与优化工作包括：**
 - **架构重构**：将原单体文件拆分为模块化设计（`bundleloader`, `compositor`, `tools` 等），提升代码可维护性。
-- **性能优化**：优化UI响应与数据处理流程，消除原项目中不必要的全量UI重建，实现部件列表的增量更新。
-- **功能增强**：新增多角色管理、批量目录扫描、路径记忆、层级结构树（TreeView）及更精细的缓存管理。
+- **性能优化**：优化 UI 响应与数据处理流程，消除原项目中不必要的全量 UI 重建。
+- **功能增强**：新增多角色管理、批量目录扫描、路径记忆、层级结构树（TreeView）、多语言支持及缓存复用等。
 
-本项目是 [KabeNaki](https://github.com/lingk7/KabeNaki) 项目的**深度重构与性能优化版本**。原项目及本项目均采用 **GPL-3.0 许可证**。
+### 许可证
 
-详见本项目根目录下的 [LICENSE](LICENSE) 文件。
+本项目采用 **GPL-3.0 许可证**，详见 [LICENSE](LICENSE) 文件。
 
 ---
 

@@ -202,6 +202,7 @@ def extract_character_data(
                 "position": tf["position"],
                 "sorting_order": sr["sorting_order"],
                 "sprite_id": sr["sprite"],
+                "color": sr["color"],
             })
 
     # ---- 第3步: 提取精灵图像 ----
@@ -240,6 +241,7 @@ def extract_character_data(
                 "sprite_size": si["size"],
                 "position": part["position"],
                 "sorting_order": part["sorting_order"],
+                "color": part["color"],
                 "category": _categorize(part["name"]),
             })
 
@@ -350,6 +352,18 @@ class SpriteCompositor:
         for i, part in enumerate(sorted_parts):
             try:
                 img = Image.open(part["sprite_path"]).convert("RGBA")
+
+                # 应用 SpriteRenderer.m_Color（RGBA，默认白色全不透明）
+                c = part.get("color", {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0})
+                cr, cg, cb, ca = c["r"], c["g"], c["b"], c["a"]
+                if (cr, cg, cb, ca) != (1.0, 1.0, 1.0, 1.0):
+                    r, g, b, a = img.split()
+                    r = r.point(lambda v: int(v * cr))
+                    g = g.point(lambda v: int(v * cg))
+                    b = b.point(lambda v: int(v * cb))
+                    a = a.point(lambda v: int(v * ca))
+                    img = Image.merge("RGBA", (r, g, b, a))
+
                 px = int(part["position"]["x"] * self.scale + cx)
                 py = int(part["position"]["y"] * -self.scale + cy)
                 sx, sy = img.size
