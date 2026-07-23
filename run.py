@@ -11,7 +11,6 @@
 
 import argparse
 import json
-import locale
 import os
 import shutil
 import threading
@@ -39,9 +38,12 @@ from src.i18n import _, set_lang, current_lang, LANGUAGE_CODES, LANG_CN, LANG_EN
 def _detect_system_language() -> str:
     """根据系统区域设置自动选择语言（不返回 LANG_MGL）"""
     try:
-        sys_lang, _ = locale.getdefaultlocale()
-        if sys_lang and sys_lang.startswith("zh"):
-            return LANG_CN
+        import locale
+        sys_lang, _ = locale.getlocale(locale.LC_CTYPE)
+        if sys_lang:
+            lang_lower = sys_lang.lower()
+            if lang_lower.startswith("zh") or "chinese" in lang_lower:
+                return LANG_CN
     except Exception:
         pass
     return LANG_EN
@@ -227,13 +229,19 @@ class SpriteToolApp:
         paned = ttk.PanedWindow(self.selection_frame, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, pady=5)
 
+        # RGBA 提示文本（显示在 PanedWindow 上方）
+        self._json_hint = ttk.Label(self.selection_frame, text=_("parts.json_hint"),
+                                     font=("Consolas", 8), foreground="gray")
+        self._json_hint.pack(fill=tk.X, padx=5, pady=(0, 2), before=paned)
+
         # ===== 左：部件列表 =====
         list_frame = ttk.Frame(paned)
         paned.add(list_frame, weight=2)
 
         self.parts_canvas = tk.Canvas(list_frame, highlightthickness=0)
         v_scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.parts_canvas.yview)
-        self.parts_canvas.configure(yscrollcommand=v_scroll.set)
+        h_scroll = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.parts_canvas.xview)
+        self.parts_canvas.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
 
         self.parts_inner = ttk.Frame(self.parts_canvas)
         self.parts_inner.bind("<Configure>", lambda e: self.parts_canvas.configure(
@@ -242,6 +250,7 @@ class SpriteToolApp:
         self.parts_canvas.create_window((0, 0), window=self.parts_inner, anchor="nw", tags="inner")
         self.parts_canvas.grid(row=0, column=0, sticky=tk.NSEW)
         v_scroll.grid(row=0, column=1, sticky=tk.NS)
+        h_scroll.grid(row=1, column=0, sticky=tk.EW)
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
 
@@ -325,6 +334,13 @@ class SpriteToolApp:
         for item in self.hierarchy_tree.get_children():
             self.hierarchy_tree.delete(item)
 
+        # 建立 name → alpha 的查找表
+        alpha_map: Dict[str, float] = {}
+        if self.character_data:
+            for td in self.character_data.get("transform_data", []):
+                c = td.get("color", {})
+                alpha_map[td["name"]] = c.get("a", 1.0)
+
         def add_node(parent_id: str, nodes: List[Dict]):
             for node in nodes:
                 pos = node.get("position", {})
@@ -335,7 +351,8 @@ class SpriteToolApp:
                 children = node.get("children", [])
 
                 if node.get("has_sprite"):
-                    display = _("hierarchy.item_sprite", name=name, pos=pos_str, order=order)
+                    alpha = alpha_map.get(name, 1.0)
+                    display = _("hierarchy.item_sprite", name=name, pos=pos_str, order=order, alpha=f"{alpha:.2f}")
                 elif children:
                     display = _("hierarchy.item_children", name=name, count=len(children))
                 else:
@@ -423,6 +440,7 @@ class SpriteToolApp:
         self.auto_update_cb.config(text=_("parts.auto_update"))
         self.preview_status.config(text=_("parts.no_preview"))
         self.sel_header.config(text=_("parts.selected_list_title"))
+        self._json_hint.config(text=_("parts.json_hint"))
 
 
         # 组件结构页
@@ -768,9 +786,12 @@ class SpriteToolApp:
                               foreground="gray").pack(side=tk.LEFT, padx=(4, 8))
 
                 pos = part["position"]
+                c = part.get("color", {})
+                alpha = c.get("a", 1.0)
                 info = _("parts.item_info",
                           name=part['name'], x=pos['x'], y=pos['y'],
-                          order=part['sorting_order'], size=part['sprite_size'])
+                          order=part['sorting_order'], size=part['sprite_size'],
+                          alpha=alpha)
                 lbl = ttk.Label(frame, text=info, font=("Consolas", 9))
                 lbl.pack(side=tk.LEFT, padx=(5, 0))
 

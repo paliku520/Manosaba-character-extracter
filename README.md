@@ -1,6 +1,6 @@
 # Manosaba-character-extracter
 
-[![English](https://img.shields.io/badge/English-README-blue)](/README.en.md) 
+[![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md) 
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
 从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 文件中提取角色精灵，支持自动检测组件数据、直接导出精灵或拼接完整立绘。
@@ -143,13 +143,14 @@ python run.py -c -o E:/exports
 **原因分析**
 - 游戏角色立绘使用了 Unity 的 `SpriteRenderer` + `ClippingMask` 机制来实现复杂的图层裁剪效果。当前合成器仅根据 `sorting_order` 进行简单的图层叠加，未实现以下功能：
 
-1. **剪切蒙版（Clipping Mask）**：`ClippingMask` 类型的精灵应作为不可见的遮罩，用于裁剪目标图层的显示区域，而非直接渲染
-2. **遮罩作用范围**：每个 `ClippingMask` 仅影响特定范围内的部件（如 `Facial` 遮罩只影响脸部区域），而非全局
-3. **半透明遮罩**：部分遮罩带有 `color.a < 1.0` 的半透明属性，需要正确处理
+1. **剪切蒙版（Clipping Mask）**：`ClippingMask` 类型的精灵用于裁剪目标图层的显示区域
+2. **遮罩作用范围**：每个 `ClippingMask` 仅影响特定范围内的部件（如 `ClippingMask_Eyes` 遮罩只影响眼部区域），而非全局
+3. **半透明遮罩**：遮罩带有 `color.a < 1.0` 的半透明属性，需要正确处理
 
 **临时解决方案**
-1.直接导出所有精灵文件，使用`Adobe Photoshop`等图片软件手动编辑。
-2.等待后续修复。
+1. 直接导出所有精灵文件，使用`Adobe Photoshop`等图片软件手动编辑。
+2. 使用 B站：[雪莉苹果汁](https://space.bilibili.com/3546949672241842) 的 [Manosaba mod](http://manosabamoddoc.fuyumi.xyz/)，直接在游戏本体内编辑（工具提供了`组件结构`的信息）
+3. 等待后续修复。
 ## 项目结构
 
 | 文件 | 说明 |

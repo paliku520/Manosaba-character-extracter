@@ -332,9 +332,9 @@ T: Dict[str, Dict[str, str]] = {
         LANG_MGL: "Level {level}: {name} — [{count} children]",
     },
     "hierarchy.item_sprite": {
-        LANG_CN: "{name}  —  [位置: {pos}]  [排序: {order}]",
-        LANG_EN: "{name}  —  [pos: {pos}]  [order: {order}]",
-        LANG_MGL: "{name} — [pos: {pos}] [order: {order}]",
+        LANG_CN: "{name}  —  [位置: {pos}]  [排序: {order}]  [A: {alpha}]",
+        LANG_EN: "{name}  —  [pos: {pos}]  [order: {order}]  [A: {alpha}]",
+        LANG_MGL: "{name} — [pos: {pos}] [order: {order}] [A: {alpha}]",
     },
     "hierarchy.item_children": {
         LANG_CN: "{name}  —  [{count} 个子项]",
@@ -345,6 +345,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "{name}  —  (位置: {pos})",
         LANG_EN: "{name}  —  (pos: {pos})",
         LANG_MGL: "{name} — (pos: {pos})",
+    },
+    "parts.json_hint": {
+        LANG_CN: "组件的 RGBA 详细值可前往 character_data.json 中查看",
+        LANG_EN: "Full RGBA values can be found in character_data.json",
+        LANG_MGL: "RGBA oF hA-k iN character_data.json",
     },
 
     # ── 部件选择标签页标题 ──
@@ -508,9 +513,9 @@ T: Dict[str, Dict[str, str]] = {
         LANG_MGL: "[{cat}] ({count})",
     },
     "parts.item_info": {
-        LANG_CN: "{name:28s}  位置:({x:6.1f}, {y:6.1f})  排序:{order:3d}  大小:{size}",
-        LANG_EN: "{name:28s}  pos:({x:6.1f}, {y:6.1f})  order:{order:3d}  size:{size}",
-        LANG_MGL: "{name:28s} pos:({x:6.1f}, {y:6.1f}) order:{order:3d} size:{size}",
+        LANG_CN: "{name:28s}  位置:({x:6.1f}, {y:6.1f})  排序:{order:3d}  A:{alpha:.2f}  大小:{size}",
+        LANG_EN: "{name:28s}  pos:({x:6.1f}, {y:6.1f})  order:{order:3d}  A:{alpha:.2f}  size:{size}",
+        LANG_MGL: "{name:28s} pos:({x:6.1f}, {y:6.1f}) order:{order:3d} A:{alpha:.2f} size:{size}",
     },
 
     # ── 预览 ──
