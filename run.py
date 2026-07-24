@@ -971,7 +971,14 @@ class SpriteToolApp:
         char_name = self.character_data['character_name']
         save_dir = self.output_dir / char_name
         save_dir.mkdir(parents=True, exist_ok=True)
+
+        # 生成不重复的文件名（避免覆盖已有文件）
+        base_path = save_dir / f"{char_name}_composite"
         save_path = save_dir / f"{char_name}_composite.png"
+        counter = 1
+        while save_path.exists():
+            save_path = save_dir / f"{char_name}_composite_{counter}.png"
+            counter += 1
 
         try:
             self.composite_image.save(save_path)
