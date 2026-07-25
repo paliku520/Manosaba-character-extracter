@@ -17,7 +17,7 @@ from typing import Optional, Dict, List, Tuple
 import UnityPy
 from PIL import Image
 
-from src.tools import log
+from src.logtools import log
 from src.i18n import _
 
 

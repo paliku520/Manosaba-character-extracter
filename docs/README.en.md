@@ -58,7 +58,7 @@ If you successfully run it on a non-Windows platform or encounter any issues, fe
 ```bash
 python run.py
 ```
-### Command Line Arguments
+### Command Line Arguments (also supported in the .exe build)
 
 ```bash
 python run.py --help
@@ -105,10 +105,23 @@ python run.py -c -o E:/exports
 
 ### Directory Structure
 
+The `output/` structure differs based on character type:
+
 ```
 program_root/
-├── output/                ← Final composited results (saved manually by user)
-│   └── <character_name>_composite.png
+├── output/                ← Final output directory
+│   ├── <name>/            ← No component: sprites flat here
+│   │   ├── ArmL01.png
+│   │   ├── Body.png
+│   │   └── ...
+│   └── <name>/            ← With components: organized by type
+│       ├── sprites/       ← Exported sprites
+│       │   ├── ArmL01.png
+│       │   ├── Body.png
+│       │   └── ...
+│       └── composite/     ← Composite images
+│           ├── <name>_composite.png
+│           └── ...
 ├── temp/                  ← Sprite cache directory (can be manually cleared, speeds up re-loading)
 │   └── <character_name>/
 │       ├── character_data.json   ← Hierarchy + part data
@@ -155,14 +168,35 @@ Below is a comparison between the current compositor output (left) and the origi
 
 ## Project Structure
 
-| File | Description |
-|------|-------------|
-| `run.py` | Main program entry (GUI, event handling) |
-| `src/__init__.py` | Package initialization |
-| `src/i18n.py` | Internationalization module (Chinese/English/fiXmArge translation tables) |
-| `src/bundleloader.py` | Bundle file loader (directory search, path memory) |
-| `src/compositor.py` | Sprite extraction, component detection, character data extraction, image compositing |
-| `src/tools.py` | Logging utilities |
+```
+project_root/
+├── run.py                       # ★ Main entry (GUI + event handling)
+├── requirements.txt             # Python dependencies
+│
+├── src/                         # ── Core Modules ──
+│   ├── __init__.py
+│   ├── bundleloader.py          # Bundle file searching & loading
+│   ├── compositor.py            # Sprite extraction / component detection / compositing
+│   ├── export_manager.py        # Sprite export & composite save (directory routing)
+│   ├── cache_manager.py         # Cache read/write & integrity validation
+│   ├── i18n.py                  # Internationalization (CN/EN/fiXmArge)
+│   ├── logtools.py              # Logging utilities
+│   └── version.py               # Software version configuration
+│
+├── src/                         # ── UI Modules ──
+│   ├── ui_builder.py            # UI construction (main layout, tabs)
+│   └── ui_helpers.py            # UI utilities (progress, preview, hierarchy tree)
+│
+├── scripts/                     # ── Build Scripts ──
+│   └── build_exe.py             # PyInstaller packaging script
+│
+├── output/                      # ★ Final output (generated at runtime)
+├── temp/                        # ★ Sprite cache (generated at runtime)
+│
+├── .gitignore
+├── LICENSE
+└── README.md
+```
 
 ## Tech Stack
 
@@ -189,6 +223,87 @@ This project is a **deep refactoring and performance-optimized version** of the 
 - **Architecture Refactoring**: Split the original monolithic file into a modular design (`bundleloader`, `compositor`, `tools`, etc.) for improved maintainability.
 - **Performance Optimization**: Optimized UI responsiveness and data processing flow, eliminating unnecessary full UI rebuilds.
 - **Feature Enhancements**: Added multi-character management, batch directory scanning, path memory, TreeView hierarchy, multi-language support, and cache reuse.
+
+---
+
+## Packaging as EXE
+
+The project provides build scripts to package the program into a Windows executable using [PyInstaller](https://pyinstaller.org/).
+
+### Prerequisites
+
+```bash
+pip install pyinstaller
+```
+
+### Build Scripts
+
+Build script is located in the `scripts/` directory:
+
+```bash
+python scripts\build_exe.py --help
+```
+
+### Command Line Arguments
+
+| Argument | Description |
+|----------|-------------|
+| `--onefile` | Package as a single exe (slower startup, better for distribution) |
+| `--name <name>` | Custom output exe name (default: `SpriteTool`) |
+| `--icon <path>` | Custom icon (.ico format) |
+| _(auto clean)_ | Automatically clean `dist/` and `build/` before building (with confirmation) |
+| `-h`, `--help` | Show this help message |
+
+### Usage Examples
+
+```bash
+# Default packaging (onedir mode, fast startup)
+python scripts\build_exe.py
+
+# Package as single exe (onefile mode)
+python scripts\build_exe.py --onefile
+
+# Custom name and icon
+python scripts\build_exe.py --name MyApp --icon icon.ico
+```
+
+### Packaging Modes
+
+| Mode | Startup Speed | Output Structure |
+|------|---------------|-----------------|
+| `--onedir` (default) | **Fast** (no extraction) | `dist\NAME\NAME.exe` + `_internal\` folder |
+| `--onefile` | Slower (extracts on each run) | `dist\NAME.exe` (single file) |
+
+### Notes
+
+- **Icon files** must be in `.ico` format. Convert a PNG using Pillow:
+  ```bash
+  python -c "from PIL import Image; Image.open('icon.png').save('icon.ico', format='ICO', sizes=[(256,256)])"
+  ```
+- Dependencies like **UnityPy** are bundled via `--collect-all` to avoid runtime `ModuleNotFoundError`.
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| `No module named 'UnityPy.resources'` at startup | Rebuild with `--collect-all UnityPy` (already included in scripts) |
+| `fmod.dll` or `archspec` related errors | Rebuild with `--collect-all fmod_toolkit` / `--collect-all archspec` (already included) |
+| `output/` or `temp/` folders appear in temp directory | Fixed: paths now resolve to the exe's location automatically |
+
+## .gitignore
+
+The project includes a `.gitignore` file that filters the following directories and files:
+
+| Rule | Description |
+|------|-------------|
+| `dist/`, `build/` | PyInstaller build output |
+| `*.spec` | PyInstaller configuration files |
+| `output/`, `temp/` | Runtime-generated directories |
+| `*.log` | Log files |
+| `__pycache__/`, `*.py[cod]` | Python cache |
+| `venv/`, `.venv/`, `.env` | Virtual environments and env files |
+| `.vscode/`, `.idea/` | Editor configuration |
+| `.*_config.json` | User path memory configuration |
 
 ### License
 

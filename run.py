@@ -1,4 +1,4 @@
-"""
+﻿"""
 魔法少女的魔女审判 - 角色立绘提取与拼接工具
 
 工作流程:
@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import threading
 from pathlib import Path
 from typing import Optional, Dict, List
@@ -25,12 +26,44 @@ from PIL import Image, ImageTk
 from src.bundleloader import BundleLoader
 from src.compositor import (
     has_component_data,
-    extract_sprites,
     extract_character_data,
     SpriteCompositor,
 )
-from src.tools import log, configure
+from src.export_manager import export_sprites, save_composite
+from src.cache_manager import save_extracted_data, load_extracted_data, clear_cache as clear_cache_dir
+from src.ui_builder import build_main_ui, build_welcome, set_window_icon
+from src.ui_helpers import (
+    set_status, start_progress, update_progress, stop_progress,
+    clear_preview, show_preview, clear_character_cache,
+    load_thumbnail, update_selected_sprites_list,
+    populate_hierarchy_tree,
+)
+from src.logtools import log, configure
+from src.version import __version__
 from src.i18n import _, set_lang, current_lang, LANGUAGE_CODES, LANG_CN, LANG_EN
+
+
+# ── 程序基础路径（兼容 PyInstaller 冻结环境） ──────────────
+if getattr(sys, 'frozen', False):
+    # 打包成 exe 后：exe 所在目录
+    BASE_DIR = Path(sys.executable).parent
+    # PyInstaller 解压目录（用于访问打包的数据文件）
+    MEI_DIR = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+else:
+    # 源码运行时：脚本所在目录
+    BASE_DIR = Path(__file__).parent
+    MEI_DIR = BASE_DIR
+
+
+# ── 控制台标题（跟随语言切换） ──────────────────────
+def set_console_title():
+    """设置控制台窗口标题，跟随当前语言"""
+    title = f"{_('console.title')} v{__version__}"
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleTitleW(title)
+    except Exception:
+        pass
 
 
 # ── 系统语言检测 ──────────────────────────────────────────────
@@ -56,11 +89,48 @@ def _detect_system_language() -> str:
 class SpriteToolApp:
     """魔法少女的魔女审判 - 角色立绘提取工具主窗口"""
 
+    # ── UI 组件（由 build_main_ui 动态创建，仅供类型检查） ──
+    load_btn: ttk.Button
+    open_output_btn: ttk.Button
+    _char_list_title: ttk.Label
+    char_listbox: tk.Listbox
+    progress_bar: ttk.Progressbar
+    lang_combo: ttk.Combobox
+    clear_cache_btn: ttk.Button
+    status_bar: ttk.Label
+    notebook: ttk.Notebook
+    info_frame: ttk.Frame
+    selection_frame: ttk.Frame
+    hierarchy_frame: ttk.Frame
+    select_all_btn: ttk.Button
+    deselect_all_btn: ttk.Button
+    sel_count_label: ttk.Label
+    save_btn: ttk.Button
+    clear_preview_btn: ttk.Button
+    composite_btn: ttk.Button
+    auto_update_cb: ttk.Checkbutton
+    _json_hint: ttk.Label
+    parts_canvas: tk.Canvas
+    parts_inner: ttk.Frame
+    sel_header: ttk.Label
+    sel_listbox: tk.Listbox
+    preview_status: ttk.Label
+    preview_canvas: tk.Canvas
+    preview_image_id: int
+    _info_text: tk.Text
+    _hierarchy_hint: ttk.Label
+    _expand_btn: ttk.Button
+    _collapse_btn: ttk.Button
+    hierarchy_tree: ttk.Treeview
+
     def __init__(self, output_dir: Optional[Path] = None):
         self.root = tk.Tk()
-        self.root.title(_("app.title"))
+        self.root.title(f"{_('app.title')} v{__version__}")
         self.root.geometry("1200x800")
         self.root.minsize(900, 600)
+
+        # 设置窗口图标
+        set_window_icon(self)
 
         # 记录启动时语言，供 _setup_ui 初始化下拉框
         self._start_lang = current_lang()
@@ -83,303 +153,17 @@ class SpriteToolApp:
         self.auto_update = tk.BooleanVar(value=True)
         self._preview_timer: Optional[str] = None
 
-        # 输出目录（默认基于脚本所在目录，可通过命令行参数 -o 指定）
-        self.output_dir = output_dir or (Path(__file__).parent / "output")
+        # 输出目录（默认基于程序所在目录，可通过命令行参数 -o 指定）
+        self.output_dir = output_dir or (BASE_DIR / "output")
 
         # 临时缓存目录（精灵提取过程中的中间文件，关闭或切换角色时自动清空）
-        self.temp_dir = Path(__file__).parent / "temp"
+        self.temp_dir = BASE_DIR / "temp"
 
-        # 设置 UI
-        self._setup_ui()
+        # ── 构建 UI（UI 组件由 build_main_ui 动态创建） ──
+        build_main_ui(self)
         self._bind_events()
 
-    # ── UI 构建 ────────────────────────────────────────────────
-
-    def _setup_ui(self):
-        # 主布局：左侧导航 + 右侧内容
-        main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-        main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
-        # ========== 左侧面板 ==========
-        left_frame = ttk.Frame(main_paned, width=280)
-        main_paned.add(left_frame, weight=0)
-
-        # 加载按钮
-        self.load_btn = ttk.Button(left_frame, text=_("left.load_button"), command=self._on_load_directory)
-        self.load_btn.pack(fill=tk.X, pady=(0, 5))
-
-        # 打开输出文件夹按钮
-        self.open_output_btn = ttk.Button(left_frame, text=_("left.open_output"), command=self._on_open_output)
-        self.open_output_btn.pack(fill=tk.X, pady=(0, 10))
-
-        # 角色列表标题
-        self._char_list_title = ttk.Label(left_frame, text=_("left.char_list_title"), font=("Arial", 11, "bold"))
-        self._char_list_title.pack(anchor=tk.W, pady=(0, 5))
-
-        # 角色列表 (带滚动条)
-        list_frame = ttk.Frame(left_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.char_listbox = tk.Listbox(list_frame, font=("Consolas", 10), selectmode=tk.SINGLE)
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.char_listbox.yview)
-        self.char_listbox.configure(yscrollcommand=scrollbar.set)
-        self.char_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # 进度条（默认隐藏，determinate 模式显示实际进度）
-        self.progress_bar = ttk.Progressbar(left_frame, mode="determinate", length=280)
-        self.progress_bar.pack(fill=tk.X, pady=(5, 0))
-        self.progress_bar.pack_forget()
-
-        # 语言切换
-        self.lang_combo = ttk.Combobox(
-            left_frame, state="readonly", width=20,
-            values=[_(f"lang.{code}") for code in LANGUAGE_CODES]
-        )
-        try:
-            idx = LANGUAGE_CODES.index(self._start_lang)
-        except ValueError:
-            idx = 0
-        self.lang_combo.current(idx)
-        self.lang_combo.pack(fill=tk.X, pady=(5, 0))
-        self.lang_combo.bind("<<ComboboxSelected>>", self._on_language_change)
-
-        # 清除缓存按钮
-        self.clear_cache_btn = ttk.Button(left_frame, text=_("left.clear_cache"), command=self._on_clear_cache)
-        self.clear_cache_btn.pack(fill=tk.X, pady=(5, 0))
-
-        # 状态栏
-        self.status_bar = ttk.Label(left_frame, text=_("app.status.ready"), relief=tk.SUNKEN, anchor=tk.W)
-        self.status_bar.pack(fill=tk.X, pady=(10, 0))
-
-        # ========== 右侧内容面板 ==========
-        right_frame = ttk.Frame(main_paned)
-        main_paned.add(right_frame, weight=1)
-
-        # 用 Notebook 来切换不同视图
-        self.notebook = ttk.Notebook(right_frame)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-
-        # 欢迎/信息页
-        self.info_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.info_frame, text=_("info.tab_title"))
-        self._show_welcome()
-
-        # 精灵选择页（拼接模式用，包含内嵌预览）
-        self.selection_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.selection_frame, text=_("tabs.parts"))
-        self._setup_selection_tab()
-
-        # 组件结构页（层级信息）
-        self.hierarchy_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.hierarchy_frame, text=_("tabs.hierarchy"))
-        self._setup_hierarchy_tab()
-
-    def _show_welcome(self):
-        for w in self.info_frame.winfo_children():
-            w.destroy()
-        self._info_text = tk.Text(self.info_frame, wrap=tk.WORD, padx=20, pady=20, font=("Arial", 10))
-        self._info_text.insert(tk.END, _("info.welcome"))
-        self._info_text.insert(tk.END, _("info.usage_title"))
-        self._info_text.insert(tk.END, _("info.usage_1"))
-        self._info_text.insert(tk.END, _("info.usage_2"))
-        self._info_text.insert(tk.END, _("info.usage_3"))
-        self._info_text.insert(tk.END, _("info.usage_4"))
-        self._info_text.insert(tk.END, _("info.logic_title"))
-        self._info_text.insert(tk.END, _("info.logic_no_component"))
-        self._info_text.insert(tk.END, _("info.logic_has_component"))
-        self._info_text.insert(tk.END, _("info.logic_export"))
-        self._info_text.insert(tk.END, _("info.logic_composite"))
-        self._info_text.insert(tk.END, _("info.cache_warning"))
-        self._info_text.config(state=tk.DISABLED)
-        self._info_text.pack(fill=tk.BOTH, expand=True)
-
-    def _setup_selection_tab(self):
-        """部件选择界面（左：部件列表，右：内嵌预览）"""
-        # ── 控制栏 ──
-        ctrl_frame = ttk.Frame(self.selection_frame)
-        ctrl_frame.pack(fill=tk.X, pady=5)
-
-        self.select_all_btn = ttk.Button(ctrl_frame, text=_("parts.select_all"), command=self._select_all)
-        self.select_all_btn.pack(side=tk.LEFT, padx=(0, 5))
-
-        self.deselect_all_btn = ttk.Button(ctrl_frame, text=_("parts.deselect_all"), command=self._deselect_all)
-        self.deselect_all_btn.pack(side=tk.LEFT, padx=5)
-
-        self.sel_count_label = ttk.Label(ctrl_frame, text=_("parts.selected_count", count=0))
-        self.sel_count_label.pack(side=tk.LEFT, padx=(20, 0))
-
-        # 右侧按钮组（三个按钮在同一行）
-        self.save_btn = ttk.Button(ctrl_frame, text=_("parts.save_composite"), command=self._on_save)
-        self.save_btn.pack(side=tk.RIGHT, padx=2)
-
-        self.clear_preview_btn = ttk.Button(ctrl_frame, text=_("parts.clear_preview"), command=self._clear_preview)
-        self.clear_preview_btn.pack(side=tk.RIGHT, padx=2)
-
-        self.composite_btn = ttk.Button(ctrl_frame, text=_("parts.composite_btn"), command=self._on_composite)
-        self.composite_btn.pack(side=tk.RIGHT, padx=2)
-
-        self.auto_update_cb = ttk.Checkbutton(
-            ctrl_frame, text=_("parts.auto_update"), variable=self.auto_update,
-            command=self._on_auto_update_toggle
-        )
-        self.auto_update_cb.pack(side=tk.RIGHT, padx=(10, 5))
-
-        # ── 主区域：PanedWindow 左中右三栏分割 ──
-        paned = ttk.PanedWindow(self.selection_frame, orient=tk.HORIZONTAL)
-        paned.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        # RGBA 提示文本（显示在 PanedWindow 上方）
-        self._json_hint = ttk.Label(self.selection_frame, text=_("parts.json_hint"),
-                                     font=("Consolas", 8), foreground="gray")
-        self._json_hint.pack(fill=tk.X, padx=5, pady=(0, 2), before=paned)
-
-        # ===== 左：部件列表 =====
-        list_frame = ttk.Frame(paned)
-        paned.add(list_frame, weight=2)
-
-        self.parts_canvas = tk.Canvas(list_frame, highlightthickness=0)
-        v_scroll = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.parts_canvas.yview)
-        h_scroll = ttk.Scrollbar(list_frame, orient=tk.HORIZONTAL, command=self.parts_canvas.xview)
-        self.parts_canvas.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
-
-        self.parts_inner = ttk.Frame(self.parts_canvas)
-        self.parts_inner.bind("<Configure>", lambda e: self.parts_canvas.configure(
-            scrollregion=self.parts_canvas.bbox("all")))
-
-        self.parts_canvas.create_window((0, 0), window=self.parts_inner, anchor="nw", tags="inner")
-        self.parts_canvas.grid(row=0, column=0, sticky=tk.NSEW)
-        v_scroll.grid(row=0, column=1, sticky=tk.NS)
-        h_scroll.grid(row=1, column=0, sticky=tk.EW)
-        list_frame.columnconfigure(0, weight=1)
-        list_frame.rowconfigure(0, weight=1)
-
-        self.parts_canvas.bind("<MouseWheel>", lambda e: self.parts_canvas.yview_scroll(
-            int(-1 * (e.delta / 120)), "units"))
-
-        self.part_vars: List[tk.BooleanVar] = []
-        self.part_labels: List[Dict] = []
-
-        # ===== 中：已选精灵列表 =====
-        sel_frame = ttk.Frame(paned)
-        paned.add(sel_frame, weight=1)
-
-        self.sel_header = ttk.Label(sel_frame, text=_("parts.selected_list_title"), font=("Arial", 10, "bold"))
-        self.sel_header.grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 5))
-
-        # 列表区域子容器，用于容纳 listbox + scrollbar
-        sel_body = ttk.Frame(sel_frame)
-        sel_body.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW)
-        sel_frame.columnconfigure(0, weight=1)
-        sel_frame.rowconfigure(1, weight=1)
-
-        self.sel_listbox = tk.Listbox(sel_body, font=("Consolas", 9), selectmode=tk.SINGLE)
-        sel_scrollbar = ttk.Scrollbar(sel_body, orient=tk.VERTICAL, command=self.sel_listbox.yview)
-        self.sel_listbox.configure(yscrollcommand=sel_scrollbar.set)
-        self.sel_listbox.grid(row=0, column=0, sticky=tk.NSEW)
-        sel_scrollbar.grid(row=0, column=1, sticky=tk.NS)
-        sel_body.columnconfigure(0, weight=1)
-        sel_body.rowconfigure(0, weight=1)
-
-        # ===== 右：内嵌预览 =====
-        preview_panel = ttk.Frame(paned)
-        paned.add(preview_panel, weight=2)
-
-        self.preview_status = ttk.Label(preview_panel, text=_("parts.no_preview"), anchor=tk.CENTER)
-        self.preview_status.pack(fill=tk.X, pady=(0, 5))
-
-        canvas_frame = ttk.Frame(preview_panel)
-        canvas_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.preview_canvas = tk.Canvas(canvas_frame, bg="#e0e0e0")
-        h_s = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.preview_canvas.xview)
-        v_s = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.preview_canvas.yview)
-        self.preview_canvas.configure(xscrollcommand=h_s.set, yscrollcommand=v_s.set)
-
-        self.preview_canvas.grid(row=0, column=0, sticky=tk.NSEW)
-        h_s.grid(row=1, column=0, sticky=tk.EW)
-        v_s.grid(row=0, column=1, sticky=tk.NS)
-        canvas_frame.columnconfigure(0, weight=1)
-        canvas_frame.rowconfigure(0, weight=1)
-
-        self.preview_image_id: Optional[int] = None
-
-    def _setup_hierarchy_tab(self):
-        """组件结构页 — TreeView """
-        # 控制栏
-        ctrl = ttk.Frame(self.hierarchy_frame)
-        ctrl.pack(fill=tk.X, pady=5)
-        self._hierarchy_hint = ttk.Label(ctrl, text=_("hierarchy.hint"),
-                  font=("Arial", 9, "italic"))
-        self._hierarchy_hint.pack(side=tk.LEFT, padx=5)
-        self._expand_btn = ttk.Button(ctrl, text=_("hierarchy.expand_all"), command=self._expand_all_nodes)
-        self._expand_btn.pack(side=tk.RIGHT, padx=2)
-        self._collapse_btn = ttk.Button(ctrl, text=_("hierarchy.collapse_all"), command=self._collapse_all_nodes)
-        self._collapse_btn.pack(side=tk.RIGHT, padx=2)
-
-        # TreeView
-        tree_frame = ttk.Frame(self.hierarchy_frame)
-        tree_frame.pack(fill=tk.BOTH, expand=True, pady=5)
-
-        # 使用 show="tree" 只显示树状结构，#0 列显示路径+信息
-        self.hierarchy_tree = ttk.Treeview(tree_frame, show="tree", height=12)
-
-        v_s = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL, command=self.hierarchy_tree.yview)
-        self.hierarchy_tree.configure(yscrollcommand=v_s.set)
-        self.hierarchy_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        v_s.pack(side=tk.RIGHT, fill=tk.Y)
-
-    def _populate_hierarchy_tree(self, hierarchy: List[Dict]):
-        """用 hierarchy 数据填充 TreeView — 注册表风格"""
-        for item in self.hierarchy_tree.get_children():
-            self.hierarchy_tree.delete(item)
-
-        # 建立 name → alpha 的查找表
-        alpha_map: Dict[str, float] = {}
-        if self.character_data:
-            for td in self.character_data.get("transform_data", []):
-                c = td.get("color", {})
-                alpha_map[td["name"]] = c.get("a", 1.0)
-
-        def add_node(parent_id: str, nodes: List[Dict]):
-            for node in nodes:
-                pos = node.get("position", {})
-                pos_str = f"({pos.get('x', 0):.1f}, {pos.get('y', 0):.1f})"
-                order = node.get("sorting_order", 0)
-
-                name = node.get("name", "")
-                children = node.get("children", [])
-
-                if node.get("has_sprite"):
-                    alpha = alpha_map.get(name, 1.0)
-                    display = _("hierarchy.item_sprite", name=name, pos=pos_str, order=order, alpha=f"{alpha:.2f}")
-                elif children:
-                    display = _("hierarchy.item_children", name=name, count=len(children))
-                else:
-                    display = _("hierarchy.item_empty", name=name, pos=pos_str)
-
-                item_id = self.hierarchy_tree.insert(
-                    parent_id, tk.END, text=display, open=False
-                )
-                add_node(item_id, children)
-
-        for i, node in enumerate(hierarchy):
-            name = node.get("name", "")
-            children = node.get("children", [])
-            display = _("hierarchy.level_fmt", level=i + 1, name=name, count=len(children))
-            root_id = self.hierarchy_tree.insert("", tk.END, text=display, open=True)
-            add_node(root_id, children)
-
-    def _on_tree_double_click(self, event):
-        """双击展开/折叠节点"""
-        item = self.hierarchy_tree.selection()
-        if item:
-            item = item[0]
-            if self.hierarchy_tree.get_children(item):
-                if self.hierarchy_tree.item(item, "open"):
-                    self.hierarchy_tree.item(item, open=False)
-                else:
-                    self.hierarchy_tree.item(item, open=True)
+    # ── UI 构建/层级/欢迎页等方法已移至 src/ui_builder.py ──
 
     def _expand_all_nodes(self):
         """展开所有节点"""
@@ -408,8 +192,9 @@ class SpriteToolApp:
 
     def _apply_language(self):
         """刷新所有 UI 文本以匹配当前语言"""
-        # 窗口标题
-        self.root.title(_("app.title"))
+        # 窗口标题 + 控制台标题
+        self.root.title(f"{_('app.title')} v{__version__}")
+        set_console_title()
 
         # 左侧面板
         self.load_btn.config(text=_("left.load_button"))
@@ -452,12 +237,12 @@ class SpriteToolApp:
         if self.bundles:
             self._show_character_list()
         else:
-            self._show_welcome()
+            build_welcome(self)
 
         # 如果当前有角色数据已加载，刷新层次树中的显示文本
         if self.character_data:
             hierarchy = self.character_data.get("hierarchy", [])
-            self._populate_hierarchy_tree(hierarchy)
+            populate_hierarchy_tree(self, hierarchy)
 
     def _bind_events(self):
         self.char_listbox.bind("<<ListboxSelect>>", self._on_character_select)
@@ -495,7 +280,7 @@ class SpriteToolApp:
             self.char_listbox.delete(0, tk.END)
             for name in sorted(self.bundles.keys()):
                 self.char_listbox.insert(tk.END, name)
-            self._set_status(_("app.status.loaded", count=result['count']))
+            set_status(self,_("app.status.loaded", count=result['count']))
             self.notebook.select(0)
 
             # 切换到信息页并显示列表
@@ -503,7 +288,7 @@ class SpriteToolApp:
         else:
             msg = "\n".join(result["errors"])
             messagebox.showerror(_("dialog.load_error_title"), msg)
-            self._set_status(_("app.status.load_failed"))
+            set_status(self,_("app.status.load_failed"))
 
     def _show_character_list(self):
         """在信息页显示已加载的角色列表"""
@@ -520,32 +305,7 @@ class SpriteToolApp:
 
     # ── 角色选择 ───────────────────────────────────────────────
 
-    def _clear_character_cache(self):
-        """清除上一个角色的缓存数据"""
-        # 记录上一个角色名以便清理输出目录
-        old_name = None
-        if self.character_data:
-            old_name = self.character_data.get("character_name")
-
-        self.character_data = None
-        self.composite_image = None
-        self._thumb_refs.clear()
-        # 清空部件列表
-        for w in self.parts_inner.winfo_children():
-            w.destroy()
-        self.part_vars.clear()
-        self.part_labels.clear()
-        # 重置选择计数
-        self.sel_count_label.config(text=_("parts.selected_count", count=0))
-        # 清空已选精灵列表
-        self.sel_listbox.delete(0, tk.END)
-        # 清空预览画布
-        self.preview_canvas.delete("all")
-        self.preview_status.config(text=_("parts.no_preview"))
-
-        # 清空组件结构树
-        for item in self.hierarchy_tree.get_children():
-            self.hierarchy_tree.delete(item)
+    # _clear_character_cache moved to src/ui_helpers.py
 
     def _on_character_select(self, event):
         sel = self.char_listbox.curselection()
@@ -555,7 +315,7 @@ class SpriteToolApp:
         bundle_path = Path(self.bundles[name])
 
         # 清除上一个角色的缓存
-        self._clear_character_cache()
+        clear_character_cache(self)
 
         self._start_progress(_("app.status.analyzing", name=name))
         self.notebook.select(0)
@@ -582,15 +342,14 @@ class SpriteToolApp:
                 _("dialog.export_confirm_title"),
                 _("dialog.export_confirm_msg", name=name)
             ):
-                self._set_status(_("app.status.cancelled"))
+                set_status(self,_("app.status.cancelled"))
                 return
 
             self._start_progress(_("app.status.exporting", name=name))
             def export_task():
                 def cb(current, total):
                     self.root.after(0, lambda: self._update_progress(current, total))
-                output_dir = self.output_dir
-                count = len(extract_sprites(bundle_path, output_dir, progress_callback=cb))
+                count = len(export_sprites(bundle_path, self.output_dir, has_components=False, progress_callback=cb))
                 self.root.after(0, lambda: self._on_export_complete(name, count))
             threading.Thread(target=export_task, daemon=True).start()
         else:
@@ -632,7 +391,7 @@ class SpriteToolApp:
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(expand=True)
 
-        result = {"mode": None}  # 用于在回调中传值
+        result: Dict[str, Optional[str]] = {"mode": None}  # 用于在回调中传值
 
         def choose_mode(mode: str):
             result["mode"] = mode
@@ -659,7 +418,7 @@ class SpriteToolApp:
             def export_task():
                 def cb(current, total):
                     self.root.after(0, lambda: self._update_progress(current, total))
-                count = len(extract_sprites(bundle_path, self.output_dir, progress_callback=cb))
+                count = len(export_sprites(bundle_path, self.output_dir, has_components=True, progress_callback=cb))
                 self.root.after(0, lambda: self._on_export_complete(name, count))
             threading.Thread(target=export_task, daemon=True).start()
         elif mode == "composite":
@@ -669,7 +428,7 @@ class SpriteToolApp:
 
     def _start_composite_mode(self, name: str, bundle_path: Path):
         # 检查是否有完整缓存
-        cached = self._try_load_cached(name)
+        cached = load_extracted_data(self.temp_dir, name)
         if cached:
             self.root.after(0, lambda: self._on_data_ready(name, cached))
             return
@@ -681,31 +440,12 @@ class SpriteToolApp:
                 self.root.after(0, lambda: self._update_progress(current, total))
             self.temp_dir.mkdir(parents=True, exist_ok=True)
             data = extract_character_data(bundle_path, self.temp_dir, progress_callback=cb)
+            save_extracted_data(data, self.temp_dir, name)
             self.root.after(0, lambda: self._on_data_ready(name, data))
 
         threading.Thread(target=extract_task, daemon=True).start()
 
-    def _try_load_cached(self, name: str) -> Optional[Dict]:
-        """尝试从 temp 缓存加载角色数据，缓存不完整时返回 None"""
-        json_path = self.temp_dir / name / "character_data.json"
-        sprites_dir = self.temp_dir / name / "sprites"
-        if not json_path.exists() or not sprites_dir.exists():
-            return None
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            # 验证所有精灵文件都存在
-            for part in data.get("transform_data", []):
-                sprite_path = Path(part["sprite_path"])
-                if not sprite_path.exists():
-                    log("info", f"Cache incomplete, missing: {sprite_path}")
-                    return None
-            transform_data = data.get("transform_data", [])
-            log("info", _("log.cache_loaded", name=name, count=len(transform_data)))
-            return data
-        except Exception as e:
-            log("warning", f"Cache load failed: {e}")
-            return None
+    # _try_load_cached 已移至 cache_manager.load_extracted_data
 
     def _on_data_ready(self, name: str, data: Dict):
         """角色数据提取完成后，填充部件列表（全部默认选中），等待用户手动合成"""
@@ -737,7 +477,7 @@ class SpriteToolApp:
 
             # 填充组件结构树
             hierarchy = data.get("hierarchy", [])
-            self._populate_hierarchy_tree(hierarchy)
+            populate_hierarchy_tree(self, hierarchy)
         except Exception as e:
             log("error", _("log.process_data_failed", e=e))
             import traceback
@@ -776,7 +516,7 @@ class SpriteToolApp:
                 cb.pack(side=tk.LEFT)
 
                 # ── 精灵缩略图预览 ──
-                thumb = self._load_thumbnail(part["sprite_path"], size=(48, 48))
+                thumb = load_thumbnail(part["sprite_path"], size=(48, 48))
                 if thumb:
                     thumb_label = ttk.Label(frame, image=thumb)
                     thumb_label.pack(side=tk.LEFT, padx=(4, 8))
@@ -801,33 +541,13 @@ class SpriteToolApp:
         # 全部创建完毕后保持默认未选中状态
         self.sel_count_label.config(text=_("parts.selected_count", count=0))
 
-    def _load_thumbnail(self, image_path: str, size: tuple = (48, 48)) -> Optional[ImageTk.PhotoImage]:
-        """加载精灵图片并生成缩略图"""
-        try:
-            img = Image.open(image_path).convert("RGBA")
-            img.thumbnail(size, Image.Resampling.LANCZOS)
-
-            # 在透明背景上绘制缩略图
-            thumb = Image.new("RGBA", size, (240, 240, 240, 255))
-            offset = ((size[0] - img.width) // 2, (size[1] - img.height) // 2)
-            thumb.paste(img, offset, img)
-            return ImageTk.PhotoImage(thumb)
-        except Exception:
-            return None
-
-    def _update_selected_sprites_list(self):
-        """刷新已选精灵列表（显示在右侧 Listbox 中）"""
-        self.sel_listbox.delete(0, tk.END)
-        for item in self.part_labels:
-            if item["var"].get():
-                name = item["part"]["name"]
-                self.sel_listbox.insert(tk.END, name)
+    # _load_thumbnail, _update_selected_sprites_list moved to src/ui_helpers.py
 
     def _on_part_toggle(self):
         selected = sum(1 for v in self.part_vars if v.get())
         self.sel_count_label.config(text=_("parts.selected_count", count=selected))
         # 刷新右侧已选精灵列表
-        self._update_selected_sprites_list()
+        update_selected_sprites_list(self)
         # 实时预览：勾选状态变化后自动调度合成（防抖 500ms）
         if self.auto_update.get():
             self._schedule_auto_preview()
@@ -848,7 +568,7 @@ class SpriteToolApp:
         for v in self.part_vars:
             v.set(True)
         self.sel_count_label.config(text=_("parts.selected_count", count=len(self.part_vars)))
-        self._update_selected_sprites_list()
+        update_selected_sprites_list(self)
         if self.auto_update.get():
             self._schedule_auto_preview()
 
@@ -856,7 +576,7 @@ class SpriteToolApp:
         for v in self.part_vars:
             v.set(False)
         self.sel_count_label.config(text=_("parts.selected_count", count=0))
-        self._update_selected_sprites_list()
+        update_selected_sprites_list(self)
         if self.auto_update.get():
             self._schedule_auto_preview()
 
@@ -909,12 +629,12 @@ class SpriteToolApp:
 
         # 在同一页面显示预览（无需切换标签）
         self.root.update_idletasks()
-        self._show_preview(img)
+        show_preview(self,img)
 
     def _show_composite_error(self, error_msg: str):
         """显示合成错误"""
         self.preview_status.config(text=_("parts.no_preview"))
-        self._set_status(_("app.status.composite_failed"))
+        set_status(self,_("app.status.composite_failed"))
         messagebox.showerror(_("dialog.composite_error_title"), _("dialog.composite_error_msg", msg=error_msg))
 
     def _clear_preview(self):
@@ -922,7 +642,7 @@ class SpriteToolApp:
         self.preview_canvas.delete("all")
         self.preview_status.config(text=_("parts.no_preview"))
         self.composite_image = None
-        self._set_status(_("app.status.preview_cleared"))
+        set_status(self,_("app.status.preview_cleared"))
 
     def _show_preview(self, img: Image.Image):
         """在画布上显示预览图"""
@@ -969,20 +689,9 @@ class SpriteToolApp:
             return
 
         char_name = self.character_data['character_name']
-        save_dir = self.output_dir / char_name
-        save_dir.mkdir(parents=True, exist_ok=True)
-
-        # 生成不重复的文件名（避免覆盖已有文件）
-        base_path = save_dir / f"{char_name}_composite"
-        save_path = save_dir / f"{char_name}_composite.png"
-        counter = 1
-        while save_path.exists():
-            save_path = save_dir / f"{char_name}_composite_{counter}.png"
-            counter += 1
-
         try:
-            self.composite_image.save(save_path)
-            log("info", f"Composite saved to: {save_path}")
+            save_path = save_composite(self.composite_image, self.output_dir, char_name)
+            save_dir = save_path.parent
             messagebox.showinfo(_("dialog.save_success_title"), _("dialog.save_success_msg", path=save_path))
             os.startfile(str(save_dir))
         except Exception as e:
@@ -996,7 +705,7 @@ class SpriteToolApp:
 
     def _start_progress(self, text: str = "", maximum: int = 100):
         """显示进度条并更新状态文字（determinate 模式）"""
-        self._set_status(text or _("app.progress.default"))
+        set_status(self,text or _("app.progress.default"))
         self.progress_bar["value"] = 0
         self.progress_bar["maximum"] = maximum
         self.progress_bar.pack(fill=tk.X, pady=(5, 0), before=self.status_bar)
@@ -1012,13 +721,13 @@ class SpriteToolApp:
         """停止并隐藏进度条，恢复状态文字"""
         self.progress_bar["value"] = 0
         self.progress_bar.pack_forget()
-        self._set_status(text or _("app.status.ready"))
+        set_status(self,text or _("app.status.ready"))
         self.root.update_idletasks()
 
     def _on_clear_cache(self):
         """手动清除 temp 缓存目录（带确认对话框）"""
         if not self.temp_dir.exists():
-            self._set_status(_("app.status.ready"))
+            set_status(self,_("app.status.ready"))
             return
         if not messagebox.askyesno(
             _("left.clear_cache_confirm_title"),
@@ -1028,9 +737,9 @@ class SpriteToolApp:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
         log("info", _("log.temp_cleared", path=self.temp_dir))
         # 还原界面并切换到信息页
-        self._clear_character_cache()
+        clear_character_cache(self)
         self.notebook.select(0)
-        self._set_status(_("app.status.ready"))
+        set_status(self, _("app.status.ready"))
 
     def run(self):
         self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
@@ -1068,14 +777,14 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # 解析输出路径：相对路径基于脚本所在目录，绝对路径直接使用
+    # 解析输出路径：相对路径基于程序所在目录，绝对路径直接使用
     if args.output:
         output_path = Path(args.output)
         if not output_path.is_absolute():
-            output_path = Path(__file__).parent / output_path
+            output_path = BASE_DIR / output_path
         output_path = output_path.resolve()
     else:
-        output_path = Path(__file__).parent / "output"
+        output_path = BASE_DIR / "output"
 
     if args.clean:
         if output_path.exists():
@@ -1084,7 +793,7 @@ if __name__ == "__main__":
 
     # --clear-cache：仅清除缓存，不启动 GUI
     if getattr(args, "clear_cache", False):
-        cache_dir = Path(__file__).parent / "temp"
+        cache_dir = BASE_DIR / "temp"
         if cache_dir.exists():
             shutil.rmtree(cache_dir)
             log("info", _("log.temp_cleared", path=cache_dir))
@@ -1106,6 +815,9 @@ if __name__ == "__main__":
     detected_lang = _detect_system_language()
     set_lang(detected_lang)
     log("info", f"System language detected: {detected_lang}")
+
+    # 设置控制台标题
+    set_console_title()
 
     app = SpriteToolApp(output_dir=output_path)
     app.run()

@@ -8,7 +8,7 @@ from typing import Optional
 
 import UnityPy
 
-from src.tools import log
+from src.logtools import log
 from src.i18n import _
 
 # 常见 Unity/纳诺精灵 路径模式（快速查找，避免递归）

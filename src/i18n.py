@@ -119,6 +119,13 @@ T: Dict[str, Dict[str, str]] = {
         LANG_MGL: "Loadeh Ge-mon...",
     },
 
+    # ── 控制台 ──
+    "console.title": {
+        LANG_CN: "魔法少女的魔女审判 - 角色立绘提取工具 - 控制台",
+        LANG_EN: "Manosaba - Character Sprite Tool - console",
+        LANG_MGL: "Manosaba - eXi' Toim - console",
+    },
+
     # ── 左侧面板 ──
     "left.load_button": {
         LANG_CN: "加载游戏目录",
@@ -154,6 +161,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "从缓存加载角色数据: {name} ({count} 个部件)",
         LANG_EN: "Loaded character data from cache: {name} ({count} parts)",
         LANG_MGL: "Loadeh JIO data from temp: {name} ({count} hA-k)",
+    },
+    "log.cache_saved": {
+        LANG_CN: "缓存已保存: {name} -> {path}",
+        LANG_EN: "Cache saved: {name} -> {path}",
+        LANG_MGL: "temp saved: {name} -> {path}",
     },
 
     # ── 部件选择页 ──

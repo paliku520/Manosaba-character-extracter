@@ -58,7 +58,7 @@ pip install -r requirements.txt
 ```bash
 python run.py
 ```
-### 命令行参数
+### 命令行参数（exe程序仍然可以正常使用）
 
 ```bash
 python run.py --help
@@ -105,10 +105,23 @@ python run.py -c -o E:/exports
 
 ### 目录结构
 
+output/ 目录结构根据角色类型自动区分：
+
 ```
 程序根目录/
-├── output/                ← 最终合成结果（由用户主动保存）
-│   └── <角色名>_composite.png
+├── output/                ← 最终输出目录
+│   ├── <角色名>/          ← 无组件角色：精灵直接平铺
+│   │   ├── ArmL01.png
+│   │   ├── Body.png
+│   │   └── ...
+│   └── <角色名>/          ← 有组件角色：按类型分子目录
+│       ├── sprites/       ← 导出的精灵
+│       │   ├── ArmL01.png
+│       │   ├── Body.png
+│       │   └── ...
+│       └── composite/     ← 合成图
+│           ├── <角色名>_composite.png
+│           └── ...
 ├── temp/                  ← 精灵缓存目录（可手动清除，重复角色时加速加载）
 │   └── <角色名>/
 │       ├── character_data.json   ← 层级 + 部件数据
@@ -153,14 +166,35 @@ python run.py -c -o E:/exports
 3. 等待后续修复。
 ## 项目结构
 
-| 文件 | 说明 |
-|------|------|
-| `run.py` | 主程序入口（GUI 界面、事件处理） |
-| `src/__init__.py` | 包初始化 |
-| `src/i18n.py` | 国际化模块（中/英/架空语翻译表） |
-| `src/bundleloader.py` | Bundle 文件加载器（目录搜索、路径记忆） |
-| `src/compositor.py` | 精灵提取、组件检测、角色数据提取、图像合成 |
-| `src/tools.py` | 日志工具 |
+```
+项目根目录/
+├── run.py                       # ★ 主程序入口（GUI + 事件处理）
+├── requirements.txt             # Python 依赖
+│
+├── src/                         # ── 核心模块 ──
+│   ├── __init__.py
+│   ├── bundleloader.py          # Bundle 文件搜索与加载
+│   ├── compositor.py            # 精灵提取 / 组件检测 / 图像合成
+│   ├── export_manager.py        # 精灵导出 & 合成图保存（目录路由）
+│   ├── cache_manager.py         # 缓存读写与完整性验证
+│   ├── i18n.py                  # 国际化（中/英/架空语）
+│   ├── logtools.py              # 日志工具
+│   └── version.py               # 配置当前软件版本
+│
+├── src/                         # ── UI 模块 ──
+│   ├── ui_builder.py            # 界面构造（主布局、各标签页）
+│   └── ui_helpers.py            # UI 工具（进度条、预览、层级树等）
+│
+├── scripts/                     # ── 构建脚本 ──
+│   └── build_exe.py             # PyInstaller 打包脚本
+│
+├── output/                      # ★ 最终输出（由程序生成）
+├── temp/                        # ★ 精灵缓存（由程序生成）
+│
+├── .gitignore
+├── LICENSE
+└── README.md
+```
 
 ## 技术栈
 
@@ -187,6 +221,87 @@ python run.py -c -o E:/exports
 - **架构重构**：将原单体文件拆分为模块化设计（`bundleloader`, `compositor`, `tools` 等），提升代码可维护性。
 - **性能优化**：优化 UI 响应与数据处理流程，消除原项目中不必要的全量 UI 重建。
 - **功能增强**：新增多角色管理、批量目录扫描、路径记忆、层级结构树（TreeView）、多语言支持及缓存复用等。
+
+---
+
+## 打包为 EXE
+
+项目提供了打包脚本，使用 [PyInstaller](https://pyinstaller.org/) 将程序封装为 Windows 可执行文件。
+
+### 前置条件
+
+```bash
+pip install pyinstaller
+```
+
+### 打包脚本
+
+打包脚本位于 `scripts/` 目录下：
+
+```bash
+python scripts\build_exe.py --help
+```
+
+### 命令行参数
+
+| 参数 | 说明 |
+|------|------|
+| `--onefile` | 打包为单个 exe（启动较慢，适合分发） |
+| `--name <名称>` | 自定义输出文件名（默认: `SpriteTool`） |
+| `--icon <路径>` | 自定义图标（.ico 格式） |
+| _(自动清理)_ | 打包前自动清除 `dist/` 和 `build/`（需确认） |
+| `-h`, `--help` | 显示帮助信息 |
+
+### 使用示例
+
+```bash
+# 默认打包（onedir 模式，启动快）
+python scripts\build_exe.py
+
+# 打包为单个 exe（onefile 模式）
+python scripts\build_exe.py --onefile
+
+# 自定义名称和图标
+python scripts\build_exe.py --name MyApp --icon icon.ico
+```
+
+### 打包模式说明
+
+| 模式 | 启动速度 | 输出结构 |
+|------|----------|----------|
+| `--onedir`（默认） | **快**（无需解压） | `dist\名称\名称.exe` + `_internal\` 文件夹 |
+| `--onefile` | 较慢（每次运行需解压） | `dist\名称.exe`（单个文件） |
+
+### 注意事项
+
+- **图标文件**需为 `.ico` 格式。可用 `Pillow` 从 PNG 转换：
+  ```bash
+  python -c "from PIL import Image; Image.open('icon.png').save('icon.ico', format='ICO', sizes=[(256,256)])"
+  ```
+- **UnityPy** 等依赖通过 `--collect-all` 确保完整打包，避免运行时报 `ModuleNotFoundError`。
+
+### 常见问题
+
+| 问题 | 解决方案 |
+|------|----------|
+| 启动时提示 `No module named 'UnityPy.resources'` | 使用 `--collect-all UnityPy` 重新打包（脚本已内置） |
+| 启动时提示 `fmod.dll` 或 `archspec` 相关错误 | 使用 `--collect-all fmod_toolkit` / `--collect-all archspec`（脚本已内置） |
+| `output/` 或 `temp/` 目录出现在临时文件夹中 | 已修复：打包后路径自动定位到 exe 所在目录 |
+
+## .gitignore
+
+项目已配置 `.gitignore`，自动过滤以下目录和文件：
+
+| 规则 | 说明 |
+|------|------|
+| `dist/`, `build/` | PyInstaller 构建输出 |
+| `*.spec` | PyInstaller 配置文件 |
+| `output/`, `temp/` | 应用运行时生成的目录 |
+| `*.log` | 日志文件 |
+| `__pycache__/`, `*.py[cod]` | Python 缓存 |
+| `venv/`, `.venv/`, `.env` | 虚拟环境和环境变量 |
+| `.vscode/`, `.idea/` | 编辑器配置 |
+| `.*_config.json` | 用户路径记忆配置 |
 
 ### 许可证
 
