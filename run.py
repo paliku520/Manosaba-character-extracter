@@ -9,7 +9,6 @@
     3. 拼接模式 → 选择部件 + 预览 + 保存合成图
 """
 
-import argparse
 import json
 import os
 import shutil
@@ -36,8 +35,10 @@ from src.ui_builder import (
     build_welcome,
     set_window_icon,
     set_toplevel_icon,
+    build_settings_dialog,
 )
 from src.updater import check_for_update
+from src.settings import get_output_dir, save_settings, get_lang
 from src.ui_helpers import (
     set_status, start_progress, update_progress, stop_progress,
     clear_preview, show_preview, clear_character_cache,
@@ -101,9 +102,8 @@ class SpriteToolApp:
     _char_list_title: ttk.Label
     char_listbox: tk.Listbox
     progress_bar: ttk.Progressbar
-    lang_combo: ttk.Combobox
     clear_cache_btn: ttk.Button
-    update_btn: ttk.Button
+    settings_btn: ttk.Button
     status_bar: ttk.Label
     notebook: ttk.Notebook
     info_frame: ttk.Frame
@@ -129,6 +129,20 @@ class SpriteToolApp:
     _expand_btn: ttk.Button
     _collapse_btn: ttk.Button
     hierarchy_tree: ttk.Treeview
+    _main_paned: ttk.PanedWindow
+    _settings_dialog: Optional[tk.Toplevel]
+    _settings_output_var: tk.StringVar
+    _settings_lang_combo: ttk.Combobox
+    _settings_update_btn: ttk.Button
+    _settings_lang_label: ttk.Label
+    _settings_output_label: ttk.Label
+    _settings_browse_btn: ttk.Button
+    _settings_restore_btn: ttk.Button
+    _settings_cleanup_label: ttk.Label
+    _settings_clear_cache_btn: ttk.Button
+    _settings_clear_output_btn: ttk.Button
+    _settings_save_btn: ttk.Button
+    _settings_cancel_btn: ttk.Button
 
     def __init__(self, output_dir: Optional[Path] = None):
         self.root = tk.Tk()
@@ -160,8 +174,11 @@ class SpriteToolApp:
         self.auto_update = tk.BooleanVar(value=True)
         self._preview_timer: Optional[str] = None
 
-        # 输出目录（默认基于程序所在目录，可通过命令行参数 -o 指定）
-        self.output_dir = output_dir or (BASE_DIR / "output")
+        # 设置子窗口状态
+        self._settings_dialog = None
+
+        # 输出目录（优先使用设置中保存的目录，未设置时默认 output/）
+        self.output_dir = output_dir or get_output_dir(BASE_DIR / "output")
 
         # 临时缓存目录（精灵提取过程中的中间文件，关闭或切换角色时自动清空）
         self.temp_dir = BASE_DIR / "temp"
@@ -194,11 +211,32 @@ class SpriteToolApp:
     # ── 语言切换 ──────────────────────────────────────────────
 
     def _on_language_change(self, event=None):
-        """语言下拉框切换事件"""
-        idx = self.lang_combo.current()
+        """语言下拉框切换事件（设置窗口内，切换即持久化）"""
+        idx = self._settings_lang_combo.current()
         code = LANGUAGE_CODES[idx]
         set_lang(code)
+        save_settings(lang=code)
         self._apply_language()
+
+    def _refresh_settings_texts(self):
+        """刷新设置子窗口内的文本（语言切换时调用）"""
+        dlg = self._settings_dialog
+        if dlg is None or not dlg.winfo_exists():
+            return
+        dlg.title(_("settings.title"))
+        self._settings_lang_label.config(text=_("lang.label"))
+        current_idx = self._settings_lang_combo.current()
+        self._settings_lang_combo["values"] = [_(f"lang.{code}") for code in LANGUAGE_CODES]
+        self._settings_lang_combo.current(current_idx)
+        self._settings_output_label.config(text=_("settings.output_dir_label"))
+        self._settings_browse_btn.config(text=_("settings.browse"))
+        self._settings_restore_btn.config(text=_("settings.restore_default"))
+        self._settings_cleanup_label.config(text=_("settings.cleanup_label"))
+        self._settings_clear_cache_btn.config(text=_("settings.clear_cache_btn"))
+        self._settings_clear_output_btn.config(text=_("settings.clear_output_btn"))
+        self._settings_update_btn.config(text=_("left.check_update"))
+        self._settings_save_btn.config(text=_("settings.save"))
+        self._settings_cancel_btn.config(text=_("settings.cancel"))
 
     def _apply_language(self):
         """刷新所有 UI 文本以匹配当前语言"""
@@ -211,13 +249,11 @@ class SpriteToolApp:
         self.open_output_btn.config(text=_("left.open_output"))
         self._char_list_title.config(text=_("left.char_list_title"))
         self.clear_cache_btn.config(text=_("left.clear_cache"))
-        self.update_btn.config(text=_("left.check_update"))
+        self.settings_btn.config(text=_("left.settings"))
         self.status_bar.config(text=_("app.status.ready"))
 
-        # 语言下拉框更新（保持当前选中项不变）
-        current_idx = self.lang_combo.current()
-        self.lang_combo["values"] = [_(f"lang.{code}") for code in LANGUAGE_CODES]
-        self.lang_combo.current(current_idx)
+        # 设置窗口文本刷新（如已打开）
+        self._refresh_settings_texts()
 
         # Notebook 标签
         self.notebook.tab(self.info_frame, text=_("info.tab_title"))
@@ -266,7 +302,89 @@ class SpriteToolApp:
         output_path.mkdir(parents=True, exist_ok=True)
         os.startfile(str(output_path))
 
+    # ── 设置 ────────────────────────────────────────────────────
+
+    def _open_settings(self):
+        """打开设置子窗口（已打开时置前）"""
+        if self._settings_dialog is not None and self._settings_dialog.winfo_exists():
+            self._settings_dialog.lift()
+            return
+        build_settings_dialog(self)
+
+    def _on_settings_browse(self):
+        """选择输出目录"""
+        path = filedialog.askdirectory(
+            title=_("settings.output_browse_title"),
+            initialdir=self._settings_output_var.get() or str(self.output_dir),
+        )
+        if path:
+            self._settings_output_var.set(path)
+
+    def _on_settings_restore_default(self):
+        """恢复默认输出目录"""
+        self._settings_output_var.set(str(BASE_DIR / "output"))
+
+    def _on_settings_save(self):
+        """保存设置并应用输出目录"""
+        raw = self._settings_output_var.get().strip()
+        if raw:
+            new_dir = Path(raw)
+            if not new_dir.is_absolute():
+                new_dir = (BASE_DIR / new_dir).resolve()
+            new_dir = new_dir.resolve()
+        else:
+            new_dir = (BASE_DIR / "output").resolve()
+
+        self.output_dir = new_dir
+        save_settings(new_dir)
+
+        if self._settings_dialog is not None:
+            self._settings_dialog.destroy()
+        self._settings_dialog = None
+
+        set_status(self, _("app.status.settings_saved", path=new_dir))
+
+    def _on_settings_clear_cache(self):
+        """设置窗口内清除缓存目录"""
+        if not self.temp_dir.exists():
+            set_status(self, _("app.status.ready"))
+            return
+        if not messagebox.askyesno(
+            _("left.clear_cache_confirm_title"),
+            _("left.clear_cache_confirm_msg")
+        ):
+            return
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        log("info", _("log.temp_cleared", path=self.temp_dir))
+        clear_character_cache(self)
+        self.notebook.select(0)
+        set_status(self, _("app.status.ready"))
+
+    def _on_settings_clear_output(self):
+        """设置窗口内清除输出目录"""
+        if not self.output_dir.exists():
+            set_status(self, _("app.status.ready"))
+            return
+        if not messagebox.askyesno(
+            _("settings.clear_output_confirm_title"),
+            _("settings.clear_output_confirm_msg", path=self.output_dir)
+        ):
+            return
+        shutil.rmtree(self.output_dir, ignore_errors=True)
+        log("info", _("log.output_cleared", path=self.output_dir))
+        set_status(self, _("app.status.ready"))
+
     # ── 更新检查 ────────────────────────────────────────────────
+
+    def _set_update_btn_state(self, state: str):
+        """设置设置窗口内检查更新按钮的状态（窗口未打开或已关闭时忽略）"""
+        btn = getattr(self, "_settings_update_btn", None)
+        if btn is not None:
+            try:
+                if btn.winfo_exists():
+                    btn.config(state=state)
+            except Exception:
+                pass
 
     def _on_check_update(self, silent: bool = False):
         """检查 GitHub 是否有新版本（后台线程，完成后在主线程处理）
@@ -275,7 +393,7 @@ class SpriteToolApp:
         """
         if not silent:
             self.status_bar.config(text=_("app.status.checking_update"))
-            self.update_btn.config(state=tk.DISABLED)
+            self._set_update_btn_state(tk.DISABLED)
 
         def task():
             try:
@@ -290,7 +408,7 @@ class SpriteToolApp:
     def _on_update_result(self, info, silent: bool = False):
         """更新检查完成：无新版本或提示是否前往下载"""
         if not silent:
-            self.update_btn.config(state=tk.NORMAL)
+            self._set_update_btn_state(tk.NORMAL)
             self.status_bar.config(text=_("app.status.ready"))
 
         if info is None:
@@ -313,7 +431,7 @@ class SpriteToolApp:
     def _on_update_error(self, msg: str, silent: bool = False):
         """更新检查失败提示"""
         if not silent:
-            self.update_btn.config(state=tk.NORMAL)
+            self._set_update_btn_state(tk.NORMAL)
             self.status_bar.config(text=_("app.status.ready"))
             messagebox.showerror(
                 _("dialog.update_check_error_title"),
@@ -321,7 +439,7 @@ class SpriteToolApp:
             )
 
     def _on_load_directory(self):
-        dir_path = self.loader.select_directory(_("dir.select_title"))
+        dir_path = self.loader.select_directory(_("dir.select_title"), parent=self.root)
         if not dir_path:
             return
 
@@ -809,6 +927,12 @@ class SpriteToolApp:
 
     def run(self):
         self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
+        # 校正左侧边栏初始宽度（映射后生效）
+        self.root.update_idletasks()
+        try:
+            self._main_paned.sashpos(0, 185)
+        except Exception:
+            pass
         self.root.mainloop()
 
 
@@ -819,71 +943,18 @@ class SpriteToolApp:
 if __name__ == "__main__":
     configure(level="info")
 
-    parser = argparse.ArgumentParser(description=_("cli.description"))
-    parser.add_argument(
-        "-c", "--clean",
-        action="store_true",
-        help=_("cli.help.clean")
-    )
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        default=None,
-        help=_("cli.help.output")
-    )
-    parser.add_argument(
-        "--clear-cache",
-        action="store_true",
-        help=_("cli.help.clear_cache")
-    )
-    parser.add_argument(
-        "--git-clean",
-        action="store_true",
-        help=_("cli.help.git_clean")
-    )
-    args = parser.parse_args()
-
-    # 解析输出路径：相对路径基于程序所在目录，绝对路径直接使用
-    if args.output:
-        output_path = Path(args.output)
-        if not output_path.is_absolute():
-            output_path = BASE_DIR / output_path
-        output_path = output_path.resolve()
+    # 语言：优先使用设置中保存的语言，否则按系统自动检测
+    saved_lang = get_lang()
+    if saved_lang and saved_lang in LANGUAGE_CODES:
+        set_lang(saved_lang)
+        log("info", f"Language loaded from settings: {saved_lang}")
     else:
-        output_path = BASE_DIR / "output"
-
-    if args.clean:
-        if output_path.exists():
-            shutil.rmtree(output_path)
-            log("info", _("log.output_cleared", path=output_path))
-
-    # --clear-cache：仅清除缓存，不启动 GUI
-    if getattr(args, "clear_cache", False):
-        cache_dir = BASE_DIR / "temp"
-        if cache_dir.exists():
-            shutil.rmtree(cache_dir)
-            log("info", _("log.temp_cleared", path=cache_dir))
-        else:
-            log("info", "Cache folder does not exist.")
-        exit(0)
-
-    # --git-clean：清除 output 和 temp 目录后退出（用于 git 提交前清理）
-    if getattr(args, "git_clean", False):
-        script_dir = Path(__file__).parent
-        for d in ["output", "temp"]:
-            p = script_dir / d
-            if p.exists():
-                shutil.rmtree(p)
-                log("info", f"Removed: {p}")
-        exit(0)
-
-    # 系统语言自动检测
-    detected_lang = _detect_system_language()
-    set_lang(detected_lang)
-    log("info", f"System language detected: {detected_lang}")
+        detected_lang = _detect_system_language()
+        set_lang(detected_lang)
+        log("info", f"System language detected: {detected_lang}")
 
     # 设置控制台标题
     set_console_title()
 
-    app = SpriteToolApp(output_dir=output_path)
+    app = SpriteToolApp()
     app.run()

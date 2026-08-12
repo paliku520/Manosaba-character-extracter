@@ -1,7 +1,6 @@
 ﻿"""魔法少女の魔女审判 - Bundle 文件加载器
 
 加载游戏目录中的所有 bundle 文件，自动查找 characters 目录。"""
-import json
 from pathlib import Path
 from tkinter import Tk, filedialog
 from typing import Optional
@@ -20,8 +19,12 @@ COMMON_PATTERNS = [
     "StreamingAssets",
 ]
 
-# 需要跳过的目录名
-SKIP_DIRS = frozenset({"node_modules", "__pycache__", ".git", ".svn", ".idea"})
+# 需要跳过的目录名（递归搜索时剪枝，避免遍历大型无关目录）
+SKIP_DIRS = frozenset({
+    "node_modules", "__pycache__", ".git", ".svn", ".idea",
+    "il2cpp_data", "BepInEx", "Resources", "Plugins", "dotnet", "D3D12",
+    "ManosabaMod", "Manosabafan", "MonoBleedingEdge", "Logs", "Mono",
+})
 
 
 class BundleLoader:
@@ -29,39 +32,43 @@ class BundleLoader:
 
     def __init__(self, app_name: str = "bundle_loader"):
         self.app_name = app_name
-        self.config_file = Path.home() / f".{app_name}_config.json"
         self.last_path = self._load_last_path()
         self.bundles: dict[str, str] = {}
 
     # ── 路径记忆 ──────────────────────────────────────────
 
     def _load_last_path(self) -> str:
-        """加载上次使用的路径"""
-        try:
-            if self.config_file.exists():
-                data = json.loads(self.config_file.read_text(encoding="utf-8"))
-                path = data.get("last_path", "")
-                if path and Path(path).exists():
-                    return path
-        except Exception:
-            pass
-        return str(Path.home())
+        """加载上次使用的路径（从程序根目录 settings.json 读取）"""
+        from src.settings import get_last_directory
+        return get_last_directory(str(Path.home())) or str(Path.home())
 
     def _save_last_path(self, path: str) -> None:
-        """保存上次使用的路径"""
-        try:
-            self.config_file.parent.mkdir(parents=True, exist_ok=True)
-            self.config_file.write_text(
-                json.dumps({"last_path": path}, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except OSError as e:
-            log("warning", _("log.saved_path_failed", e=e))
+        """保存上次使用的路径（写入程序根目录 settings.json）"""
+        from src.settings import save_settings
+        save_settings(last_directory=path)
 
     # ── 目录选择 ──────────────────────────────────────────
 
-    def select_directory(self, title: str = "") -> str | None:
-        """弹出文件夹选择对话框"""
+    def select_directory(self, title: str = "", parent=None) -> str | None:
+        """弹出文件夹选择对话框
+
+        Args:
+            title: 对话框标题
+            parent: 父窗口（推荐传入主窗口，避免多 Tk 根冲突导致路径异常）
+        """
+        if parent is not None:
+            # 使用已有主窗口作为父窗口（标准做法，避免额外创建 Tk 根）
+            dir_path = filedialog.askdirectory(
+                title=title or _("dir.select_title"),
+                initialdir=self.last_path,
+                parent=parent,
+            )
+            if dir_path:
+                self.last_path = dir_path
+                self._save_last_path(dir_path)
+            return dir_path or None
+
+        # 无父窗口时的兜底（独立临时根）
         root = Tk()
         root.withdraw()
         root.attributes("-topmost", True)
@@ -78,13 +85,25 @@ class BundleLoader:
     # ── 查找 characters 目录 ──────────────────────────────
 
     def find_characters_dir(self, game_root: Path) -> Path | None:
-        """在游戏目录中查找 characters 目录（先查常见模式，再递归搜索）"""
-        # 1. 先试常见模式
+        """在游戏目录中查找 characters 目录（向下匹配 → 向上回退 → 递归兜底）
+
+        1. 从 game_root 向下按常见模式匹配（游戏根目录场景）
+        2. 若 game_root 是游戏目录的子目录（如 manosaba_Data），向上逐级回退匹配
+        3. 仍未命中 → 有限深度递归搜索（带剪枝）
+        """
+        # 1. 向下匹配
         result = self._search_common_patterns(game_root)
         if result is not None:
             return result
 
-        # 2. 常见模式未命中 → 递归搜索
+        # 2. 向上回退匹配（用户可能选择了游戏目录下的子目录）
+        for ancestor in game_root.parents:
+            result = self._search_common_patterns(ancestor)
+            if result is not None:
+                log("info", _("log.found_common", path=result))
+                return result
+
+        # 3. 递归搜索（有限深度 + 剪枝）
         log("info", _("log.recursive_search"))
         return self._search_dir_recursive(game_root, "characters", max_depth=8)
 
@@ -119,22 +138,26 @@ class BundleLoader:
     def _search_dir_recursive(
         root: Path, target_name: str, max_depth: int = 8
     ) -> Path | None:
-        """递归搜索指定名称的目录，限制最大深度"""
-        # 使用 Path.rglob 替代 os.walk（更 Pythonic）
-        # 注意: rglob 不直接支持深度限制，所以我们手动控制
-        root_length = len(root.parts)
-        for entry in root.rglob("*"):
-            if not entry.is_dir():
+        """递归搜索指定名称的目录（os.walk 剪枝，跳过无关目录，限制深度）"""
+        import os
+
+        if root.name == target_name:
+            return root
+
+        root_str = str(root)
+        for dirpath, dirnames, _ in os.walk(root_str):
+            # 深度剪枝
+            depth = dirpath[len(root_str):].count(os.sep)
+            if depth >= max_depth:
+                dirnames[:] = []
                 continue
-            # 跳过隐藏目录和无关目录
-            if entry.name.startswith(".") or entry.name in SKIP_DIRS:
-                continue
-            # 检查深度
-            depth = len(entry.parts) - root_length
-            if depth > max_depth:
-                continue
-            if entry.name == target_name:
-                return entry
+            # 跳过隐藏/无关目录（避免遍历大型无关目录导致卡顿）
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d not in SKIP_DIRS
+            ]
+            if Path(dirpath).name == target_name:
+                return Path(dirpath)
         return None
 
     # ── Bundle 加载 ───────────────────────────────────────

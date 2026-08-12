@@ -56,9 +56,10 @@ def build_main_ui(app):
     # 主布局：左侧导航 + 右侧内容
     main_paned = ttk.PanedWindow(app.root, orient=tk.HORIZONTAL)
     main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    app._main_paned = main_paned
 
     # ========== 左侧面板 ==========
-    left_frame = ttk.Frame(main_paned, width=280)
+    left_frame = ttk.Frame(main_paned, width=185)
     main_paned.add(left_frame, weight=0)
 
     # 加载按钮
@@ -67,7 +68,11 @@ def build_main_ui(app):
 
     # 打开输出文件夹按钮
     app.open_output_btn = ttk.Button(left_frame, text=_("left.open_output"), command=app._on_open_output)
-    app.open_output_btn.pack(fill=tk.X, pady=(0, 10))
+    app.open_output_btn.pack(fill=tk.X, pady=(0, 5))
+
+    # 设置按钮
+    app.settings_btn = ttk.Button(left_frame, text=_("left.settings"), command=app._open_settings)
+    app.settings_btn.pack(fill=tk.X, pady=(0, 10))
 
     # 角色列表标题
     app._char_list_title = ttk.Label(left_frame, text=_("left.char_list_title"), font=("Arial", 11, "bold"))
@@ -84,30 +89,13 @@ def build_main_ui(app):
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     # 进度条（默认隐藏）
-    app.progress_bar = ttk.Progressbar(left_frame, mode="determinate", length=280)
+    app.progress_bar = ttk.Progressbar(left_frame, mode="determinate", length=185)
     app.progress_bar.pack(fill=tk.X, pady=(5, 0))
     app.progress_bar.pack_forget()
-
-    # 语言切换
-    app.lang_combo = ttk.Combobox(
-        left_frame, state="readonly", width=20,
-        values=[_(f"lang.{code}") for code in LANGUAGE_CODES]
-    )
-    try:
-        idx = LANGUAGE_CODES.index(app._start_lang)
-    except ValueError:
-        idx = 0
-    app.lang_combo.current(idx)
-    app.lang_combo.pack(fill=tk.X, pady=(5, 0))
-    app.lang_combo.bind("<<ComboboxSelected>>", app._on_language_change)
 
     # 清除缓存按钮
     app.clear_cache_btn = ttk.Button(left_frame, text=_("left.clear_cache"), command=app._on_clear_cache)
     app.clear_cache_btn.pack(fill=tk.X, pady=(5, 0))
-
-    # 检查更新按钮
-    app.update_btn = ttk.Button(left_frame, text=_("left.check_update"), command=app._on_check_update)
-    app.update_btn.pack(fill=tk.X, pady=(5, 0))
 
     # 状态栏
     app.status_bar = ttk.Label(left_frame, text=_("app.status.ready"), relief=tk.SUNKEN, anchor=tk.W)
@@ -286,3 +274,79 @@ def build_hierarchy_tab(app):
     app.hierarchy_tree.configure(yscrollcommand=v_s.set)
     app.hierarchy_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     v_s.pack(side=tk.RIGHT, fill=tk.Y)
+
+
+def build_settings_dialog(app):
+    """构建设置子窗口（语言 / 输出目录 / 清理 / 检查更新）"""
+    dialog = tk.Toplevel(app.root)
+    dialog.title(_("settings.title"))
+    dialog.geometry("560x440")
+    dialog.resizable(False, False)
+    dialog.transient(app.root)
+    dialog.grab_set()
+    set_toplevel_icon(dialog)
+
+    # 居中
+    dialog.update_idletasks()
+    x = app.root.winfo_x() + (app.root.winfo_width() - 560) // 2
+    y = app.root.winfo_y() + (app.root.winfo_height() - 440) // 2
+    dialog.geometry(f"+{x}+{y}")
+
+    app._settings_dialog = dialog
+
+    # ── 语言 ──
+    app._settings_lang_label = ttk.Label(dialog, text=_("lang.label"), font=("Arial", 10, "bold"))
+    app._settings_lang_label.pack(anchor=tk.W, padx=20, pady=(20, 5))
+    lang_frame = ttk.Frame(dialog)
+    lang_frame.pack(fill=tk.X, padx=20)
+    app._settings_lang_combo = ttk.Combobox(
+        lang_frame, state="readonly", width=20,
+        values=[_(f"lang.{code}") for code in LANGUAGE_CODES]
+    )
+    try:
+        idx = LANGUAGE_CODES.index(app._start_lang)
+    except ValueError:
+        idx = 0
+    app._settings_lang_combo.current(idx)
+    app._settings_lang_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+    app._settings_lang_combo.bind("<<ComboboxSelected>>", app._on_language_change)
+
+    # ── 输出目录 ──
+    app._settings_output_label = ttk.Label(dialog, text=_("settings.output_dir_label"), font=("Arial", 10, "bold"))
+    app._settings_output_label.pack(anchor=tk.W, padx=20, pady=(15, 5))
+    dir_frame = ttk.Frame(dialog)
+    dir_frame.pack(fill=tk.X, padx=20)
+
+    app._settings_output_var = tk.StringVar(value=str(app.output_dir))
+    app._settings_output_entry = ttk.Entry(dir_frame, textvariable=app._settings_output_var)
+    app._settings_output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    app._settings_browse_btn = ttk.Button(dir_frame, text=_("settings.browse"), command=app._on_settings_browse)
+    app._settings_browse_btn.pack(side=tk.LEFT, padx=(5, 0))
+    app._settings_restore_btn = ttk.Button(dir_frame, text=_("settings.restore_default"), command=app._on_settings_restore_default)
+    app._settings_restore_btn.pack(side=tk.LEFT, padx=(5, 0))
+
+    # ── 清理 ──
+    ttk.Separator(dialog, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=(15, 10))
+    app._settings_cleanup_label = ttk.Label(dialog, text=_("settings.cleanup_label"), font=("Arial", 10, "bold"))
+    app._settings_cleanup_label.pack(anchor=tk.W, padx=20, pady=(0, 5))
+
+    clean_frame = ttk.Frame(dialog)
+    clean_frame.pack(fill=tk.X, padx=20)
+    app._settings_clear_cache_btn = ttk.Button(clean_frame, text=_("settings.clear_cache_btn"), command=app._on_settings_clear_cache)
+    app._settings_clear_cache_btn.pack(side=tk.LEFT)
+    app._settings_clear_output_btn = ttk.Button(clean_frame, text=_("settings.clear_output_btn"), command=app._on_settings_clear_output)
+    app._settings_clear_output_btn.pack(side=tk.LEFT, padx=(10, 0))
+
+    # ── 检查更新 ──
+    ttk.Separator(dialog, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=(15, 10))
+    app._settings_update_btn = ttk.Button(dialog, text=_("left.check_update"), command=app._on_check_update)
+    app._settings_update_btn.pack(anchor=tk.W, padx=20)
+
+    # ── 底部按钮 ──
+    btn_frame = ttk.Frame(dialog)
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=20, pady=15)
+    app._settings_cancel_btn = ttk.Button(btn_frame, text=_("settings.cancel"), command=dialog.destroy)
+    app._settings_cancel_btn.pack(side=tk.RIGHT)
+    app._settings_save_btn = ttk.Button(btn_frame, text=_("settings.save"), command=app._on_settings_save)
+    app._settings_save_btn.pack(side=tk.RIGHT, padx=(0, 10))

@@ -118,6 +118,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Checking for updates...",
         LANG_MGL: "AnxAn Toim...",
     },
+    "app.status.settings_saved": {
+        LANG_CN: "设置已保存: {path}",
+        LANG_EN: "Settings saved: {path}",
+        LANG_MGL: "",
+    },
     "app.progress.loading_bundles": {
         LANG_CN: "正在扫描并加载 bundle 文件...",
         LANG_EN: "Scanning and loading bundle files...",
@@ -166,6 +171,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "检查更新",
         LANG_EN: "Check for Updates",
         LANG_MGL: "AnxAn Toim",
+    },
+    "left.settings": {
+        LANG_CN: "设置",
+        LANG_EN: "Settings",
+        LANG_MGL: "",
     },
     "log.cache_loaded": {
         LANG_CN: "从缓存加载角色数据: {name} ({count} 个部件)",
@@ -560,6 +570,68 @@ T: Dict[str, Dict[str, str]] = {
         LANG_MGL: "AnxAn Toim Baru:\n{msg}",
     },
 
+    # ── 设置子窗口 ──
+    "settings.title": {
+        LANG_CN: "设置",
+        LANG_EN: "Settings",
+        LANG_MGL: "",
+    },
+    "settings.output_dir_label": {
+        LANG_CN: "输出目录",
+        LANG_EN: "Output Directory",
+        LANG_MGL: "",
+    },
+    "settings.browse": {
+        LANG_CN: "浏览...",
+        LANG_EN: "Browse...",
+        LANG_MGL: "",
+    },
+    "settings.restore_default": {
+        LANG_CN: "恢复默认",
+        LANG_EN: "Restore Default",
+        LANG_MGL: "",
+    },
+    "settings.output_browse_title": {
+        LANG_CN: "选择输出目录",
+        LANG_EN: "Select Output Directory",
+        LANG_MGL: "",
+    },
+    "settings.cleanup_label": {
+        LANG_CN: "清理",
+        LANG_EN: "Cleanup",
+        LANG_MGL: "",
+    },
+    "settings.clear_cache_btn": {
+        LANG_CN: "清除缓存",
+        LANG_EN: "Clear Cache",
+        LANG_MGL: "",
+    },
+    "settings.clear_output_btn": {
+        LANG_CN: "清除输出目录",
+        LANG_EN: "Clear Output Directory",
+        LANG_MGL: "",
+    },
+    "settings.clear_output_confirm_title": {
+        LANG_CN: "清除输出目录",
+        LANG_EN: "Clear Output Directory",
+        LANG_MGL: "",
+    },
+    "settings.clear_output_confirm_msg": {
+        LANG_CN: "确定要删除输出目录中的所有文件吗？\n{path}",
+        LANG_EN: "Delete all files in the output directory?\n{path}",
+        LANG_MGL: "",
+    },
+    "settings.save": {
+        LANG_CN: "保存",
+        LANG_EN: "Save",
+        LANG_MGL: "",
+    },
+    "settings.cancel": {
+        LANG_CN: "取消",
+        LANG_EN: "Cancel",
+        LANG_MGL: "",
+    },
+
     # ── 部件分类 ──
     "parts.category_header": {
         LANG_CN: "【{cat}】({count})",
@@ -664,6 +736,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "保存路径记忆失败: {e}",
         LANG_EN: "Failed to save path memory: {e}",
         LANG_MGL: "Save Ge-mon Baru: {e}",
+    },
+    "log.settings_save_failed": {
+        LANG_CN: "保存设置失败: {e}",
+        LANG_EN: "Failed to save settings: {e}",
+        LANG_MGL: "",
     },
     "log.recursive_search": {
         LANG_CN: "常见路径未命中，开始递归搜索 characters 目录...",
