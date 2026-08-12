@@ -25,9 +25,13 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - `pip install -r requirements.txt`
 
 > Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
+- `pip install -r requirements.txt`
+
+> Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
 
 ## Usage
 
+### Run
 ### Run
 ```bash
 python run.py
@@ -122,6 +126,11 @@ This project is a **deep refactoring and performance-optimized version** of the 
 This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENSE) file for details.
 
 **Disclaimer**: This tool is intended for learning and personal research purposes only. The copyright of the extracted content belongs to the original game developer.
+### License
+
+This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENSE) file for details.
+
+**Disclaimer**: This tool is intended for learning and personal research purposes only. The copyright of the extracted content belongs to the original game developer.
 
 ## Packaging as EXE
 
@@ -129,7 +138,10 @@ This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENS
 pip install pyinstaller
 python scripts\build_exe.py            # Default onedir (fast startup)
 python scripts\build_exe.py --onefile  # Single-file exe (good for distribution)
+python scripts\build_exe.py            # Default onedir (fast startup)
+python scripts\build_exe.py --onefile  # Single-file exe (good for distribution)
 python scripts\build_exe.py --name MyApp --icon icon.ico
 ```
 
+> Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_exe.py --help` for more options.
 > Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_exe.py --help` for more options.

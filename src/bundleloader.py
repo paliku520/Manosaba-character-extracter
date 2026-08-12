@@ -1,7 +1,6 @@
 ﻿"""魔法少女の魔女审判 - Bundle 文件加载器
 
 加载游戏目录中的所有 bundle 文件，自动查找 characters 目录。"""
-import json
 from pathlib import Path
 from tkinter import Tk, filedialog
 from typing import Optional
@@ -33,23 +32,15 @@ class BundleLoader:
 
     def __init__(self, app_name: str = "bundle_loader"):
         self.app_name = app_name
-        self.config_file = Path.home() / f".{app_name}_config.json"
         self.last_path = self._load_last_path()
         self.bundles: dict[str, str] = {}
 
     # ── 路径记忆 ──────────────────────────────────────────
 
     def _load_last_path(self) -> str:
-        """加载上次使用的路径"""
-        try:
-            if self.config_file.exists():
-                data = json.loads(self.config_file.read_text(encoding="utf-8"))
-                path = data.get("last_path", "")
-                if path and Path(path).exists():
-                    return path
-        except Exception:
-            pass
-        return str(Path.home())
+        """加载上次使用的路径（从程序根目录 settings.json 读取）"""
+        from src.settings import get_last_directory
+        return get_last_directory(str(Path.home())) or str(Path.home())
 
     def _save_last_path(self, path: str) -> None:
         """保存上次使用的路径"""
@@ -71,8 +62,26 @@ class BundleLoader:
 
     # ── 目录选择 ──────────────────────────────────────────
 
-    def select_directory(self, title: str = "") -> str | None:
-        """弹出文件夹选择对话框"""
+    def select_directory(self, title: str = "", parent=None) -> str | None:
+        """弹出文件夹选择对话框
+
+        Args:
+            title: 对话框标题
+            parent: 父窗口（推荐传入主窗口，避免多 Tk 根冲突导致路径异常）
+        """
+        if parent is not None:
+            # 使用已有主窗口作为父窗口（标准做法，避免额外创建 Tk 根）
+            dir_path = filedialog.askdirectory(
+                title=title or _("dir.select_title"),
+                initialdir=self.last_path,
+                parent=parent,
+            )
+            if dir_path:
+                self.last_path = dir_path
+                self._save_last_path(dir_path)
+            return dir_path or None
+
+        # 无父窗口时的兜底（独立临时根）
         root = Tk()
         root.withdraw()
         root.attributes("-topmost", True)
@@ -95,7 +104,14 @@ class BundleLoader:
         if result is not None:
             return result
 
-        # 2. 常见模式未命中 → 递归搜索
+        # 2. 向上回退匹配（用户可能选择了游戏目录下的子目录）
+        for ancestor in game_root.parents:
+            result = self._search_common_patterns(ancestor)
+            if result is not None:
+                log("info", _("log.found_common", path=result))
+                return result
+
+        # 3. 递归搜索（有限深度 + 剪枝）
         log("info", _("log.recursive_search"))
         return self._search_dir_recursive(
             game_root, "characters", max_depth=8, cancel_check=cancel_check
@@ -141,15 +157,13 @@ class BundleLoader:
                 raise _SearchCancelled()
             if not entry.is_dir():
                 continue
-            # 跳过隐藏目录和无关目录
-            if entry.name.startswith(".") or entry.name in SKIP_DIRS:
-                continue
-            # 检查深度
-            depth = len(entry.parts) - root_length
-            if depth > max_depth:
-                continue
-            if entry.name == target_name:
-                return entry
+            # 跳过隐藏/无关目录（避免遍历大型无关目录导致卡顿）
+            dirnames[:] = [
+                d for d in dirnames
+                if not d.startswith(".") and d not in SKIP_DIRS
+            ]
+            if Path(dirpath).name == target_name:
+                return Path(dirpath)
         return None
 
     # ── Bundle 加载 ───────────────────────────────────────

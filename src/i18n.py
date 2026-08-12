@@ -127,6 +127,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Settings saved: {path}",
         LANG_MGL: "Co-Jundic saved: {path}",
     },
+    "app.status.settings_saved": {
+        LANG_CN: "设置已保存: {path}",
+        LANG_EN: "Settings saved: {path}",
+        LANG_MGL: "Co-Jundic saved: {path}",
+    },
     "app.progress.loading_bundles": {
         LANG_CN: "正在扫描并加载 bundle 文件...",
         LANG_EN: "Scanning and loading bundle files...",
@@ -187,6 +192,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "检查更新",
         LANG_EN: "Check for Updates",
         LANG_MGL: "AnxAn Toim",
+    },
+    "left.settings": {
+        LANG_CN: "设置",
+        LANG_EN: "Settings",
+        LANG_MGL: "Co-Jundic",
     },
     "left.settings": {
         LANG_CN: "设置",

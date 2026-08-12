@@ -25,9 +25,13 @@
 - `pip install -r requirements.txt`
 
 > 目前主要针对 **Windows** 充分测试，Linux/macOS 兼容性未知。
+- `pip install -r requirements.txt`
+
+> 目前主要针对 **Windows** 充分测试，Linux/macOS 兼容性未知。
 
 ## 使用
 
+### 运行
 ### 运行
 ```bash
 python run.py
@@ -84,6 +88,7 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 2. 使用 B站：[雪莉苹果汁](https://space.bilibili.com/3546949672241842) 的 [Manosaba mod](http://manosabamoddoc.fuyumi.xyz/)，直接在游戏本体内编辑（工具提供了`组件结构`的信息）
 3. 等待后续修复。
 
+
 ## 项目结构
 
 ```
@@ -122,6 +127,11 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 本项目采用 **GPL-3.0 许可证**，详见 [LICENSE](LICENSE) 文件。
 
 **免责声明**：本工具仅供学习和个人研究使用。使用本工具提取的内容，其版权归原游戏开发者所有。
+### 许可证
+
+本项目采用 **GPL-3.0 许可证**，详见 [LICENSE](LICENSE) 文件。
+
+**免责声明**：本工具仅供学习和个人研究使用。使用本工具提取的内容，其版权归原游戏开发者所有。
 
 ## 打包为 EXE
 
@@ -129,7 +139,10 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 pip install pyinstaller
 python scripts\build_exe.py            # 默认 onedir（启动快）
 python scripts\build_exe.py --onefile  # 单文件 exe（适合分发）
+python scripts\build_exe.py            # 默认 onedir（启动快）
+python scripts\build_exe.py --onefile  # 单文件 exe（适合分发）
 python scripts\build_exe.py --name MyApp --icon icon.ico
 ```
 
+> 图标需为 `.ico` 格式。`--onefile` 每次运行需解压、启动较慢。更多参数见 `python scripts\build_exe.py --help`。
 > 图标需为 `.ico` 格式。`--onefile` 每次运行需解压、启动较慢。更多参数见 `python scripts\build_exe.py --help`。
