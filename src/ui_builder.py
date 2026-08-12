@@ -15,9 +15,8 @@ from PIL import Image, ImageTk
 from src.i18n import _, current_lang, LANGUAGE_CODES
 
 
-def set_window_icon(app):
-    """设置 tkinter 窗口图标"""
-    import os
+def find_app_icon():
+    """查找应用图标文件路径（兼容 PyInstaller 冻结环境），找不到返回 None"""
     from run import MEI_DIR, BASE_DIR
     icon_candidates = [
         MEI_DIR / "icon.ico",
@@ -26,11 +25,30 @@ def set_window_icon(app):
     ]
     for p in icon_candidates:
         if p.exists():
-            try:
-                app.root.iconbitmap(str(p))
-            except Exception:
-                pass
-            break
+            return p
+    return None
+
+
+def set_window_icon(app):
+    """设置 tkinter 主窗口图标"""
+    icon = find_app_icon()
+    if icon is None:
+        return
+    try:
+        app.root.iconbitmap(str(icon))
+    except Exception:
+        pass
+
+
+def set_toplevel_icon(window):
+    """设置子窗口（Toplevel）图标"""
+    icon = find_app_icon()
+    if icon is None:
+        return
+    try:
+        window.iconbitmap(str(icon))
+    except Exception:
+        pass
 
 
 def build_main_ui(app):
@@ -86,6 +104,10 @@ def build_main_ui(app):
     # 清除缓存按钮
     app.clear_cache_btn = ttk.Button(left_frame, text=_("left.clear_cache"), command=app._on_clear_cache)
     app.clear_cache_btn.pack(fill=tk.X, pady=(5, 0))
+
+    # 检查更新按钮
+    app.update_btn = ttk.Button(left_frame, text=_("left.check_update"), command=app._on_check_update)
+    app.update_btn.pack(fill=tk.X, pady=(5, 0))
 
     # 状态栏
     app.status_bar = ttk.Label(left_frame, text=_("app.status.ready"), relief=tk.SUNKEN, anchor=tk.W)

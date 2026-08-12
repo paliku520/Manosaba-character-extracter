@@ -31,7 +31,13 @@ from src.compositor import (
 )
 from src.export_manager import export_sprites, save_composite
 from src.cache_manager import save_extracted_data, load_extracted_data, clear_cache as clear_cache_dir
-from src.ui_builder import build_main_ui, build_welcome, set_window_icon
+from src.ui_builder import (
+    build_main_ui,
+    build_welcome,
+    set_window_icon,
+    set_toplevel_icon,
+)
+from src.updater import check_for_update
 from src.ui_helpers import (
     set_status, start_progress, update_progress, stop_progress,
     clear_preview, show_preview, clear_character_cache,
@@ -97,6 +103,7 @@ class SpriteToolApp:
     progress_bar: ttk.Progressbar
     lang_combo: ttk.Combobox
     clear_cache_btn: ttk.Button
+    update_btn: ttk.Button
     status_bar: ttk.Label
     notebook: ttk.Notebook
     info_frame: ttk.Frame
@@ -163,6 +170,9 @@ class SpriteToolApp:
         build_main_ui(self)
         self._bind_events()
 
+        # 启动后自动静默检查更新（仅在有新版本时提示，最新版本不打扰）
+        self.root.after(500, lambda: self._on_check_update(silent=True))
+
     # ── UI 构建/层级/欢迎页等方法已移至 src/ui_builder.py ──
 
     def _expand_all_nodes(self):
@@ -201,6 +211,7 @@ class SpriteToolApp:
         self.open_output_btn.config(text=_("left.open_output"))
         self._char_list_title.config(text=_("left.char_list_title"))
         self.clear_cache_btn.config(text=_("left.clear_cache"))
+        self.update_btn.config(text=_("left.check_update"))
         self.status_bar.config(text=_("app.status.ready"))
 
         # 语言下拉框更新（保持当前选中项不变）
@@ -254,6 +265,60 @@ class SpriteToolApp:
         output_path = self.output_dir
         output_path.mkdir(parents=True, exist_ok=True)
         os.startfile(str(output_path))
+
+    # ── 更新检查 ────────────────────────────────────────────────
+
+    def _on_check_update(self, silent: bool = False):
+        """检查 GitHub 是否有新版本（后台线程，完成后在主线程处理）
+
+        silent=True（启动自动检查）: 不改变状态栏/按钮，已是最新或检查失败均不弹窗，仅在有新版本时提示。
+        """
+        if not silent:
+            self.status_bar.config(text=_("app.status.checking_update"))
+            self.update_btn.config(state=tk.DISABLED)
+
+        def task():
+            try:
+                info = check_for_update(__version__)
+                self.root.after(0, lambda: self._on_update_result(info, silent))
+            except Exception as e:
+                log("error", f"check update failed: {e}")
+                self.root.after(0, lambda: self._on_update_error(str(e), silent))
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def _on_update_result(self, info, silent: bool = False):
+        """更新检查完成：无新版本或提示是否前往下载"""
+        if not silent:
+            self.update_btn.config(state=tk.NORMAL)
+            self.status_bar.config(text=_("app.status.ready"))
+
+        if info is None:
+            # 已是最新：手动检查时弹窗确认，启动自动检查时静默不打扰
+            if not silent:
+                messagebox.showinfo(
+                    _("dialog.update_latest_title"),
+                    _("dialog.update_latest_msg", current=__version__),
+                )
+            return
+
+        if messagebox.askyesno(
+            _("dialog.update_available_title"),
+            _("dialog.update_available_msg",
+              new=info.latest_version, current=__version__),
+        ):
+            import webbrowser
+            webbrowser.open(info.release_url)
+
+    def _on_update_error(self, msg: str, silent: bool = False):
+        """更新检查失败提示"""
+        if not silent:
+            self.update_btn.config(state=tk.NORMAL)
+            self.status_bar.config(text=_("app.status.ready"))
+            messagebox.showerror(
+                _("dialog.update_check_error_title"),
+                _("dialog.update_check_error_msg", msg=msg),
+            )
 
     def _on_load_directory(self):
         dir_path = self.loader.select_directory(_("dir.select_title"))
@@ -372,6 +437,7 @@ class SpriteToolApp:
         """弹出对话框让用户选择处理方式"""
         dialog = tk.Toplevel(self.root)
         dialog.title(_("dialog.ask_mode_title", name=name))
+        set_toplevel_icon(dialog)
         dialog.geometry("480x280")
         dialog.resizable(False, False)
         dialog.transient(self.root)

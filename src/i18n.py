@@ -113,6 +113,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Preview cleared",
         LANG_MGL: "Lai Nei Ca-nay",
     },
+    "app.status.checking_update": {
+        LANG_CN: "正在检查更新...",
+        LANG_EN: "Checking for updates...",
+        LANG_MGL: "AnxAn Toim...",
+    },
     "app.progress.loading_bundles": {
         LANG_CN: "正在扫描并加载 bundle 文件...",
         LANG_EN: "Scanning and loading bundle files...",
@@ -156,6 +161,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "确定要清除所有临时缓存文件吗？\n\n下次加载角色时需要重新提取数据。",
         LANG_EN: "Clear all temporary cache files?\n\nNext character load will need to re-extract data.",
         LANG_MGL: "Ca-nay Alte temp Ge-mon?\n\nNext JIO Loadeh need neYO cOnzAI.",
+    },
+    "left.check_update": {
+        LANG_CN: "检查更新",
+        LANG_EN: "Check for Updates",
+        LANG_MGL: "AnxAn Toim",
     },
     "log.cache_loaded": {
         LANG_CN: "从缓存加载角色数据: {name} ({count} 个部件)",
@@ -516,6 +526,38 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "用户取消",
         LANG_EN: "User cancelled",
         LANG_MGL: "User Ca-nay",
+    },
+
+    # ── 更新检查 ──
+    "dialog.update_available_title": {
+        LANG_CN: "发现新版本",
+        LANG_EN: "Update Available",
+        LANG_MGL: "neYO Toim",
+    },
+    "dialog.update_available_msg": {
+        LANG_CN: "发现新版本 v{new}！\n当前版本: v{current}\n\n是否前往下载页面？",
+        LANG_EN: "New version v{new} is available!\nCurrent version: v{current}\n\nOpen the download page?",
+        LANG_MGL: "neYO Toim v{new}!\nToim oF now: v{current}\n\nAlte download Ge-mon?",
+    },
+    "dialog.update_latest_title": {
+        LANG_CN: "已是最新版本",
+        LANG_EN: "Up to Date",
+        LANG_MGL: "Toim oF now",
+    },
+    "dialog.update_latest_msg": {
+        LANG_CN: "当前已是最新版本 v{current}",
+        LANG_EN: "You are running the latest version v{current}",
+        LANG_MGL: "Toim oF now v{current}",
+    },
+    "dialog.update_check_error_title": {
+        LANG_CN: "检查更新失败",
+        LANG_EN: "Update Check Failed",
+        LANG_MGL: "AnxAn Toim Baru",
+    },
+    "dialog.update_check_error_msg": {
+        LANG_CN: "检查更新时出错:\n{msg}",
+        LANG_EN: "Failed to check for updates:\n{msg}",
+        LANG_MGL: "AnxAn Toim Baru:\n{msg}",
     },
 
     # ── 部件分类 ──
