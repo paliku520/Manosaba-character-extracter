@@ -5,7 +5,7 @@
     python scripts\build_exe.py                          # 默认 onedir 模式
     python scripts\build_exe.py --onefile                # 打包为单个 exe
     python scripts\build_exe.py --name "MyApp"           # 自定义名称
-    python scripts\build_exe.py --icon "icon.ico"         # 自定义图标
+    python scripts\build_exe.py --icon "assets/icon.ico"   # 自定义图标
     python scripts\build_exe.py -h                       # 查看完整帮助
 
 输出目录: dist/
@@ -30,7 +30,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 # 1. 运行 PyInstaller
 # ──────────────────────────────────────────────
 
-def run_pyinstaller(onefile: bool = False, name: str = "ManosabaExtracter", icon: str = "scripts/icon.ico"):
+def run_pyinstaller(onefile: bool = False, name: str = "ManosabaExtracter", icon: str = "assets/icon.ico"):
     """使用命令行参数直接调用 PyInstaller 打包"""
     import PyInstaller.__main__
 
@@ -58,11 +58,19 @@ def run_pyinstaller(onefile: bool = False, name: str = "ManosabaExtracter", icon
         icon_path = PROJECT_ROOT / icon_path
     if icon_path.exists():
         args.extend(["--icon", str(icon_path)])
-        # 将图标文件也作为数据打包，供 tkinter 窗口使用
+        # 将图标文件也作为数据打包，供窗口使用
         args.extend(["--add-data", f"{icon_path};."])
         print(f"[INFO] 使用图标: {icon_path}")
     else:
         print(f"[WARN] 图标文件不存在: {icon_path}，跳过")
+
+    # 打包前端资源 webui/（PyWebView 前端页面，PyInstaller 冻结时从 _MEIPASS 读取）
+    webui_dir = PROJECT_ROOT / "webui"
+    if webui_dir.exists():
+        args.extend(["--add-data", f"{webui_dir};webui"])
+        print(f"[INFO] 打包前端资源: {webui_dir}")
+    else:
+        print(f"[WARN] 前端资源目录不存在: {webui_dir}，跳过")
 
     PyInstaller.__main__.run(args)
 
@@ -121,7 +129,7 @@ def main():
         epilog=(
             "示例:\n"
             "  python scripts\\build_exe.py\n"
-            "  python scripts\\build_exe.py --onefile --name MyApp --icon icon.ico\n"
+            "  python scripts\\build_exe.py --onefile --name MyApp --icon assets/icon.ico\n"
             "\n"
             "输出目录: dist/\n"
             "  onedir  -> dist\\名称\\名称.exe + _internal\\\n"
@@ -138,7 +146,7 @@ def main():
         help="输出文件名，不含 .exe（默认: ManosabaExtracter）"
     )
     parser.add_argument(
-        "--icon", "--i", type=str, default="scripts/icon.ico",
+        "--icon", "--i", type=str, default="assets/icon.ico",
         help="图标文件路径（.ico 格式，相对或绝对路径均可）"
     )
     args = parser.parse_args()

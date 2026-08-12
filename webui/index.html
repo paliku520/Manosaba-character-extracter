@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manosaba Extracter</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ══════════ 侧边栏 ══════════ -->
+    <aside id="sidebar">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">
+          <img src="assets/logo.ico" alt="logo" width="34" height="34">
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">Manosaba</div>
+          <div class="brand-sub" data-i18n="app.subtitle">Extracter</div>
+        </div>
+        <span class="brand-version" id="version-badge">v0.0.0</span>
+      </div>
+
+      <div class="sidebar-actions">
+        <button id="btn-load" class="btn primary">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 16V4m0 0 4 4m-4-4L8 8M4 20h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          <span data-i18n="left.load_button">加载游戏目录</span>
+        </button>
+        <button id="btn-open-output" class="btn">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></svg>
+          <span data-i18n="left.open_output">打开输出目录</span>
+        </button>
+        <button id="btn-settings" class="btn">
+          <svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/></svg>
+          <span data-i18n="left.settings">设置</span>
+        </button>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" data-i18n="left.char_list_title">角色列表</div>
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="char-search" class="search" type="text" data-i18n-placeholder="left.char_search" placeholder="搜索角色…">
+        </div>
+        <ul id="char-list" class="char-list" role="listbox"></ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <div id="status" class="status"><span class="dot"></span><span id="status-text" data-i18n="app.status.ready">就绪</span></div>
+        <!-- 进度条（位于状态栏与清空缓存按钮之间，正常文档流不遮挡按钮） -->
+        <div id="progress-wrap" class="progress-wrap" hidden>
+          <div class="progress-label" id="progress-label">…</div>
+          <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
+        </div>
+        <button id="btn-clear-cache" class="btn ghost sm">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          <span data-i18n="left.clear_cache">清除缓存</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ══════════ 主区域 ══════════ -->
+    <main id="main">
+      <nav id="tabs" class="tabs">
+        <button class="tab active" data-tab="info">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v5M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span data-i18n="info.tab_title">首页</span>
+        </button>
+        <button class="tab" data-tab="parts">
+          <svg viewBox="0 0 24 24" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><rect x="14" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+          <span data-i18n="tabs.parts">部件选择</span>
+        </button>
+        <button class="tab" data-tab="hierarchy">
+          <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 5h6M14 5h6M4 12h6M14 12h6M4 19h6M14 19h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="2" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="12" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="2" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="12" y="10" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="2" y="17" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><rect x="12" y="17" width="6" height="4" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+          <span data-i18n="tabs.hierarchy">组件层级</span>
+        </button>
+        <button class="tab" data-tab="about">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v5M12 7.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span data-i18n="tabs.about">关于</span>
+        </button>
+      </nav>
+
+      <!-- 信息页 -->
+      <section id="tab-info" class="tab-panel active">
+        <div id="info-content" class="info-content"></div>
+      </section>
+
+      <!-- 部件选择页 -->
+      <section id="tab-parts" class="tab-panel">
+        <div class="parts-layout">
+          <div class="parts-col">
+            <div class="parts-toolbar">
+              <div class="parts-title">
+                <span id="parts-name" class="parts-name">—</span>
+                <span id="parts-count" class="pill"></span>
+              </div>
+              <div class="parts-toolbar-actions">
+                <button id="btn-select-all" class="btn sm" data-i18n="parts.select_all">全选</button>
+                <button id="btn-deselect-all" class="btn sm" data-i18n="parts.deselect_all">取消全选</button>
+              </div>
+              <div class="parts-search-wrap">
+                <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <input id="parts-search" class="search" type="text" data-i18n-placeholder="parts.search_hint" placeholder="搜索部件…">
+              </div>
+            </div>
+            <div id="parts-list" class="parts-list"></div>
+            <div id="parts-empty" class="empty-state" hidden>
+              <div class="empty-icon"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+              <p data-i18n="parts.empty_hint">请先在左侧选择一个角色进入拼接模式</p>
+            </div>
+          </div>
+
+          <div class="preview-col">
+            <div class="panel selected-panel">
+              <div class="panel-header">
+                <span data-i18n="parts.selected_list_title">已选精灵</span>
+                <span id="sel-count" class="pill">0</span>
+              </div>
+              <ul id="selected-list" class="selected-list"></ul>
+            </div>
+
+            <div class="panel preview-panel">
+              <div class="panel-header">
+                <span data-i18n="parts.preview_title">实时预览</span>
+                <label class="switch" title="自动更新">
+                  <input type="checkbox" id="auto-update" checked>
+                  <span class="slider"></span>
+                  <span data-i18n="parts.auto_update">自动更新</span>
+                </label>
+              </div>
+              <div class="preview-toolbar">
+                <button id="btn-composite" class="btn sm primary" data-i18n="parts.composite_btn">生成合成图像</button>
+                <button id="btn-save" class="btn sm" data-i18n="parts.save_composite">保存合成图</button>
+                <button id="btn-clear-preview" class="btn sm ghost" data-i18n="parts.clear_preview">清空预览</button>
+              </div>
+              <div class="preview-zoom">
+                <label class="zoom-label" for="zoom-slider" data-i18n="parts.zoom">缩放</label>
+                <input type="range" id="zoom-slider" min="0" max="100" step="1" value="0" disabled>
+                <button id="btn-zoom-fit" class="btn sm ghost" data-i18n="parts.zoom_fit" title="Fit">适配</button>
+                <span id="zoom-value" class="zoom-value">适配</span>
+              </div>
+              <div id="preview" class="preview">
+                <div id="preview-empty" class="preview-empty" data-i18n="parts.no_preview">尚无预览</div>
+                <img id="preview-img" alt="preview" hidden>
+              </div>
+              <div id="preview-info" class="preview-info" hidden></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 组件层级页 -->
+      <section id="tab-hierarchy" class="tab-panel">
+        <div class="hierarchy-toolbar">
+          <span data-i18n="hierarchy.hint">角色组件层级结构</span>
+          <div>
+            <button id="btn-expand" class="btn sm" data-i18n="hierarchy.expand_all">全部展开</button>
+            <button id="btn-collapse" class="btn sm" data-i18n="hierarchy.collapse_all">全部折叠</button>
+          </div>
+        </div>
+        <div id="hierarchy-tree" class="hierarchy-tree"></div>
+        <div id="hierarchy-empty" class="empty-state" hidden>
+          <div class="empty-icon"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 6h14M5 12h14M5 18h14"/><rect x="3" y="4" width="4" height="4" rx="1"/><rect x="17" y="4" width="4" height="4" rx="1"/><rect x="3" y="10" width="4" height="4" rx="1"/><rect x="17" y="10" width="4" height="4" rx="1"/><rect x="3" y="16" width="4" height="4" rx="1"/><rect x="17" y="16" width="4" height="4" rx="1"/></svg></div>
+          <p data-i18n="hierarchy.empty_hint">暂无层级数据</p>
+        </div>
+      </section>
+
+      <!-- 关于页 -->
+      <section id="tab-about" class="tab-panel">
+        <div class="about-bg" aria-hidden="true">
+          <div class="about-bg-layer" id="about-bg-layer"></div>
+          <div class="about-bg-overlay"></div>
+        </div>
+        <div id="about-content" class="about-content"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 模态框容器 -->
+  <div id="modal-root"></div>
+  <!-- 通知容器 -->
+  <div id="toast-root"></div>
+
+  <script src="js/i18n.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

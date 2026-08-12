@@ -1,5 +1,5 @@
 ﻿"""
-魔法少女的魔女审判 - 角色立绘提取与拼接工具
+魔法少女的魔女审判 - 角色立绘提取与拼接工具 (PyWebView 版)
 
 工作流程:
     1. 选择游戏目录 → 加载所有角色 bundle
@@ -7,50 +7,53 @@
        - 无组件 → 直接导出所有精灵
        - 有组件 → 询问用户操作模式
     3. 拼接模式 → 选择部件 + 预览 + 保存合成图
+
+前端: webui/ (HTML/CSS/JS)，通过 js_api 桥接调用本模块。
 """
 
-import argparse
+import base64
+import io
 import json
 import os
 import shutil
 import sys
 import threading
+import webbrowser
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Dict, List, Optional
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+import webview
+from PIL import Image
 
-from PIL import Image, ImageTk
+# pythonnet：访问 .NET（WinForms/WebView2）必需，须在 from System import 之前加载
+import clr
 
 from src.bundleloader import BundleLoader
+from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
-    has_component_data,
-    extract_character_data,
     SpriteCompositor,
+    extract_character_data,
+    has_component_data,
 )
 from src.export_manager import export_sprites, save_composite
-from src.cache_manager import save_extracted_data, load_extracted_data, clear_cache as clear_cache_dir
-from src.ui_builder import (
-    build_main_ui,
-    build_welcome,
-    set_window_icon,
-    set_toplevel_icon,
+from src.i18n import (
+    LANG_CN,
+    LANG_EN,
+    LANGUAGE_CODES,
+    T,
+    _,
+    current_lang,
+    set_lang,
 )
+from src.logtools import clear_logs, configure, log
+from src.settings import get_export_count, get_lang, get_last_directory, get_output_dir, get_theme, get_use_chinese_names, save_settings
 from src.updater import check_for_update
-from src.ui_helpers import (
-    set_status, start_progress, update_progress, stop_progress,
-    clear_preview, show_preview, clear_character_cache,
-    load_thumbnail, update_selected_sprites_list,
-    populate_hierarchy_tree,
-)
-from src.logtools import log, configure
 from src.version import __version__
-from src.i18n import _, set_lang, current_lang, LANGUAGE_CODES, LANG_CN, LANG_EN
 
 
 # ── 程序基础路径（兼容 PyInstaller 冻结环境） ──────────────
-if getattr(sys, 'frozen', False):
+if getattr(sys, "frozen", False):
     # 打包成 exe 后：exe 所在目录
     BASE_DIR = Path(sys.executable).parent
     # PyInstaller 解压目录（用于访问打包的数据文件）
@@ -59,6 +62,12 @@ else:
     # 源码运行时：脚本所在目录
     BASE_DIR = Path(__file__).parent
     MEI_DIR = BASE_DIR
+
+# 日志文件：logs/ 目录，文件名含程序启动时间（每次启动一个新文件）
+LOG_FILE: Optional[Path] = None
+
+# 调试模式：设置环境变量 PYWEBVIEW_DEBUG=1 可打开开发者工具
+_DEBUG = os.environ.get("PYWEBVIEW_DEBUG", "") == "1"
 
 
 # ── 控制台标题（跟随语言切换） ──────────────────────
@@ -89,801 +98,601 @@ def _detect_system_language() -> str:
 
 
 # ===================================================================
-# 主应用
+# 图像 → data URL 工具
 # ===================================================================
 
-class SpriteToolApp:
-    """魔法少女的魔女审判 - 角色立绘提取工具主窗口"""
+def _pil_to_data_url(img: Image.Image, max_side: int = 0) -> str:
+    """PIL Image → base64 PNG data URL（可选限制最大边长）"""
+    out = img
+    if max_side and max(img.size) > max_side:
+        out = img.copy()
+        out.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+    buf = io.BytesIO()
+    out.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
 
-    # ── UI 组件（由 build_main_ui 动态创建，仅供类型检查） ──
-    load_btn: ttk.Button
-    open_output_btn: ttk.Button
-    _char_list_title: ttk.Label
-    char_listbox: tk.Listbox
-    progress_bar: ttk.Progressbar
-    lang_combo: ttk.Combobox
-    clear_cache_btn: ttk.Button
-    update_btn: ttk.Button
-    status_bar: ttk.Label
-    notebook: ttk.Notebook
-    info_frame: ttk.Frame
-    selection_frame: ttk.Frame
-    hierarchy_frame: ttk.Frame
-    select_all_btn: ttk.Button
-    deselect_all_btn: ttk.Button
-    sel_count_label: ttk.Label
-    save_btn: ttk.Button
-    clear_preview_btn: ttk.Button
-    composite_btn: ttk.Button
-    auto_update_cb: ttk.Checkbutton
-    _json_hint: ttk.Label
-    parts_canvas: tk.Canvas
-    parts_inner: ttk.Frame
-    sel_header: ttk.Label
-    sel_listbox: tk.Listbox
-    preview_status: ttk.Label
-    preview_canvas: tk.Canvas
-    preview_image_id: int
-    _info_text: tk.Text
-    _hierarchy_hint: ttk.Label
-    _expand_btn: ttk.Button
-    _collapse_btn: ttk.Button
-    hierarchy_tree: ttk.Treeview
+
+def _sprite_thumb_data_url(path: Path, size=(96, 96)) -> Optional[str]:
+    """生成精灵缩略图 data URL（透明背景居中）"""
+    try:
+        img = Image.open(path).convert("RGBA")
+        img.thumbnail(size, Image.Resampling.LANCZOS)
+        canvas = Image.new("RGBA", size, (0, 0, 0, 0))
+        offset = ((size[0] - img.width) // 2, (size[1] - img.height) // 2)
+        canvas.paste(img, offset, img)
+        return _pil_to_data_url(canvas)
+    except Exception:
+        return None
+
+
+# ===================================================================
+# 资源定位（兼容 PyInstaller）
+# ===================================================================
+
+def _find_icon() -> Optional[str]:
+    """查找应用图标文件路径（assets/ 目录）"""
+    for p in [
+        MEI_DIR / "icon.ico",                     # 打包后：--add-data 放到 _MEIPASS 根
+        MEI_DIR / "assets" / "icon.ico",
+        BASE_DIR / "assets" / "icon.ico",
+        Path(__file__).parent / "assets" / "icon.ico",
+    ]:
+        if p.exists():
+            return str(p)
+    return None
+
+
+def _get_webui_url() -> str:
+    """返回前端 index.html 的 file:// URL"""
+    for p in [
+        MEI_DIR / "webui" / "index.html",
+        BASE_DIR / "webui" / "index.html",
+        Path(__file__).parent / "webui" / "index.html",
+    ]:
+        if p.exists():
+            return p.as_uri()
+    raise FileNotFoundError("webui/index.html not found")
+
+
+# ===================================================================
+# JS ↔ Python 桥接 API（js_api）
+# ===================================================================
+
+class JsApi:
+    """暴露给前端 (pywebview.api.*) 的所有方法。
+
+    约定:
+      - 快操作（getter / 设置 / 文件对话框）为同步方法，直接返回结果。
+      - 耗时操作启动后台线程，通过 window.__pywebview.events.<事件> 推送进度与结果。
+    """
 
     def __init__(self, output_dir: Optional[Path] = None):
-        self.root = tk.Tk()
-        self.root.title(f"{_('app.title')} v{__version__}")
-        self.root.geometry("1200x800")
-        self.root.minsize(900, 600)
+        self._window: Optional[webview.Window] = None
+        self._loader = BundleLoader()
+        self._compositor = SpriteCompositor(scale=100.0)
 
-        # 设置窗口图标
-        set_window_icon(self)
+        # 内部状态（均为私有，避免被 js_api 递归暴露到前端）
+        self._bundles: Dict[str, str] = {}            # {角色名: bundle路径}
+        self._character_data: Optional[Dict] = None   # 当前角色的提取数据
+        self._composite_image: Optional[Image.Image] = None
 
-        # 记录启动时语言，供 _setup_ui 初始化下拉框
-        self._start_lang = current_lang()
+        # 目录
+        self._output_dir = output_dir or get_output_dir(BASE_DIR / "output")
+        self._temp_dir = BASE_DIR / "temp"
+        self._export_count = get_export_count()  # 累计导出次数（每次成功导出 +1，跨会话持久化）
+        self._use_chinese_names = get_use_chinese_names()  # 是否显示角色中文名（可选项，settings.json）
+        self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
+        self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
 
-        # 核心组件
-        self.loader = BundleLoader()
-        self.compositor = SpriteCompositor(scale=100.0)
+    # ── 事件推送 ──────────────────────────────────────────
 
-        # 状态
-        self.bundles: Dict[str, str] = {}          # {角色名: bundle路径}
-        self.character_data: Optional[Dict] = None  # extract_character_data 的结果
-        self.composite_image: Optional[Image.Image] = None
-        self._thumb_refs: List[ImageTk.PhotoImage] = []  # 缩略图引用
-
-        # 部件列表状态
-        self.part_vars: List[tk.BooleanVar] = []
-        self.part_labels: List[Dict] = []
-
-        # 实时预览标志与防抖定时器
-        self.auto_update = tk.BooleanVar(value=True)
-        self._preview_timer: Optional[str] = None
-
-        # 输出目录（默认基于程序所在目录，可通过命令行参数 -o 指定）
-        self.output_dir = output_dir or (BASE_DIR / "output")
-
-        # 临时缓存目录（精灵提取过程中的中间文件，关闭或切换角色时自动清空）
-        self.temp_dir = BASE_DIR / "temp"
-
-        # ── 构建 UI（UI 组件由 build_main_ui 动态创建） ──
-        build_main_ui(self)
-        self._bind_events()
-
-        # 启动后自动静默检查更新（仅在有新版本时提示，最新版本不打扰）
-        self.root.after(500, lambda: self._on_check_update(silent=True))
-
-    # ── UI 构建/层级/欢迎页等方法已移至 src/ui_builder.py ──
-
-    def _expand_all_nodes(self):
-        """展开所有节点"""
-        def expand(parent: str = ""):
-            for child in self.hierarchy_tree.get_children(parent):
-                self.hierarchy_tree.item(child, open=True)
-                expand(child)
-        expand()
-
-    def _collapse_all_nodes(self):
-        """折叠所有节点"""
-        def collapse(parent: str = ""):
-            for child in self.hierarchy_tree.get_children(parent):
-                self.hierarchy_tree.item(child, open=False)
-                collapse(child)
-        collapse()
-
-    # ── 语言切换 ──────────────────────────────────────────────
-
-    def _on_language_change(self, event=None):
-        """语言下拉框切换事件"""
-        idx = self.lang_combo.current()
-        code = LANGUAGE_CODES[idx]
-        set_lang(code)
-        self._apply_language()
-
-    def _apply_language(self):
-        """刷新所有 UI 文本以匹配当前语言"""
-        # 窗口标题 + 控制台标题
-        self.root.title(f"{_('app.title')} v{__version__}")
-        set_console_title()
-
-        # 左侧面板
-        self.load_btn.config(text=_("left.load_button"))
-        self.open_output_btn.config(text=_("left.open_output"))
-        self._char_list_title.config(text=_("left.char_list_title"))
-        self.clear_cache_btn.config(text=_("left.clear_cache"))
-        self.update_btn.config(text=_("left.check_update"))
-        self.status_bar.config(text=_("app.status.ready"))
-
-        # 语言下拉框更新（保持当前选中项不变）
-        current_idx = self.lang_combo.current()
-        self.lang_combo["values"] = [_(f"lang.{code}") for code in LANGUAGE_CODES]
-        self.lang_combo.current(current_idx)
-
-        # Notebook 标签
-        self.notebook.tab(self.info_frame, text=_("info.tab_title"))
-        self.notebook.tab(self.selection_frame, text=_("tabs.parts"))
-        self.notebook.tab(self.hierarchy_frame, text=_("tabs.hierarchy"))
-
-        # 部件选择页
-        self._on_composite()
-        self.select_all_btn.config(text=_("parts.select_all"))
-        self.deselect_all_btn.config(text=_("parts.deselect_all"))
-        selected = sum(1 for v in self.part_vars if v.get())
-        self.sel_count_label.config(text=_("parts.selected_count", count=selected))
-        self.save_btn.config(text=_("parts.save_composite"))
-        self.clear_preview_btn.config(text=_("parts.clear_preview"))
-        self.composite_btn.config(text=_("parts.composite_btn"))
-        self.auto_update_cb.config(text=_("parts.auto_update"))
-        self.preview_status.config(text=_("parts.no_preview"))
-        self.sel_header.config(text=_("parts.selected_list_title"))
-        self._json_hint.config(text=_("parts.json_hint"))
-
-
-        # 组件结构页
-        self._hierarchy_hint.config(text=_("hierarchy.hint"))
-        self._expand_btn.config(text=_("hierarchy.expand_all"))
-        self._collapse_btn.config(text=_("hierarchy.collapse_all"))
-
-        # 信息页重建
-        if self.bundles:
-            self._show_character_list()
-        else:
-            build_welcome(self)
-
-        # 如果当前有角色数据已加载，刷新层次树中的显示文本
-        if self.character_data:
-            hierarchy = self.character_data.get("hierarchy", [])
-            populate_hierarchy_tree(self, hierarchy)
-
-    def _bind_events(self):
-        self.char_listbox.bind("<<ListboxSelect>>", self._on_character_select)
-
-    # ── 目录加载 ───────────────────────────────────────────────
-
-    def _on_open_output(self):
-        """打开输出文件夹"""
-        output_path = self.output_dir
-        output_path.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(output_path))
-
-    # ── 更新检查 ────────────────────────────────────────────────
-
-    def _on_check_update(self, silent: bool = False):
-        """检查 GitHub 是否有新版本（后台线程，完成后在主线程处理）
-
-        silent=True（启动自动检查）: 不改变状态栏/按钮，已是最新或检查失败均不弹窗，仅在有新版本时提示。
-        """
-        if not silent:
-            self.status_bar.config(text=_("app.status.checking_update"))
-            self.update_btn.config(state=tk.DISABLED)
-
-        def task():
-            try:
-                info = check_for_update(__version__)
-                self.root.after(0, lambda: self._on_update_result(info, silent))
-            except Exception as e:
-                log("error", f"check update failed: {e}")
-                self.root.after(0, lambda: self._on_update_error(str(e), silent))
-
-        threading.Thread(target=task, daemon=True).start()
-
-    def _on_update_result(self, info, silent: bool = False):
-        """更新检查完成：无新版本或提示是否前往下载"""
-        if not silent:
-            self.update_btn.config(state=tk.NORMAL)
-            self.status_bar.config(text=_("app.status.ready"))
-
-        if info is None:
-            # 已是最新：手动检查时弹窗确认，启动自动检查时静默不打扰
-            if not silent:
-                messagebox.showinfo(
-                    _("dialog.update_latest_title"),
-                    _("dialog.update_latest_msg", current=__version__),
-                )
+    def _emit(self, event: str, payload: dict):
+        """向前端推送事件: window.__pywebview.events.<event>(payload)"""
+        if self._window is None:
             return
+        try:
+            js = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
+            self._window.evaluate_js(
+                "window.__pywebview && window.__pywebview.events && "
+                f"window.__pywebview.events.{event} && "
+                f"window.__pywebview.events.{event}({js})"
+            )
+        except Exception as e:
+            log("warning", f"[webview] emit {event} failed: {e}")
 
-        if messagebox.askyesno(
-            _("dialog.update_available_title"),
-            _("dialog.update_available_msg",
-              new=info.latest_version, current=__version__),
-        ):
-            import webbrowser
-            webbrowser.open(info.release_url)
+    @staticmethod
+    def _run_async(fn):
+        threading.Thread(target=fn, daemon=True).start()
 
-    def _on_update_error(self, msg: str, silent: bool = False):
-        """更新检查失败提示"""
-        if not silent:
-            self.update_btn.config(state=tk.NORMAL)
-            self.status_bar.config(text=_("app.status.ready"))
-            messagebox.showerror(
-                _("dialog.update_check_error_title"),
-                _("dialog.update_check_error_msg", msg=msg),
+    def _on_gui_thread(self, fn):
+        """在 WinForms GUI 线程执行 fn 并返回结果。
+
+        pywebview 的 js_api 方法都在独立线程中执行，而 WinForms 的
+        create_file_dialog 不允许跨线程访问控件，因此需要借助
+        Control.Invoke 把调用投递回 GUI 线程。若投递失败则直接调用（保守回退）。
+        """
+        if self._window is None:
+            return fn()
+        try:
+            from webview.platforms import winforms as _wf
+            view = _wf.BrowserView.instances.get(self._window.uid)
+            if view is not None and hasattr(view, "Invoke"):
+                from System import Action  # type: ignore[reportMissingImports]
+                box = {}
+
+                def _wrapper():
+                    box["r"] = fn()
+
+                view.Invoke(Action(_wrapper))
+                return box.get("r")
+        except Exception as e:
+            log("warning", f"[webview] GUI thread invoke failed: {e}")
+        return fn()
+
+    # ── 应用信息 / 语言 ────────────────────────────────────
+
+    @staticmethod
+    def _translations(lang: str) -> Dict[str, str]:
+        """返回某语言的完整翻译模板表"""
+        return {key: entry.get(lang, entry.get(LANG_CN, key)) for key, entry in T.items()}
+
+    def get_app_info(self) -> dict:
+        """前端初始化时调用：版本、语言、翻译表、输出目录等"""
+        return {
+            "version": __version__,
+            "langs": LANGUAGE_CODES,
+            "current_lang": current_lang(),
+            "lang_names": {code: _(f"lang.{code}") for code in LANGUAGE_CODES},
+            "translations": self._translations(current_lang()),
+            "output_dir": str(self._output_dir),
+            "bundle_count": len(self._bundles),
+            "frozen": getattr(sys, "frozen", False),
+            "theme": get_theme(),
+            "export_count": self._export_count,
+            "use_chinese_names": self._use_chinese_names,
+        }
+
+    def set_lang(self, code: str) -> dict:
+        """切换语言并持久化，返回新翻译表（同时更新窗口标题）"""
+        if code in LANGUAGE_CODES:
+            set_lang(code)
+            save_settings(lang=code)
+            log("info", _("log.lang_changed", code=code))
+            set_console_title()
+            # 同步更新主窗口标题（create_window 时标题固定，需手动 set_title）
+            if self._window is not None:
+                try:
+                    self._window.set_title(f"{_('app.title')} v{__version__}")
+                except Exception as e:
+                    log("warning", f"set window title failed: {e}")
+        return {
+            "current_lang": current_lang(),
+            "lang_names": {c: _(f"lang.{c}") for c in LANGUAGE_CODES},
+            "translations": self._translations(current_lang()),
+        }
+
+    def set_theme(self, theme: str) -> dict:
+        """保存界面主题（dark/light）到 settings.json，供下次启动恢复"""
+        if theme in ("dark", "light"):
+            save_settings(theme=theme)
+            log("info", _("log.theme_changed", theme=theme))
+        return {"theme": theme}
+
+    def set_use_chinese_names(self, enable: bool) -> dict:
+        """保存是否显示角色中文名到 settings.json"""
+        self._use_chinese_names = bool(enable)
+        save_settings(use_chinese_names=self._use_chinese_names)
+        log("info", _("log.chinese_names_on") if self._use_chinese_names else _("log.chinese_names_off"))
+        return {"use_chinese_names": self._use_chinese_names}
+
+    # ── 目录 / 设置 ────────────────────────────────────────
+
+    def select_directory(self) -> Optional[str]:
+        """打开文件夹选择对话框；初始目录使用 settings.json 中记忆的上次路径"""
+        window = self._window
+        if window is None:
+            return None
+        initial = get_last_directory() or str(Path.home())
+        if not Path(initial).exists():
+            initial = str(Path.home())
+
+        def do_dialog():
+            # 原生对话框必须在 GUI 线程；js_api 方法运行在子线程，
+            # 故由 _on_gui_thread 投递到 GUI 线程后调用。
+            from webview.platforms import winforms as _wf
+            return _wf.create_file_dialog(
+                webview.FileDialog.FOLDER, initial, False, "", (), window.uid
             )
 
-    def _on_load_directory(self):
-        dir_path = self.loader.select_directory(_("dir.select_title"))
-        if not dir_path:
-            return
+        result = self._on_gui_thread(do_dialog)
+        chosen = None
+        if isinstance(result, str) and result:
+            chosen = result
+        elif isinstance(result, (tuple, list)) and result:
+            chosen = result[0]
+        if chosen:
+            # 记忆本次选择到 settings.json，供下次启动使用
+            save_settings(last_directory=chosen)
+        return chosen
 
-        self._start_progress(_("app.progress.loading_bundles"))
-        self.load_btn.config(state=tk.DISABLED)
-        self.char_listbox.delete(0, tk.END)
+    def select_output_dir(self) -> Optional[str]:
+        """打开输出目录选择对话框（不修改 last_directory 记忆）"""
+        window = self._window
+        if window is None:
+            return None
+        initial = str(self._output_dir)
+        if not Path(initial).exists():
+            initial = str(Path.home())
 
-        def load_task():
-            def cb(current, total):
-                self.root.after(0, lambda: self._update_progress(current, total))
-            result = self.loader.load_from_directory(dir_path, progress_callback=cb)
-            self.root.after(0, lambda: self._on_load_complete(result))
+        def do_dialog():
+            from webview.platforms import winforms as _wf
+            return _wf.create_file_dialog(
+                webview.FileDialog.FOLDER, initial, False, "", (), window.uid
+            )
 
-        threading.Thread(target=load_task, daemon=True).start()
+        result = self._on_gui_thread(do_dialog)
+        chosen = None
+        if isinstance(result, str) and result:
+            chosen = result
+        elif isinstance(result, (tuple, list)) and result:
+            chosen = result[0]
+        return chosen
 
-    def _on_load_complete(self, result: Dict):
-        self.load_btn.config(state=tk.NORMAL)
-        self._stop_progress()
-        if result["success"]:
-            self.bundles = result["bundles"]
-            self.char_listbox.delete(0, tk.END)
-            for name in sorted(self.bundles.keys()):
-                self.char_listbox.insert(tk.END, name)
-            set_status(self,_("app.status.loaded", count=result['count']))
-            self.notebook.select(0)
-
-            # 切换到信息页并显示列表
-            self._show_character_list()
+    def set_output_dir(self, path: str) -> dict:
+        """保存并应用输出目录"""
+        if path and Path(path).is_absolute():
+            self._output_dir = Path(path).resolve()
         else:
-            msg = "\n".join(result["errors"])
-            messagebox.showerror(_("dialog.load_error_title"), msg)
-            set_status(self,_("app.status.load_failed"))
+            self._output_dir = (BASE_DIR / "output").resolve()
+        save_settings(self._output_dir)
+        log("info", _("log.output_dir_set", path=str(self._output_dir)))
+        return {"output_dir": str(self._output_dir)}
 
-    def _show_character_list(self):
-        """在信息页显示已加载的角色列表"""
-        for w in self.info_frame.winfo_children():
-            w.destroy()
+    def open_output(self):
+        """打开输出文件夹"""
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(str(self._output_dir))
+        except Exception as e:
+            log("warning", f"open output failed: {e}")
 
-        text = tk.Text(self.info_frame, wrap=tk.WORD, padx=20, pady=20, font=("Consolas", 10))
-        text.insert(tk.END, _("info.char_list_header", count=len(self.bundles)))
-        for i, name in enumerate(sorted(self.bundles.keys()), 1):
-            text.insert(tk.END, f"  {i:2d}. {name}\n")
-        text.insert(tk.END, _("info.char_list_footer"))
-        text.config(state=tk.DISABLED)
-        text.pack(fill=tk.BOTH, expand=True)
-
-    # ── 角色选择 ───────────────────────────────────────────────
-
-    # _clear_character_cache moved to src/ui_helpers.py
-
-    def _on_character_select(self, event):
-        sel = self.char_listbox.curselection()
-        if not sel:
+    def open_path(self, path: str):
+        """在资源管理器中打开指定路径"""
+        if not path:
             return
-        name = self.char_listbox.get(sel[0])
-        bundle_path = Path(self.bundles[name])
+        try:
+            os.startfile(str(path))
+        except Exception as e:
+            log("warning", f"open path failed: {e}")
 
-        # 清除上一个角色的缓存
-        clear_character_cache(self)
+    def open_url(self, url: str):
+        """在系统浏览器打开链接"""
+        try:
+            webbrowser.open(url)
+        except Exception as e:
+            log("warning", f"open url failed: {e}")
 
-        self._start_progress(_("app.status.analyzing", name=name))
-        self.notebook.select(0)
+    # ── 目录加载 ──────────────────────────────────────────
 
-        def analyze_task():
+    def load_directory(self, path: str):
+        """加载游戏目录（后台线程，事件: progress / load_complete）；新查找会打断上一次未完成的查找"""
+        # 若上一次加载仍在进行，立即记录其被新加载取代（显示旧目录，避免取消日志滞后）
+        if self._loading_path is not None:
+            log("info", _("log.load_cancelled_dir", path=self._loading_path))
+        self._load_generation += 1
+        gen = self._load_generation
+        self._loading_path = path
+        log("info", _("log.loading_dir", path=path))
+
+        def worker():
+            def cb(cur, total):
+                self._emit("progress", {"current": cur, "total": total, "phase": "load"})
+            def cancel():
+                # 一旦有新一次 load_directory 调用（代号变化），中断本次查找
+                return gen != self._load_generation
+            self._emit("status", {"text": _("app.progress.loading_bundles")})
+            result = self._loader.load_from_directory(path, progress_callback=cb, cancel_check=cancel)
+            if result.get("cancelled"):
+                # 已被更新的加载取代（取消日志已在 load_directory 同步打印）
+                self._emit("load_complete", result)
+                return
+            # 本次加载正常结束（未被取代）：清空进行中标记
+            if gen == self._load_generation:
+                self._loading_path = None
+            if result["success"]:
+                self._bundles = result["bundles"]
+                log("info", _("log.load_complete", count=result["count"]))
+            else:
+                log("warning", _("log.load_error", errors=result["errors"]))
+            self._emit("load_complete", result)
+        self._run_async(worker)
+        return True
+
+    def select_character(self, name: str):
+        """分析角色 bundle 是否含组件（事件: analyze_complete / analyze_error）"""
+        def worker():
+            bundle_path = Path(self._bundles.get(name, ""))
+            if not bundle_path.exists():
+                self._emit("analyze_complete", {
+                    "name": name, "has_components": False,
+                    "error": _("dialog.bundle_not_found", path=str(bundle_path)),
+                })
+                return
+            self._emit("status", {"text": _("app.status.analyzing", name=name)})
             try:
-                has_components = has_component_data(bundle_path)
-                self.root.after(0, lambda: self._on_analyze_complete(name, bundle_path, has_components))
+                has = has_component_data(bundle_path)
+                log("info", _("log.analyze_has", name=name) if has else _("log.analyze_none", name=name))
             except Exception as e:
                 log("error", _("log.analyze_failed", name=name, e=e))
-                self.root.after(0, lambda: self._stop_progress(_("app.status.analyze_failed")))
-                self.root.after(0, lambda: messagebox.showerror(_("dialog.analyze_error_title"),
-                    _("dialog.analyze_error_msg", name=name, msg=e)))
-
-        threading.Thread(target=analyze_task, daemon=True).start()
-
-    def _on_analyze_complete(self, name: str, bundle_path: Path, has_components: bool):
-        self._stop_progress(_("app.status.ready"))
-
-        if not has_components:
-            # ── 无组件 → 弹窗确认后导出 ──
-            log("info", _("log.no_component_exporting", name=name))
-            if not messagebox.askyesno(
-                _("dialog.export_confirm_title"),
-                _("dialog.export_confirm_msg", name=name)
-            ):
-                set_status(self,_("app.status.cancelled"))
+                self._emit("analyze_error", {"name": name, "message": str(e)})
                 return
+            self._emit("analyze_complete", {
+                "name": name, "bundle_path": str(bundle_path), "has_components": has,
+            })
+        self._run_async(worker)
+        return True
 
-            self._start_progress(_("app.status.exporting", name=name))
-            def export_task():
-                def cb(current, total):
-                    self.root.after(0, lambda: self._update_progress(current, total))
-                count = len(export_sprites(bundle_path, self.output_dir, has_components=False, progress_callback=cb))
-                self.root.after(0, lambda: self._on_export_complete(name, count))
-            threading.Thread(target=export_task, daemon=True).start()
-        else:
-            # ── 有组件 → 询问模式 ──
-            log("info", _("log.component_detected", name=name))
-            self._ask_mode_dialog(name, bundle_path)
+    # ── 导出 / 提取 / 合成 ────────────────────────────────
 
-    def _on_export_complete(self, name: str, count: int):
-        self._stop_progress(_("app.status.export_done", name=name, count=count))
-        output_path = self.output_dir / name
-        messagebox.showinfo(_("dialog.export_complete_title"),
-                           _("dialog.export_complete_msg", name=name, count=count, path=output_path))
-
-        # 打开输出目录
-        os.startfile(str(output_path))
-
-    # ── 模式选择对话框 ────────────────────────────────────────
-
-    def _ask_mode_dialog(self, name: str, bundle_path: Path):
-        """弹出对话框让用户选择处理方式"""
-        dialog = tk.Toplevel(self.root)
-        dialog.title(_("dialog.ask_mode_title", name=name))
-        set_toplevel_icon(dialog)
-        dialog.geometry("480x280")
-        dialog.resizable(False, False)
-        dialog.transient(self.root)
-        dialog.grab_set()
-
-        # 居中
-        dialog.update_idletasks()
-        x = self.root.winfo_x() + (self.root.winfo_width() - 480) // 2
-        y = self.root.winfo_y() + (self.root.winfo_height() - 280) // 2
-        dialog.geometry(f"+{x}+{y}")
-
-        ttk.Label(dialog, text=_("dialog.ask_mode_title", name=name), font=("Arial", 12, "bold")).pack(pady=(20, 5))
-        ttk.Label(dialog, text=_("dialog.ask_mode_msg"),
-                  wraplength=420).pack(pady=(0, 15))
-
-        # 按钮框架
-        btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(expand=True)
-
-        result: Dict[str, Optional[str]] = {"mode": None}  # 用于在回调中传值
-
-        def choose_mode(mode: str):
-            result["mode"] = mode
-            dialog.destroy()
-
-        ttk.Button(btn_frame, text=_("dialog.ask_mode_export"),
-                   command=lambda: choose_mode("export"),
-                   width=30).pack(pady=8)
-        ttk.Label(btn_frame, text=_("dialog.ask_mode_export_hint"),
-                  font=("Arial", 9), foreground="gray").pack()
-
-        ttk.Button(btn_frame, text=_("dialog.ask_mode_composite"),
-                   command=lambda: choose_mode("composite"),
-                   width=30).pack(pady=(20, 8))
-        ttk.Label(btn_frame, text=_("dialog.ask_mode_composite_hint"),
-                  font=("Arial", 9), foreground="gray").pack()
-
-        # 等待对话框关闭
-        self.root.wait_window(dialog)
-
-        mode = result["mode"]
-        if mode == "export":
-            self._start_progress(_("app.status.exporting", name=name))
-            def export_task():
-                def cb(current, total):
-                    self.root.after(0, lambda: self._update_progress(current, total))
-                count = len(export_sprites(bundle_path, self.output_dir, has_components=True, progress_callback=cb))
-                self.root.after(0, lambda: self._on_export_complete(name, count))
-            threading.Thread(target=export_task, daemon=True).start()
-        elif mode == "composite":
-            self._start_composite_mode(name, bundle_path)
-
-    # ── 拼接模式 ─────────────────────────────────────────────
-
-    def _start_composite_mode(self, name: str, bundle_path: Path):
-        # 检查是否有完整缓存
-        cached = load_extracted_data(self.temp_dir, name)
-        if cached:
-            self.root.after(0, lambda: self._on_data_ready(name, cached))
-            return
-
-        self._start_progress(_("app.status.extracting", name=name))
-
-        def extract_task():
-            def cb(current, total):
-                self.root.after(0, lambda: self._update_progress(current, total))
-            self.temp_dir.mkdir(parents=True, exist_ok=True)
-            data = extract_character_data(bundle_path, self.temp_dir, progress_callback=cb)
-            save_extracted_data(data, self.temp_dir, name)
-            self.root.after(0, lambda: self._on_data_ready(name, data))
-
-        threading.Thread(target=extract_task, daemon=True).start()
-
-    # _try_load_cached 已移至 cache_manager.load_extracted_data
-
-    def _on_data_ready(self, name: str, data: Dict):
-        """角色数据提取完成后，填充部件列表（全部默认选中），等待用户手动合成"""
-        try:
-            self.character_data = data
-            transform_data = data.get("transform_data", [])
-            self._stop_progress(_("app.status.extract_done", name=name, count=len(transform_data)))
-
-            if not transform_data:
-                messagebox.showwarning(_("dialog.warning_no_parts"), _("dialog.warning_no_parts_msg", name=name))
-                return
-
-            # 先切换到选择标签页，确保界面可见
-            self.notebook.select(1)
-            self.root.update_idletasks()
-
-            # 填充部件列表
-            self._populate_parts(transform_data)
-
-            # 强制刷新 Canvas 滚动区域并回到顶部
-            self.parts_canvas.configure(scrollregion=self.parts_canvas.bbox("all"))
-            self.parts_canvas.yview_moveto(0)
-
-            # 默认全部不选中，由用户手动勾选
-            self._on_part_toggle()
-            self.root.update_idletasks()
-
-            log("info", _("log.parts_loaded", count=len(transform_data)))
-
-            # 填充组件结构树
-            hierarchy = data.get("hierarchy", [])
-            populate_hierarchy_tree(self, hierarchy)
-        except Exception as e:
-            log("error", _("log.process_data_failed", e=e))
-            import traceback
-            traceback.print_exc()
-            messagebox.showerror(_("dialog.analyze_error_title"), _("dialog.process_error_msg", msg=e))
-
-    def _populate_parts(self, transform_data: List[Dict]):
-        """填充部件选择列表（带精灵缩略图预览）"""
-        for w in self.parts_inner.winfo_children():
-            w.destroy()
-        self.part_vars.clear()
-        self.part_labels.clear()
-
-        # 按分类分组
-        categories: Dict[str, List[Dict]] = {}
-        for part in transform_data:
-            cat = part.get("category", "other")
-            categories.setdefault(cat, []).append(part)
-
-        # 存储 PhotoImage 引用防止被 GC
-        self._thumb_refs: List[ImageTk.PhotoImage] = []
-
-        for cat, parts in categories.items():
-            # 分类标题
-            header = ttk.Label(self.parts_inner, text=_("parts.category_header", cat=cat, count=len(parts)),
-                               font=("Arial", 10, "bold"), foreground="#555")
-            header.pack(fill=tk.X, pady=(10, 2), padx=5)
-
-            for part in parts:
-                frame = ttk.Frame(self.parts_inner)
-                frame.pack(fill=tk.X, padx=10, pady=2)
-
-                var = tk.BooleanVar()
-                cb = ttk.Checkbutton(frame, variable=var,
-                                     command=self._on_part_toggle)
-                cb.pack(side=tk.LEFT)
-
-                # ── 精灵缩略图预览 ──
-                thumb = load_thumbnail(part["sprite_path"], size=(48, 48))
-                if thumb:
-                    thumb_label = ttk.Label(frame, image=thumb)
-                    thumb_label.pack(side=tk.LEFT, padx=(4, 8))
-                    self._thumb_refs.append(thumb)
-                else:
-                    ttk.Label(frame, text=_("parts.no_img"), font=("Consolas", 7),
-                              foreground="gray").pack(side=tk.LEFT, padx=(4, 8))
-
-                pos = part["position"]
-                c = part.get("color", {})
-                alpha = c.get("a", 1.0)
-                info = _("parts.item_info",
-                          name=part['name'], x=pos['x'], y=pos['y'],
-                          order=part['sorting_order'], size=part['sprite_size'],
-                          alpha=alpha)
-                lbl = ttk.Label(frame, text=info, font=("Consolas", 9))
-                lbl.pack(side=tk.LEFT, padx=(5, 0))
-
-                self.part_vars.append(var)
-                self.part_labels.append({"frame": frame, "part": part, "var": var})
-
-        # 全部创建完毕后保持默认未选中状态
-        self.sel_count_label.config(text=_("parts.selected_count", count=0))
-
-    # _load_thumbnail, _update_selected_sprites_list moved to src/ui_helpers.py
-
-    def _on_part_toggle(self):
-        selected = sum(1 for v in self.part_vars if v.get())
-        self.sel_count_label.config(text=_("parts.selected_count", count=selected))
-        # 刷新右侧已选精灵列表
-        update_selected_sprites_list(self)
-        # 实时预览：勾选状态变化后自动调度合成（防抖 500ms）
-        if self.auto_update.get():
-            self._schedule_auto_preview()
-
-    def _schedule_auto_preview(self):
-        """防抖调度自动预览"""
-        if self._preview_timer:
-            self.root.after_cancel(self._preview_timer)
-        self._preview_timer = self.root.after(500, self._on_composite)
-
-    def _on_auto_update_toggle(self):
-        """自动更新开关切换"""
-        if self.auto_update.get():
-            # 开启时立即生成一次
-            self._schedule_auto_preview()
-
-    def _select_all(self):
-        for v in self.part_vars:
-            v.set(True)
-        self.sel_count_label.config(text=_("parts.selected_count", count=len(self.part_vars)))
-        update_selected_sprites_list(self)
-        if self.auto_update.get():
-            self._schedule_auto_preview()
-
-    def _deselect_all(self):
-        for v in self.part_vars:
-            v.set(False)
-        self.sel_count_label.config(text=_("parts.selected_count", count=0))
-        update_selected_sprites_list(self)
-        if self.auto_update.get():
-            self._schedule_auto_preview()
-
-    # ── 合成 + 预览 ──────────────────────────────────────────
-
-    def _on_composite(self):
-        if not self.character_data:
-            return
-
-        transform_data = self.character_data.get("transform_data", [])
-        selected = []
-        for item in self.part_labels:
-            if item["var"].get():
-                selected.append(item["part"]["name"])
-
-        if not selected:
-            log("warning", _("log.no_parts_selected"))
-            if not self.auto_update.get():
-                messagebox.showinfo(_("info.tab_title"), _("parts.no_selection_hint"))
-            return
-
-        log("info", _("log.compositing", selected=len(selected), total=len(transform_data)))
-
-        self.preview_status.config(text=_("parts.generating"))
-        self._start_progress(_("app.status.compositing"))
-
-        def composite_task():
+    def export_sprites(self, name: str, has_components: bool):
+        """导出角色全部精灵（事件: progress / export_complete / export_error）"""
+        def worker():
+            bundle_path = Path(self._bundles.get(name, ""))
+            def cb(cur, total):
+                self._emit("progress", {"current": cur, "total": total, "phase": "export"})
+            self._emit("status", {"text": _("app.status.exporting", name=name)})
+            log("info", _("log.export_start", name=name))
             try:
-                def cb(current, total):
-                    self.root.after(0, lambda: self._update_progress(current, total))
-                img = self.compositor.composite(transform_data, selected_names=selected, progress_callback=cb)
-                self.root.after(0, lambda: self._on_composite_done(img))
+                results = export_sprites(
+                    bundle_path, self._output_dir,
+                    has_components=bool(has_components), progress_callback=cb,
+                )
+            except Exception as e:
+                log("error", _("log.export_failed", name=name, e=e))
+                self._emit("export_error", {"name": name, "message": str(e)})
+                return
+            # 累计导出次数（每次成功导出 +1，不按图片数量）
+            self._export_count += 1
+            save_settings(export_count=self._export_count)
+            log("info", _("log.export_complete", name=name, count=len(results)))
+            self._emit("export_complete", {
+                "name": name, "count": len(results),
+                "output_dir": str(self._output_dir / name),
+                "export_count": self._export_count,
+            })
+        self._run_async(worker)
+        return True
+
+    def start_composite_mode(self, name: str):
+        """进入拼接模式：提取角色数据（优先缓存）（事件: progress / data_ready / data_error）"""
+        def worker():
+            bundle_path = Path(self._bundles.get(name, ""))
+            cached = load_extracted_data(self._temp_dir, name)
+            if cached:
+                self._character_data = cached
+                log("info", _("log.extract_cache_hit", name=name))
+                self._emit("data_ready", self._data_summary(cached))
+                return
+            def cb(cur, total):
+                self._emit("progress", {"current": cur, "total": total, "phase": "extract"})
+            self._emit("status", {"text": _("app.status.extracting", name=name)})
+            try:
+                self._temp_dir.mkdir(parents=True, exist_ok=True)
+                data = extract_character_data(bundle_path, self._temp_dir, progress_callback=cb)
+                save_extracted_data(data, self._temp_dir, name)
+            except Exception as e:
+                log("error", _("log.process_data_failed", e=e))
+                self._emit("data_error", {"name": name, "message": str(e)})
+                return
+            self._character_data = data
+            count = len(data.get("transform_data", []))
+            log("info", _("log.extract_complete", name=name, count=count))
+            self._emit("data_ready", self._data_summary(data))
+        self._run_async(worker)
+        return True
+
+    def _data_summary(self, data: Dict) -> dict:
+        """裁剪数据体积，仅向前端发送渲染所需字段"""
+        transform = []
+        for p in data.get("transform_data", []):
+            transform.append({
+                "name": p["name"],
+                "sprite_name": p.get("sprite_name", p["name"]),
+                "sprite_size": p.get("sprite_size", [0, 0]),
+                "position": p.get("position", {"x": 0, "y": 0, "z": 0}),
+                "sorting_order": p.get("sorting_order", 0),
+                "color": p.get("color", {"r": 1, "g": 1, "b": 1, "a": 1}),
+                "category": p.get("category", "other"),
+            })
+        return {
+            "name": data.get("character_name", ""),
+            "count": len(transform),
+            "transform_data": transform,
+            "hierarchy": data.get("hierarchy", []),
+        }
+
+    def get_thumbnails(self):
+        """为当前角色所有部件生成缩略图 data URL（事件: thumbnails_ready）"""
+        def worker():
+            result = {}
+            if self._character_data:
+                for part in self._character_data.get("transform_data", []):
+                    url = _sprite_thumb_data_url(Path(part["sprite_path"]), size=(96, 96))
+                    if url:
+                        result[part["name"]] = url
+            self._emit("thumbnails_ready", result)
+        self._run_async(worker)
+        return True
+
+    def composite(self, selected_names: List[str]):
+        """合成角色图像并推送预览 data URL（事件: progress / composite_done）"""
+        def worker():
+            if not self._character_data:
+                self._emit("composite_done", {"ok": False, "error": "no_data"})
+                return
+            def cb(cur, total):
+                self._emit("progress", {"current": cur, "total": total, "phase": "composite"})
+            self._emit("status", {"text": _("app.status.compositing")})
+            try:
+                img = self._compositor.composite(
+                    self._character_data["transform_data"],
+                    selected_names=selected_names,
+                    progress_callback=cb,
+                )
             except Exception as e:
                 log("error", _("log.composite_failed", e=e))
-                import traceback
-                traceback.print_exc()
-                self.root.after(0, lambda: self._show_composite_error(str(e)))
+                self._emit("composite_done", {"ok": False, "error": str(e)})
+                return
+            if img is None:
+                self._emit("composite_done", {"ok": False, "error": "empty"})
+                return
+            self._composite_image = img
+            log("info", _("log.composite_done", size=f"{img.width}x{img.height}"))
+            self._emit("composite_done", {
+                "ok": True,
+                "data_url": _pil_to_data_url(img, max_side=1600),
+                "size": list(img.size),
+            })
+        self._run_async(worker)
+        return True
 
-        threading.Thread(target=composite_task, daemon=True).start()
+    def save_composite(self):
+        """保存合成图（事件: save_complete）"""
+        def worker():
+            if self._composite_image is None:
+                self._emit("save_complete", {"ok": False, "error": "no_image"})
+                return
+            char_name = (self._character_data or {}).get("character_name", "composite")
+            try:
+                path = save_composite(self._composite_image, self._output_dir, char_name)
+            except Exception as e:
+                self._emit("save_complete", {"ok": False, "error": str(e)})
+                return
+            # 保存合成图（导出图像）也计入累计导出
+            self._export_count += 1
+            save_settings(export_count=self._export_count)
+            log("info", _("log.composite_saved", path=path))
+            self._emit("save_complete", {"ok": True, "path": str(path), "dir": str(path.parent), "export_count": self._export_count})
+        self._run_async(worker)
+        return True
 
-    def _on_composite_done(self, img: Optional[Image.Image]):
-        if img is None:
-            self.preview_status.config(text=_("parts.no_preview"))
-            self._stop_progress(_("app.status.composite_failed"))
-            return
+    # ── 清理 / 更新 ────────────────────────────────────────
 
-        self.composite_image = img
-        self.preview_status.config(text=_("parts.composite_done_fmt", w=img.size[0], h=img.size[1]))
-        self._stop_progress(_("app.status.composite_done"))
+    def clear_cache(self):
+        """清空 temp 缓存（事件: cache_cleared）"""
+        def worker():
+            shutil.rmtree(self._temp_dir, ignore_errors=True)
+            self._character_data = None
+            self._composite_image = None
+            log("info", _("log.cache_cleared"))
+            self._emit("cache_cleared", {"temp_dir": str(self._temp_dir)})
+        self._run_async(worker)
+        return True
 
-        # 在同一页面显示预览（无需切换标签）
-        self.root.update_idletasks()
-        show_preview(self,img)
+    def clear_output(self):
+        """清空输出目录（事件: output_cleared）"""
+        def worker():
+            shutil.rmtree(self._output_dir, ignore_errors=True)
+            log("info", _("log.output_dir_cleared"))
+            self._emit("output_cleared", {"output_dir": str(self._output_dir)})
+        self._run_async(worker)
+        return True
 
-    def _show_composite_error(self, error_msg: str):
-        """显示合成错误"""
-        self.preview_status.config(text=_("parts.no_preview"))
-        set_status(self,_("app.status.composite_failed"))
-        messagebox.showerror(_("dialog.composite_error_title"), _("dialog.composite_error_msg", msg=error_msg))
+    def clear_log(self):
+        """清理日志目录中的所有日志文件（事件: log_cleared）"""
+        def worker():
+            count = clear_logs()
+            log("info", _("log.logs_cleared"))
+            self._emit("log_cleared", {"ok": True, "count": count, "path": str(LOG_FILE) if LOG_FILE else ""})
+        self._run_async(worker)
+        return True
 
-    def _clear_preview(self):
-        """清空预览画布"""
-        self.preview_canvas.delete("all")
-        self.preview_status.config(text=_("parts.no_preview"))
-        self.composite_image = None
-        set_status(self,_("app.status.preview_cleared"))
+    def check_update(self, silent: bool = False):
+        """检查更新（事件: update_result）"""
+        def worker():
+            try:
+                info = check_for_update(__version__)
+                if info is None:
+                    self._emit("update_result", {
+                        "status": "latest", "current": __version__, "silent": bool(silent),
+                    })
+                else:
+                    self._emit("update_result", {
+                        "status": "available", "current": __version__,
+                        "latest": info.latest_version, "url": info.release_url,
+                        "notes": info.notes, "silent": bool(silent),
+                    })
+            except Exception as e:
+                self._emit("update_result", {
+                    "status": "error", "current": __version__,
+                    "message": str(e), "silent": bool(silent),
+                })
+        self._run_async(worker)
+        return True
 
-    def _show_preview(self, img: Image.Image):
-        """在画布上显示预览图"""
-        # 安全检查：图像尺寸必须有效
-        if img.width < 1 or img.height < 1:
-            log("error", _("log.invalid_preview_size", size=img.size))
-            self.preview_status.config(text=_("parts.preview_failed"))
-            return
-
-        canvas = self.preview_canvas
-        canvas.update_idletasks()
-
-        # 获取画布可见尺寸（确保不小于 100x100）
-        cw = max(canvas.winfo_width(), 100)
-        ch = max(canvas.winfo_height(), 100)
-
-        # 计算缩放比例，确保 display_w/display_h 至少为 1
-        scale = min(cw / img.width, ch / img.height, 1.0)
-        display_w = max(int(img.width * scale), 1)
-        display_h = max(int(img.height * scale), 1)
-
-        if scale < 1.0:
-            thumb = img.resize((display_w, display_h), Image.Resampling.LANCZOS)
-        else:
-            thumb = img
-
-        self._photo = ImageTk.PhotoImage(thumb)
-
-        canvas.delete("all")
-        canvas.config(scrollregion=(0, 0, img.width, img.height))
-        self.preview_image_id = canvas.create_image(0, 0, anchor=tk.NW, image=self._photo)
-
-        # 如果缩放小于1，显示提示
-        if scale < 1.0:
-            canvas.create_text(cw // 2, 20, text=_("parts.scale_hint", scale=scale),
-                               fill="red", font=("Arial", 10), tags="scale_hint")
-
-    def _on_save(self):
-        if self.composite_image is None:
-            messagebox.showwarning(_("dialog.save_warning_title"), _("dialog.save_warning_msg"))
-            return
-
-        if not self.character_data:
-            return
-
-        char_name = self.character_data['character_name']
+    def log_js(self, level: str, message: str) -> None:
+        """接收前端 JavaScript 的 console 输出，标记为 [JS] 来源与控制台日志区分"""
         try:
-            save_path = save_composite(self.composite_image, self.output_dir, char_name)
-            save_dir = save_path.parent
-            messagebox.showinfo(_("dialog.save_success_title"), _("dialog.save_success_msg", path=save_path))
-            os.startfile(str(save_dir))
+            log(level, str(message)[:2000], source="JS")
         except Exception as e:
-            messagebox.showerror(_("dialog.save_error_title"), _("dialog.save_error_msg", msg=e))
-
-    # ── 工具 ──────────────────────────────────────────────────
-
-    def _set_status(self, text: str):
-        self.status_bar.config(text=text)
-        self.root.update_idletasks()
-
-    def _start_progress(self, text: str = "", maximum: int = 100):
-        """显示进度条并更新状态文字（determinate 模式）"""
-        set_status(self,text or _("app.progress.default"))
-        self.progress_bar["value"] = 0
-        self.progress_bar["maximum"] = maximum
-        self.progress_bar.pack(fill=tk.X, pady=(5, 0), before=self.status_bar)
-        self.root.update_idletasks()
-
-    def _update_progress(self, current: int, total: int):
-        """更新进度条当前值（determinate 模式，自动换算百分比）"""
-        self.progress_bar["maximum"] = total
-        self.progress_bar["value"] = current
-        self.root.update_idletasks()
-
-    def _stop_progress(self, text: str = ""):
-        """停止并隐藏进度条，恢复状态文字"""
-        self.progress_bar["value"] = 0
-        self.progress_bar.pack_forget()
-        set_status(self,text or _("app.status.ready"))
-        self.root.update_idletasks()
-
-    def _on_clear_cache(self):
-        """手动清除 temp 缓存目录（带确认对话框）"""
-        if not self.temp_dir.exists():
-            set_status(self,_("app.status.ready"))
-            return
-        if not messagebox.askyesno(
-            _("left.clear_cache_confirm_title"),
-            _("left.clear_cache_confirm_msg")
-        ):
-            return
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
-        log("info", _("log.temp_cleared", path=self.temp_dir))
-        # 还原界面并切换到信息页
-        clear_character_cache(self)
-        self.notebook.select(0)
-        set_status(self, _("app.status.ready"))
-
-    def run(self):
-        self.root.protocol("WM_DELETE_WINDOW", self.root.destroy)
-        self.root.mainloop()
+            log("warning", f"log_js failed: {e}")
 
 
 # ===================================================================
 # 入口
 # ===================================================================
 
-if __name__ == "__main__":
-    configure(level="info")
+def main():
+    global LOG_FILE
+    # 日志文件：logs/ 目录，文件名含程序启动时间（每次启动一个新文件）
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    LOG_FILE = BASE_DIR / "logs" / f"{ts}.log"
+    configure(log_file=LOG_FILE, level="info")
 
-    parser = argparse.ArgumentParser(description=_("cli.description"))
-    parser.add_argument(
-        "-c", "--clean",
-        action="store_true",
-        help=_("cli.help.clean")
-    )
-    parser.add_argument(
-        "-o", "--output",
-        type=str,
-        default=None,
-        help=_("cli.help.output")
-    )
-    parser.add_argument(
-        "--clear-cache",
-        action="store_true",
-        help=_("cli.help.clear_cache")
-    )
-    parser.add_argument(
-        "--git-clean",
-        action="store_true",
-        help=_("cli.help.git_clean")
-    )
-    args = parser.parse_args()
-
-    # 解析输出路径：相对路径基于程序所在目录，绝对路径直接使用
-    if args.output:
-        output_path = Path(args.output)
-        if not output_path.is_absolute():
-            output_path = BASE_DIR / output_path
-        output_path = output_path.resolve()
+    # 语言：优先使用设置中保存的语言，否则按系统自动检测
+    saved_lang = get_lang()
+    if saved_lang and saved_lang in LANGUAGE_CODES:
+        set_lang(saved_lang)
+        log("info", _("log.lang_from_settings", code=saved_lang))
     else:
-        output_path = BASE_DIR / "output"
+        detected_lang = _detect_system_language()
+        set_lang(detected_lang)
+        log("info", _("log.lang_detected", code=detected_lang))
 
-    if args.clean:
-        if output_path.exists():
-            shutil.rmtree(output_path)
-            log("info", _("log.output_cleared", path=output_path))
+    # 程序启动日志（置于语言加载完成后，确保文案跟随当前语言）
+    log("info", _("log.app_started", version=__version__))
 
-    # --clear-cache：仅清除缓存，不启动 GUI
-    if getattr(args, "clear_cache", False):
-        cache_dir = BASE_DIR / "temp"
-        if cache_dir.exists():
-            shutil.rmtree(cache_dir)
-            log("info", _("log.temp_cleared", path=cache_dir))
-        else:
-            log("info", "Cache folder does not exist.")
-        exit(0)
-
-    # --git-clean：清除 output 和 temp 目录后退出（用于 git 提交前清理）
-    if getattr(args, "git_clean", False):
-        script_dir = Path(__file__).parent
-        for d in ["output", "temp"]:
-            p = script_dir / d
-            if p.exists():
-                shutil.rmtree(p)
-                log("info", f"Removed: {p}")
-        exit(0)
-
-    # 系统语言自动检测
-    detected_lang = _detect_system_language()
-    set_lang(detected_lang)
-    log("info", f"System language detected: {detected_lang}")
-
-    # 设置控制台标题
     set_console_title()
 
-    app = SpriteToolApp(output_dir=output_path)
-    app.run()
+    # 启动提示：提醒用户不要轻易关闭控制台
+    print("\n" + "=" * 48)
+    print(_("console.startup_msg"))
+    print("=" * 48 + "\n")
+
+    api = JsApi()
+    window = webview.create_window(
+        title=f"{_('app.title')} v{__version__}",
+        url=_get_webui_url(),
+        js_api=api,
+        width=1280,
+        height=860,
+        min_size=(960, 640),
+        background_color="#0f1115",
+        text_select=True,
+    )
+    assert window is not None  # pywebview 的 create_window 始终返回 Window 实例
+    api._window = window
+    webview.start(icon=_find_icon(), debug=_DEBUG)
+
+    # 主窗口已关闭，进入退出流程：记录退出日志（此时 WebView2 等后台子进程可能仍在清理，故措辞为“正在退出”而非“已关闭”；若直接关闭控制台则进程立即终止，此段不会执行）
+    log("info", _("log.app_exited"))
+
+    # 控制台输出退出提示
+    print("\n" + "=" * 48)
+    print(_("console.exit_msg"))
+    print("=" * 48 + "\n")
+
+
+if __name__ == "__main__":
+    main()

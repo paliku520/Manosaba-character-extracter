@@ -24,6 +24,10 @@ COMMON_PATTERNS = [
 SKIP_DIRS = frozenset({"node_modules", "__pycache__", ".git", ".svn", ".idea"})
 
 
+class _SearchCancelled(Exception):
+    """内部异常：目录查找被新的查找打断（取消）"""
+
+
 class BundleLoader:
     """Bundle 文件加载器，带路径记忆功能"""
 
@@ -58,6 +62,13 @@ class BundleLoader:
         except OSError as e:
             log("warning", _("log.saved_path_failed", e=e))
 
+    def remember_directory(self, path: str) -> None:
+        """记录上次使用的目录（公开接口，供 GUI 层调用）"""
+        if not path:
+            return
+        self.last_path = path
+        self._save_last_path(path)
+
     # ── 目录选择 ──────────────────────────────────────────
 
     def select_directory(self, title: str = "") -> str | None:
@@ -77,7 +88,7 @@ class BundleLoader:
 
     # ── 查找 characters 目录 ──────────────────────────────
 
-    def find_characters_dir(self, game_root: Path) -> Path | None:
+    def find_characters_dir(self, game_root: Path, cancel_check=None) -> Path | None:
         """在游戏目录中查找 characters 目录（先查常见模式，再递归搜索）"""
         # 1. 先试常见模式
         result = self._search_common_patterns(game_root)
@@ -86,7 +97,9 @@ class BundleLoader:
 
         # 2. 常见模式未命中 → 递归搜索
         log("info", _("log.recursive_search"))
-        return self._search_dir_recursive(game_root, "characters", max_depth=8)
+        return self._search_dir_recursive(
+            game_root, "characters", max_depth=8, cancel_check=cancel_check
+        )
 
     @staticmethod
     def _search_common_patterns(game_root: Path) -> Path | None:
@@ -117,13 +130,15 @@ class BundleLoader:
 
     @staticmethod
     def _search_dir_recursive(
-        root: Path, target_name: str, max_depth: int = 8
+        root: Path, target_name: str, max_depth: int = 8, cancel_check=None
     ) -> Path | None:
-        """递归搜索指定名称的目录，限制最大深度"""
+        """递归搜索指定名称的目录，限制最大深度；cancel_check() 返回 True 时取消"""
         # 使用 Path.rglob 替代 os.walk（更 Pythonic）
         # 注意: rglob 不直接支持深度限制，所以我们手动控制
         root_length = len(root.parts)
         for entry in root.rglob("*"):
+            if cancel_check and cancel_check():
+                raise _SearchCancelled()
             if not entry.is_dir():
                 continue
             # 跳过隐藏目录和无关目录
@@ -151,22 +166,26 @@ class BundleLoader:
 
     # ── 主流程 ────────────────────────────────────────────
 
-    def load_from_directory(self, directory: str, progress_callback=None) -> dict:
+    def load_from_directory(
+        self, directory: str, progress_callback=None, cancel_check=None
+    ) -> dict:
         """
         从指定目录加载所有 bundle
 
         Args:
             directory: 游戏根目录或 characters 目录路径
             progress_callback: 可选进度回调 fn(current, total)
+            cancel_check: 可选取消检查 fn() -> bool；返回 True 时中止本次查找
 
         Returns:
-            {"success": bool, "bundles": {角色名: 路径}, "count": int, "errors": [错误信息]}
+            {"success": bool, "bundles": {角色名: 路径}, "count": int, "errors": [错误信息], "cancelled": bool}
         """
         result: dict = {
             "success": False,
             "bundles": {},
             "count": 0,
             "errors": [],
+            "cancelled": False,
         }
 
         root_path = Path(directory)
@@ -175,7 +194,11 @@ class BundleLoader:
             return result
 
         # 判断是游戏根目录还是 characters 目录
-        characters_dir = self._resolve_characters_dir(root_path, result)
+        try:
+            characters_dir = self._resolve_characters_dir(root_path, result, cancel_check)
+        except _SearchCancelled:
+            result["cancelled"] = True
+            return result
         if characters_dir is None:
             return result
 
@@ -192,6 +215,9 @@ class BundleLoader:
         # 加载每个 bundle
         total = len(bundle_files)
         for i, bundle_path in enumerate(bundle_files):
+            if cancel_check and cancel_check():
+                result["cancelled"] = True
+                return result
             name = bundle_path.stem
             if self.load_bundle(bundle_path):
                 result["bundles"][name] = str(bundle_path)
@@ -212,7 +238,7 @@ class BundleLoader:
         return result
 
     def _resolve_characters_dir(
-        self, root_path: Path, result: dict
+        self, root_path: Path, result: dict, cancel_check=None
     ) -> Path | None:
         """解析 characters 目录路径"""
         if root_path.name == "characters":
@@ -220,7 +246,7 @@ class BundleLoader:
         if (root_path / "characters").exists():
             return root_path / "characters"
 
-        characters_dir = self.find_characters_dir(root_path)
+        characters_dir = self.find_characters_dir(root_path, cancel_check)
         if characters_dir is None:
             result["errors"].append(_("dialog.characters_not_found", path=root_path))
         return characters_dir

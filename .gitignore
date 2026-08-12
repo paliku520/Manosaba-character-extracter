@@ -15,6 +15,7 @@ build/
 output/
 temp/
 *.log
+settings.json
 
 # ── 环境 ──
 .env

@@ -83,39 +83,47 @@ def _get_color(level: LogLevel) -> tuple[str, str]:
     return colors.get(level, ("", ""))
 
 
-def log(log_type: str, text: str) -> None:
+def _get_source_color(source: str) -> str:
+    """来源标识颜色：PY 青色、JS 品红（区分 Python / JavaScript 日志）"""
+    if not COLORAMA_AVAILABLE:
+        return ""
+    return Fore.MAGENTA if source == "JS" else Fore.CYAN
+
+
+def log(log_type: str, text: str, source: str = "PY") -> None:
     """
     输出日志
 
     Args:
         log_type: 日志类型（info/warning/error/debug/none）
         text: 日志文本
+        source: 日志来源标识（PY=Python / JS=JavaScript，默认 PY）
     """
     level = LogLevel.from_string(log_type)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prefix = level.value
-    
-    # 构建消息：时间戳 + 日志级别（方括号内）+ 内容
-    if prefix:
-        # 分离方括号内的内容和后面的空格
-        # prefix 格式如 "[INFO]"
-        bracket_content = prefix[1:-1]  # 获取 INFO, WARNING 等
-        full_message = f"[{timestamp}] [{bracket_content}] {text}"
-    else:
-        full_message = f"[{timestamp}] {text}"
+    src = (source.upper() or "PY").strip()
 
-    # 控制台输出（只给方括号内的日志级别添加颜色）
+    # 构建消息：时间戳 + 来源 + 日志级别 + 内容
+    if prefix:
+        bracket_content = prefix[1:-1]  # 获取 INFO, WARNING 等
+        full_message = f"[{timestamp}] [{src}] [{bracket_content}] {text}"
+    else:
+        full_message = f"[{timestamp}] [{src}] {text}"
+
+    # 控制台输出（给来源与日志级别添加颜色）
     if COLORAMA_AVAILABLE and level != LogLevel.NONE:
         color, style = _get_color(level)
+        src_color = _get_source_color(src)
         if prefix:
-            # 构建带颜色的消息：只给 [日志级别] 添加颜色
             colored_message = (
                 f"[{timestamp}] "
+                f"{src_color}[{src}]{Style.RESET_ALL} "
                 f"{style}{color}[{bracket_content}]{Style.RESET_ALL} "
                 f"{text}"
             )
         else:
-            colored_message = full_message
+            colored_message = f"[{timestamp}] {src_color}[{src}]{Style.RESET_ALL} {text}"
         print(colored_message)
     else:
         print(full_message)
@@ -128,3 +136,30 @@ def log(log_type: str, text: str) -> None:
         except OSError as e:
             error_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] 写入日志文件失败: {e}"
             print(error_msg)
+
+
+def clear_logs() -> int:
+    """
+    清理日志目录中的所有 .log 文件（含历史启动日志）
+
+    Returns:
+        删除的日志文件数量
+    """
+    if _LOG_FILE is None:
+        return 0
+    count = 0
+    try:
+        for f in _LOG_FILE.parent.glob("*.log"):
+            try:
+                f.unlink()
+            except OSError:
+                # 文件被占用（如编辑器打开）时退化为清空内容
+                try:
+                    with open(f, "w", encoding="utf-8") as fh:
+                        fh.write("")
+                except OSError:
+                    continue
+            count += 1
+    except OSError:
+        pass
+    return count
