@@ -121,7 +121,7 @@ T: Dict[str, Dict[str, str]] = {
     "app.status.settings_saved": {
         LANG_CN: "设置已保存: {path}",
         LANG_EN: "Settings saved: {path}",
-        LANG_MGL: "",
+        LANG_MGL: "Co-Jundic saved: {path}",
     },
     "app.progress.loading_bundles": {
         LANG_CN: "正在扫描并加载 bundle 文件...",
@@ -175,7 +175,7 @@ T: Dict[str, Dict[str, str]] = {
     "left.settings": {
         LANG_CN: "设置",
         LANG_EN: "Settings",
-        LANG_MGL: "",
+        LANG_MGL: "Co-Jundic",
     },
     "log.cache_loaded": {
         LANG_CN: "从缓存加载角色数据: {name} ({count} 个部件)",
@@ -574,62 +574,62 @@ T: Dict[str, Dict[str, str]] = {
     "settings.title": {
         LANG_CN: "设置",
         LANG_EN: "Settings",
-        LANG_MGL: "",
+        LANG_MGL: "Co-Jundic",
     },
     "settings.output_dir_label": {
         LANG_CN: "输出目录",
         LANG_EN: "Output Directory",
-        LANG_MGL: "",
+        LANG_MGL: "output Ge-mon",
     },
     "settings.browse": {
         LANG_CN: "浏览...",
         LANG_EN: "Browse...",
-        LANG_MGL: "",
+        LANG_MGL: "Owk...",
     },
     "settings.restore_default": {
         LANG_CN: "恢复默认",
         LANG_EN: "Restore Default",
-        LANG_MGL: "",
+        LANG_MGL: "rEcanRey Taven",
     },
     "settings.output_browse_title": {
         LANG_CN: "选择输出目录",
         LANG_EN: "Select Output Directory",
-        LANG_MGL: "",
+        LANG_MGL: "Alte output Ge-mon",
     },
     "settings.cleanup_label": {
         LANG_CN: "清理",
         LANG_EN: "Cleanup",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay",
     },
     "settings.clear_cache_btn": {
         LANG_CN: "清除缓存",
         LANG_EN: "Clear Cache",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay temp",
     },
     "settings.clear_output_btn": {
         LANG_CN: "清除输出目录",
         LANG_EN: "Clear Output Directory",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay output Ge-mon",
     },
     "settings.clear_output_confirm_title": {
         LANG_CN: "清除输出目录",
         LANG_EN: "Clear Output Directory",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay output Ge-mon",
     },
     "settings.clear_output_confirm_msg": {
         LANG_CN: "确定要删除输出目录中的所有文件吗？\n{path}",
         LANG_EN: "Delete all files in the output directory?\n{path}",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay Alte Ge-mon in output?\n{path}",
     },
     "settings.save": {
         LANG_CN: "保存",
         LANG_EN: "Save",
-        LANG_MGL: "",
+        LANG_MGL: "save",
     },
     "settings.cancel": {
         LANG_CN: "取消",
         LANG_EN: "Cancel",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay",
     },
 
     # ── 部件分类 ──
@@ -677,7 +677,7 @@ T: Dict[str, Dict[str, str]] = {
     "cli.help.clear_cache": {
         LANG_CN: "仅清除缓存文件夹后退出（不启动 GUI）",
         LANG_EN: "Clear cache folder and exit (without launching GUI)",
-        LANG_MGL: "",
+        LANG_MGL: "Ca-nay temp Ge-mon then FineNd (Nii start GUI)",
     },
     "cli.help.git_clean": {
         LANG_CN: "清除 output 和 temp 目录后退出（用于 git 提交前清理）",
@@ -740,7 +740,7 @@ T: Dict[str, Dict[str, str]] = {
     "log.settings_save_failed": {
         LANG_CN: "保存设置失败: {e}",
         LANG_EN: "Failed to save settings: {e}",
-        LANG_MGL: "",
+        LANG_MGL: "save Co-Jundic Baru: {e}",
     },
     "log.recursive_search": {
         LANG_CN: "常见路径未命中，开始递归搜索 characters 目录...",
