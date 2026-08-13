@@ -22,6 +22,10 @@ from src.logtools import log
 from src.i18n import _
 
 
+class LoadCancelled(Exception):
+    """用户中断加载/导出（后台任务取消）"""
+
+
 # ---------------------------------------------------------------------------
 # 组件检测
 # ---------------------------------------------------------------------------
@@ -59,6 +63,8 @@ def extract_sprites(
     bundle_path: Path,
     output_dir: Path,
     progress_callback=None,
+    cancel_check=None,
+    log_each: bool = True,
 ) -> List[Dict]:
     """
     从 bundle 中提取所有精灵，保存为 PNG 文件。
@@ -67,6 +73,8 @@ def extract_sprites(
         bundle_path: bundle 文件路径
         output_dir:  输出目录
         progress_callback: 可选进度回调 fn(current, total)
+        cancel_check: 可选取消检查 fn() -> bool，返回 True 时抛 LoadCancelled
+        log_each:     是否逐条记录导出精灵日志（预览等批量场景可关闭避免刷屏）
 
     Returns:
         [{ "name": str, "path_id": int, "file_path": str, "size": [w, h] }, ...]
@@ -84,6 +92,8 @@ def extract_sprites(
     results = []
 
     for idx, obj in enumerate(sprite_objs):
+        if cancel_check and cancel_check():
+            raise LoadCancelled()
         try:
             data = obj.read()
             if not hasattr(data, "image") or data.image is None:
@@ -100,7 +110,8 @@ def extract_sprites(
                 "file_path": str(file_path),
                 "size": [data.image.size[0], data.image.size[1]],
             })
-            log("info", _("log.exported_sprite", name=safe_name))
+            if log_each:
+                log("info", _("log.loaded_sprite", name=safe_name))
         except Exception as e:
             log("error", _("log.sprite_extract_failed", id=obj.path_id, e=e))
 
@@ -125,6 +136,7 @@ def extract_character_data(
     bundle_path: Path,
     output_dir: Path,
     progress_callback=None,
+    cancel_check=None,
 ) -> Dict:
     """
     完整提取角色数据，包括精灵、变换（位置/排序）和层级结构。
@@ -133,6 +145,7 @@ def extract_character_data(
         bundle_path: bundle 文件路径
         output_dir:  输出目录
         progress_callback: 可选进度回调 fn(current, total)
+        cancel_check: 可选取消检查 fn() -> bool，返回 True 时抛 LoadCancelled
 
     Returns:
         {
@@ -226,6 +239,8 @@ def extract_character_data(
     sprite_objs = [obj for obj in env.objects if obj.type.name == "Sprite"]
     sprite_total = len(sprite_objs)
     for idx, obj in enumerate(sprite_objs):
+        if cancel_check and cancel_check():
+            raise LoadCancelled()
         try:
             data = obj.read()
             if not hasattr(data, "image") or data.image is None:
@@ -239,6 +254,7 @@ def extract_character_data(
                 "file_path": str(file_path),
                 "size": [data.image.size[0], data.image.size[1]],
             }
+            log("info", _("log.loaded_sprite", name=safe_name))
         except Exception:
             continue
 
@@ -246,6 +262,8 @@ def extract_character_data(
             progress_callback(idx + 1, sprite_total)
 
     # ---- 第4步: 组装 transform_data ----
+    if cancel_check and cancel_check():
+        raise LoadCancelled()
     transform_data = []
     for part in character_parts:
         si = sprite_mapping.get(part["sprite_id"])

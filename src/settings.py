@@ -44,7 +44,8 @@ def save_settings(
     last_directory: Optional[str] = None,
     theme: Optional[str] = None,
     export_count: Optional[int] = None,
-    use_chinese_names: Optional[bool] = None,
+    show_original_name: Optional[bool] = None,
+    no_spoiler_notice: Optional[bool] = None,
 ) -> None:
     """保存设置到配置文件（只更新传入的字段，保留其余已有字段）"""
     data = load_settings()
@@ -58,8 +59,10 @@ def save_settings(
         data["theme"] = theme
     if export_count is not None:
         data["export_count"] = export_count
-    if use_chinese_names is not None:
-        data["use_chinese_names"] = bool(use_chinese_names)
+    if show_original_name is not None:
+        data["show_original_name"] = bool(show_original_name)
+    if no_spoiler_notice is not None:
+        data["no_spoiler_notice"] = bool(no_spoiler_notice)
     try:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(
@@ -121,10 +124,22 @@ def get_export_count(default: int = 0) -> int:
     return default
 
 
-def get_use_chinese_names(default: bool = True) -> bool:
-    """返回是否显示角色中文名（未设置时返回 default）"""
+def get_show_original_name(default: bool = False) -> bool:
+    """返回是否显示原始文件名（未设置时返回 default；兼容旧版 use_chinese_names 字段）"""
     settings = load_settings()
+    if isinstance(settings.get("show_original_name"), bool):
+        return settings["show_original_name"]
+    # 旧字段迁移：旧“显示中文名”开启 → 新“显示原始文件名”关闭
     raw = settings.get("use_chinese_names")
+    if isinstance(raw, bool):
+        return not raw
+    return default
+
+
+def get_no_spoiler(default: bool = False) -> bool:
+    """返回是否已勾选“不再提示”剧透警告（未设置时返回 default）"""
+    settings = load_settings()
+    raw = settings.get("no_spoiler_notice")
     if isinstance(raw, bool):
         return raw
     return default

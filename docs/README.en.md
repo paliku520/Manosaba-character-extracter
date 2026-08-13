@@ -7,20 +7,22 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 ## Features
 
-- **Auto Detection** — Automatically detects bundle component data: exports sprites directly when absent, or exports/composites when present
+- **Auto Detection** — Automatically detects bundle component data: preview/export directly when absent, or export/composite when present
 - **Character Illustration Compositing** — Composites full illustrations by component position & depth, with categorized parts, thumbnail previews, and live compositing preview
 - **Part Management** — search, natural sorting (prefix letters + numbers), collapsible groups, select all; click a selected sprite to copy its name
 - **Live Preview** — wheel zoom (cursor-centered), drag pan, min-zoom fits full resolution
+- **Sprite Preview** — no-component characters can preview all sprites in a single-row grid (sorted by filename), check to export selected or all
 - **Hierarchy Viewer** — component tree, each row has a copy button
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
 - **Memory Reclaim** — Resources are released immediately during loading/extraction/compositing with GC triggers; switching characters clears the previous character's data; forced GC before exit with a resource-check log
 - **Debug Mode** — Monitor memory/CPU/window resolution in real time (shown in the title bar, effective only for the current run)
-- **Log Files** — Console logs are also written to `logs/` (named by startup time), one-click cleanup
+- **Log Files** — Console logs are also written to `logs/` (named by startup time), one-click cleanup; preview temp files are auto-cleaned on character switch/exit
 - **Multi-language** — Simplified Chinese / English / fiXmArge (a constructed language), auto-follows system, switchable in Settings
 - **Theme** — dark / light theme, persisted to settings
 - **Total Exports** — counts successful export operations (shown on the About page)
 - **About Page** — developer info, project links, rotating background, check for updates
-- **Auto Update Check** — Silently checks for new GitHub versions at startup
+- **Auto Update Check** — Silently checks for new GitHub versions at startup (version tags compatible with `pre-view-n` / `hotfix-n`; badge green = stable, yellow = pre-release)
+- **Disclaimer** — Sidebar and About page state “This tool is a third-party unofficial tool and is not affiliated with the game official”; also logged at startup
 
 ## Requirements
 
@@ -38,7 +40,7 @@ python run.py
 
 1. Click **Load Game Directory** → Select the game root directory or the `characters` directory
 2. Click a character on the left → the program auto-detects:
-   - **No component data** → Confirm, then directly export all sprites
+   - **No component data** → Choose **Preview Sprites / Export All Directly / Cancel**
    - **With component data** → Choose **Direct Export** or **Composite Character**
 3. Composite mode: check parts → live preview → save composite PNG
 
@@ -125,6 +127,8 @@ This project is a **deep refactoring and performance-optimized version** of the 
 This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENSE) file for details.
 
 **Disclaimer**: This tool is intended for learning and personal research purposes only. The copyright of the extracted content belongs to the original game developer.
+
+> This tool is a **third-party unofficial tool** and is not affiliated with the game official.
 
 ## Packaging as EXE
 

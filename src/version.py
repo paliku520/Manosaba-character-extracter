@@ -3,3 +3,5 @@
 """
 
 __version__ = "1.2.0"
+
+# 支持的后缀'-prewiew-n'、'-hoxfix-n'

@@ -3,7 +3,6 @@
 加载游戏目录中的所有 bundle 文件，自动查找 characters 目录。"""
 import gc
 from pathlib import Path
-from tkinter import Tk, filedialog
 from typing import Optional
 
 import UnityPy
@@ -50,48 +49,6 @@ class BundleLoader:
             save_settings(last_directory=path)
         except Exception as e:
             log("warning", _("log.saved_path_failed", e=e))
-
-    def remember_directory(self, path: str) -> None:
-        """记录上次使用的目录（公开接口，供 GUI 层调用）"""
-        if not path:
-            return
-        self.last_path = path
-        self._save_last_path(path)
-
-    # ── 目录选择 ──────────────────────────────────────────
-
-    def select_directory(self, title: str = "", parent=None) -> str | None:
-        """弹出文件夹选择对话框
-
-        Args:
-            title: 对话框标题
-            parent: 父窗口（推荐传入主窗口，避免多 Tk 根冲突导致路径异常）
-        """
-        if parent is not None:
-            # 使用已有主窗口作为父窗口（标准做法，避免额外创建 Tk 根）
-            dir_path = filedialog.askdirectory(
-                title=title or _("dir.select_title"),
-                initialdir=self.last_path,
-                parent=parent,
-            )
-            if dir_path:
-                self.last_path = dir_path
-                self._save_last_path(dir_path)
-            return dir_path or None
-
-        # 无父窗口时的兜底（独立临时根）
-        root = Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-
-        dir_path = filedialog.askdirectory(title=title or _("dir.select_title"), initialdir=self.last_path)
-        root.destroy()
-
-        if dir_path:
-            self.last_path = dir_path
-            self._save_last_path(dir_path)
-            return dir_path
-        return None
 
     # ── 查找 characters 目录 ──────────────────────────────
 
@@ -172,15 +129,29 @@ class BundleLoader:
     # ── Bundle 加载 ───────────────────────────────────────
 
     @staticmethod
-    def load_bundle(bundle_path: Path) -> bool:
-        """加载单个 bundle 文件，验证是否包含精灵；用后立即释放 UnityPy 环境（防内存累积）"""
+    def load_bundle(bundle_path: Path) -> tuple[bool, bool]:
+        """加载单个 bundle 文件，验证是否包含精灵/组件数据；用后立即释放 UnityPy 环境（防内存累积）
+
+        Returns:
+            (has_sprite, has_components) 是否含精灵 / 是否含 SpriteRenderer 组件
+        """
         env = None
         try:
             env = UnityPy.load(str(bundle_path))
-            return any(obj.type.name == "Sprite" for obj in env.objects)
+            has_sprite = False
+            has_components = False
+            for obj in env.objects:
+                t = obj.type.name
+                if t == "Sprite":
+                    has_sprite = True
+                elif t == "SpriteRenderer":
+                    has_components = True
+                if has_sprite and has_components:
+                    break
+            return (has_sprite, has_components)
         except Exception as e:
             log("error", _("log.load_failed", name=bundle_path.name, e=e))
-            return False
+            return (False, False)
         finally:
             # 释放 UnityPy 环境（大对象）：清空已解析文件并断开引用
             if env is not None:
@@ -212,6 +183,7 @@ class BundleLoader:
             "count": 0,
             "errors": [],
             "cancelled": False,
+            "components": {},   # {角色名: 是否含组件数据}
         }
 
         root_path = Path(directory)
@@ -246,8 +218,10 @@ class BundleLoader:
                 result["cancelled"] = True
                 return result
             name = bundle_path.stem
-            if self.load_bundle(bundle_path):
+            has_sprite, has_components = self.load_bundle(bundle_path)
+            if has_sprite:
                 result["bundles"][name] = str(bundle_path)
+                result["components"][name] = has_components
                 result["count"] += 1
                 log("info", _("log.loaded_char", name=name))
             else:
@@ -281,12 +255,3 @@ class BundleLoader:
         if characters_dir is None:
             result["errors"].append(_("dialog.characters_not_found", path=root_path))
         return characters_dir
-
-    def load_with_gui(self) -> dict:
-        """使用 GUI 选择目录并加载"""
-        dir_path = self.select_directory(_("dir.select_title"))
-        if not dir_path:
-            log("warning", _("log.user_cancelled"))
-            return {"success": False, "bundles": {}, "count": 0, "errors": [_("dialog.user_cancelled")]}
-
-        return self.load_from_directory(dir_path)

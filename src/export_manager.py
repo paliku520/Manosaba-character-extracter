@@ -15,6 +15,7 @@ from PIL import Image
 
 from src.logtools import log
 from src.i18n import _
+from src.compositor import LoadCancelled
 
 # ---------------------------------------------------------------------------
 # 精灵导出
@@ -25,6 +26,7 @@ def export_sprites(
     output_dir: Path,
     has_components: bool = False,
     progress_callback=None,
+    cancel_check=None,
 ) -> List[Dict]:
     """
     从 bundle 中提取所有精灵并保存为 PNG。
@@ -34,6 +36,7 @@ def export_sprites(
         output_dir:        输出根目录
         has_components:    角色是否拥有组件结构
         progress_callback: 可选进度回调 fn(current, total)
+        cancel_check:      可选取消检查 fn() -> bool，返回 True 时抛 LoadCancelled
 
     Returns:
         [{ "name": str, "path_id": int, "file_path": str, "size": [w, h] }, ...]
@@ -55,6 +58,8 @@ def export_sprites(
     results = []
 
     for idx, obj in enumerate(sprite_objs):
+        if cancel_check and cancel_check():
+            raise LoadCancelled()
         try:
             data = obj.read()
             if not hasattr(data, "image") or data.image is None:

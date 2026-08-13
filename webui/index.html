@@ -57,6 +57,7 @@
           <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
           <span data-i18n="left.clear_cache">清除缓存</span>
         </button>
+        <div class="sidebar-disclaimer" data-i18n="app.disclaimer">本工具为第三方非官方工具，与游戏官方无关。</div>
       </div>
     </aside>
 
@@ -88,7 +89,31 @@
 
       <!-- 部件选择页 -->
       <section id="tab-parts" class="tab-panel">
-        <div class="parts-layout">
+        <!-- 无组件角色精灵预览（复用部件选择 tab） -->
+        <div id="preview-panel" class="sprite-preview-panel" hidden>
+          <div class="sprite-preview-banner">
+            <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 9v4M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <span data-i18n="preview.banner">此角色无组件数据，已进入精灵预览模式（可勾选后导出）</span>
+          </div>
+          <div class="sprite-preview-toolbar">
+            <div class="sprite-preview-title">
+              <span id="preview-name" class="parts-name">—</span>
+              <span id="preview-count" class="pill"></span>
+            </div>
+            <div class="parts-toolbar-actions">
+              <button id="btn-prev-select-all" class="btn sm" data-i18n="preview.select_all">全选</button>
+              <button id="btn-prev-clear" class="btn sm" data-i18n="preview.clear">取消选择</button>
+              <button id="btn-prev-export-sel" class="btn sm primary" data-i18n="preview.export_selected">导出选中</button>
+              <button id="btn-prev-export-all" class="btn sm" data-i18n="preview.export_all">导出全部</button>
+            </div>
+          </div>
+          <div id="preview-grid" class="sprite-preview-grid"></div>
+          <div id="sprite-preview-empty" class="empty-state" hidden>
+            <div class="empty-icon"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
+            <p data-i18n="preview.empty">未找到任何精灵</p>
+          </div>
+        </div>
+        <div id="parts-layout" class="parts-layout">
           <div class="parts-col">
             <div class="parts-toolbar">
               <div class="parts-title">

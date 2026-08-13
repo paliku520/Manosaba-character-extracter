@@ -40,11 +40,22 @@ def _normalize_version(tag: str) -> str:
 
 
 def _parse_version(version: str) -> Optional[tuple]:
-    """将版本号解析为可比较的元组（如 1.2.3 -> (1, 2, 3)），解析失败返回 None"""
-    parts = re.findall(r"\d+", version)
-    if not parts:
+    """将版本号解析为可比较的元组；兼容 pre-view-n / hotfix-n 等后缀。
+
+    返回 (主版本, 是否预发布, hotfix 编号)，如：
+      1.2.3            -> ((1, 2, 3), False, 0)
+      1.2.3-pre-view-1 -> ((1, 2, 3), True,  0)
+      1.2.3-hotfix-2   -> ((1, 2, 3), False, 2)
+    解析失败返回 None。
+    """
+    nums = re.findall(r"\d+", version)
+    if not nums:
         return None
-    return tuple(int(p) for p in parts)
+    main = tuple(int(n) for n in nums[:3])
+    lower = version.lower()
+    prerelease = any(k in lower for k in ("pre", "rc", "beta", "alpha"))
+    hotfix = int(nums[3]) if len(nums) > 3 and "hotfix" in lower else 0
+    return (main, prerelease, hotfix)
 
 
 def _is_newer(latest: str, current: str) -> bool:
@@ -53,7 +64,15 @@ def _is_newer(latest: str, current: str) -> bool:
     cv = _parse_version(current)
     if lv is None or cv is None:
         return False
-    return lv > cv
+    lm, lp, lh = lv
+    cm, cp, ch = cv
+    if lm != cm:
+        return lm > cm
+    # 主版本相同：正式版（非预发布）优先于预发布（pre-view/beta/rc 等）
+    if lp != cp:
+        return cp and not lp
+    # 预发布状态相同：hotfix 编号较大的更新
+    return lh > ch
 
 
 def check_for_update(

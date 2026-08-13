@@ -32,8 +32,10 @@ import clr
 from src.bundle_loader import BundleLoader
 from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
+    LoadCancelled,
     SpriteCompositor,
     extract_character_data,
+    extract_sprites,
     has_component_data,
 )
 from src.export_manager import export_sprites, save_composite
@@ -48,7 +50,7 @@ from src.i18n import (
 )
 from src.logtools import clear_logs, configure, log
 from src.resource_monitor import ResourceMonitor
-from src.settings import get_export_count, get_lang, get_last_directory, get_output_dir, get_theme, get_use_chinese_names, save_settings
+from src.settings import get_export_count, get_lang, get_last_directory, get_no_spoiler, get_output_dir, get_show_original_name, get_theme, save_settings
 from src.updater import check_for_update
 from src.version import __version__
 
@@ -127,6 +129,16 @@ def _sprite_thumb_data_url(path: Path, size=(96, 96)) -> Optional[str]:
         return None
 
 
+def _sprite_full_data_url(path: Path, max_side: int = 512) -> Optional[str]:
+    """生成精灵完整预览图 data URL（等比缩放，不裁剪、不居中，透明背景）"""
+    try:
+        img = Image.open(path).convert("RGBA")
+        img.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        return _pil_to_data_url(img)
+    except Exception:
+        return None
+
+
 # ===================================================================
 # 资源定位（兼容 PyInstaller）
 # ===================================================================
@@ -177,17 +189,22 @@ class JsApi:
         self._bundles: Dict[str, str] = {}            # {角色名: bundle路径}
         self._character_data: Optional[Dict] = None   # 当前角色的提取数据
         self._composite_image: Optional[Image.Image] = None
+        self._preview_sprites: Optional[List] = None  # 无组件角色的预览精灵
 
         # 目录
         self._output_dir = output_dir or get_output_dir(BASE_DIR / "output")
         self._temp_dir = BASE_DIR / "temp"
         self._export_count = get_export_count()  # 累计导出次数（每次成功导出 +1，跨会话持久化）
-        self._use_chinese_names = get_use_chinese_names()  # 是否显示角色中文名（可选项，settings.json）
+        self._show_original_name = get_show_original_name()  # 是否显示原始文件名（默认显示本地化角色名，settings.json）
+        self._no_spoiler = get_no_spoiler()  # 是否不再提示剧透警告（settings.json）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
         self._monitor: Optional[ResourceMonitor] = None  # 资源占用监视线程（调试模式开启时创建）
         self._base_title: str = ""              # 窗口基础标题（调试模式时附加资源占用信息）
+        self._char_gen = 0                      # 角色加载代号：递增以中断旧加载
+        self._char_busy = False                 # 是否正在加载角色/导出（读条中禁止切换）
+        self._char_has_component: Dict[str, bool] = {}  # 加载目录时缓存的角色组件状态（避免点击时重复解析 bundle）
 
     # ── 事件推送 ──────────────────────────────────────────
 
@@ -254,7 +271,8 @@ class JsApi:
             "frozen": getattr(sys, "frozen", False),
             "theme": get_theme(),
             "export_count": self._export_count,
-            "use_chinese_names": self._use_chinese_names,
+            "show_original_name": self._show_original_name,
+            "no_spoiler": self._no_spoiler,
             "debug": self._debug_monitor,
         }
 
@@ -285,12 +303,18 @@ class JsApi:
             log("info", _("log.theme_changed", theme=theme))
         return {"theme": theme}
 
-    def set_use_chinese_names(self, enable: bool) -> dict:
-        """保存是否显示角色中文名到 settings.json"""
-        self._use_chinese_names = bool(enable)
-        save_settings(use_chinese_names=self._use_chinese_names)
-        log("info", _("log.chinese_names_on") if self._use_chinese_names else _("log.chinese_names_off"))
-        return {"use_chinese_names": self._use_chinese_names}
+    def set_show_original_name(self, enable: bool) -> dict:
+        """保存是否显示原始文件名到 settings.json"""
+        self._show_original_name = bool(enable)
+        save_settings(show_original_name=self._show_original_name)
+        log("info", _("log.original_name_on") if self._show_original_name else _("log.original_name_off"))
+        return {"show_original_name": self._show_original_name}
+
+    def set_no_spoiler(self, enable: bool) -> dict:
+        """保存是否不再提示剧透警告到 settings.json"""
+        self._no_spoiler = bool(enable)
+        save_settings(no_spoiler_notice=self._no_spoiler)
+        return {"no_spoiler": self._no_spoiler}
 
     def set_debug(self, enable: bool) -> dict:
         """开启/关闭调试模式（仅本次运行有效，不持久化）。
@@ -466,6 +490,7 @@ class JsApi:
                 self._loading_path = None
             if result["success"]:
                 self._bundles = result["bundles"]
+                self._char_has_component = result.get("components", {})
                 log("info", _("log.load_complete", count=result["count"]))
             else:
                 log("warning", _("log.load_error", errors=result["errors"]))
@@ -482,6 +507,12 @@ class JsApi:
         # 清理上一个角色的内存临时数据
         self._character_data = None
         self._composite_image = None
+        self._preview_sprites = None
+        # 切换角色时清理 preview 临时预览目录
+        preview_dir = self._temp_dir / "preview"
+        if preview_dir.exists():
+            shutil.rmtree(preview_dir, ignore_errors=True)
+            log("info", _("log.preview_cleaned", path=str(preview_dir)))
         import gc
         gc.collect()
 
@@ -495,7 +526,10 @@ class JsApi:
                 return
             self._emit("status", {"text": _("app.status.analyzing", name=name)})
             try:
-                has = has_component_data(bundle_path)
+                # 优先使用加载目录时缓存的组件状态（不再重复解析 bundle）；无缓存时回退实时分析
+                has = self._char_has_component.get(name)
+                if has is None:
+                    has = has_component_data(bundle_path)
                 log("info", _("log.analyze_has", name=name) if has else _("log.analyze_none", name=name))
             except Exception as e:
                 log("error", _("log.analyze_failed", name=name, e=e))
@@ -509,9 +543,122 @@ class JsApi:
 
     # ── 导出 / 提取 / 合成 ────────────────────────────────
 
+    def preview_bundle(self, name: str):
+        """提取无组件角色的精灵到临时预览目录（事件: progress / preview_ready / preview_error）"""
+        def worker():
+            gen = self._char_gen
+            self._char_busy = True
+            bundle_path = Path(self._bundles.get(name, ""))
+            target = self._temp_dir / "preview" / name
+            def cb(cur, total):
+                self._emit("progress", {"current": cur, "total": total, "phase": "preview"})
+            self._emit("status", {"text": _("app.status.extracting", name=name)})
+            try:
+                existing = list(target.glob("*.png")) if target.exists() else []
+                if existing:
+                    # 复用已提取的预览缓存（不重新解析 bundle）
+                    sprites = []
+                    for p in sorted(existing):
+                        if gen != self._char_gen:
+                            raise LoadCancelled()
+                        try:
+                            with Image.open(p) as im:
+                                size = list(im.size)
+                        except Exception:
+                            size = [0, 0]
+                        sprites.append({"name": p.stem, "path_id": -1, "file_path": str(p), "size": size})
+                else:
+                    target.mkdir(parents=True, exist_ok=True)
+                    sprites = extract_sprites(
+                        bundle_path, self._temp_dir / "preview",
+                        progress_callback=cb, cancel_check=lambda: gen != self._char_gen,
+                    )
+            except LoadCancelled:
+                # 用户中断：清理预览临时数据
+                shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
+                self._preview_sprites = None
+                log("info", _("log.char_load_cancelled"))
+                return
+            except Exception as e:
+                log("error", _("log.process_data_failed", e=e))
+                self._emit("preview_error", {"name": name, "message": str(e)})
+                return
+            finally:
+                self._char_busy = False
+            self._preview_sprites = sprites
+            log("info", _("log.preview_ready", name=name, count=len(sprites)))
+            self._emit("preview_ready", {
+                "name": name,
+                "count": len(sprites),
+                "sprites": [{"name": s["name"], "size": s["size"]} for s in sprites],
+            })
+        self._run_async(worker)
+        return True
+
+    def get_preview_thumbnails(self):
+        """为当前预览精灵生成完整预览图 data URL（事件: preview_thumbs_ready）"""
+        def worker():
+            result = {}
+            for s in (self._preview_sprites or []):
+                url = _sprite_full_data_url(Path(s["file_path"]), max_side=768)
+                if url:
+                    result[s["name"]] = url
+            self._emit("preview_thumbs_ready", result)
+        self._run_async(worker)
+        return True
+
+    def export_preview(self, name: str, selected_names: Optional[List[str]] = None):
+        """导出预览精灵到输出目录；selected_names 为空则导出全部（事件: progress / export_complete / export_error）"""
+        def worker():
+            src_dir = self._temp_dir / "preview" / name
+            if not src_dir.exists():
+                self._emit("export_error", {"name": name, "message": "no_preview"})
+                return
+            out_dir = self._output_dir / name
+            out_dir.mkdir(parents=True, exist_ok=True)
+            files = sorted(src_dir.glob("*.png"))
+            if selected_names:
+                sel = set(selected_names)
+                files = [f for f in files if f.stem in sel]
+            count = 0
+            for f in files:
+                try:
+                    shutil.copy2(f, out_dir / f.name)
+                    count += 1
+                except Exception as e:
+                    log("error", _("log.sprite_extract_failed", id=f.name, e=e))
+            self._export_count += 1
+            save_settings(export_count=self._export_count)
+            log("info", _("log.export_complete", name=name, count=count))
+            self._emit("export_complete", {
+                "name": name, "count": count,
+                "output_dir": str(out_dir),
+                "export_count": self._export_count,
+            })
+        self._run_async(worker)
+        return True
+
+    def cancel_character_load(self) -> dict:
+        """中断当前角色加载/导出，并清理临时数据"""
+        self._char_gen += 1
+        self._char_busy = False
+        self._character_data = None
+        self._composite_image = None
+        self._preview_sprites = None
+        try:
+            shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
+        except Exception:
+            pass
+        import gc
+        gc.collect()
+        log("info", _("log.char_load_cancelled"))
+        return {"ok": True}
+
     def export_sprites(self, name: str, has_components: bool):
         """导出角色全部精灵（事件: progress / export_complete / export_error）"""
         def worker():
+            gen = self._char_gen
+            self._char_busy = True
             bundle_path = Path(self._bundles.get(name, ""))
             def cb(cur, total):
                 self._emit("progress", {"current": cur, "total": total, "phase": "export"})
@@ -521,14 +668,21 @@ class JsApi:
                 results = export_sprites(
                     bundle_path, self._output_dir,
                     has_components=bool(has_components), progress_callback=cb,
+                    cancel_check=lambda: gen != self._char_gen,
                 )
+            except LoadCancelled:
+                log("info", _("log.char_load_cancelled"))
+                self._char_busy = False
+                return
             except Exception as e:
                 log("error", _("log.export_failed", name=name, e=e))
                 self._emit("export_error", {"name": name, "message": str(e)})
+                self._char_busy = False
                 return
             # 累计导出次数（每次成功导出 +1，不按图片数量）
             self._export_count += 1
             save_settings(export_count=self._export_count)
+            self._char_busy = False
             log("info", _("log.export_complete", name=name, count=len(results)))
             self._emit("export_complete", {
                 "name": name, "count": len(results),
@@ -541,11 +695,14 @@ class JsApi:
     def start_composite_mode(self, name: str):
         """进入拼接模式：提取角色数据（优先缓存）（事件: progress / data_ready / data_error）"""
         def worker():
+            gen = self._char_gen
+            self._char_busy = True
             bundle_path = Path(self._bundles.get(name, ""))
             cached = load_extracted_data(self._temp_dir, name)
             if cached:
                 self._character_data = cached
                 log("info", _("log.extract_cache_hit", name=name))
+                self._char_busy = False
                 self._emit("data_ready", self._data_summary(cached))
                 return
             def cb(cur, total):
@@ -553,13 +710,25 @@ class JsApi:
             self._emit("status", {"text": _("app.status.extracting", name=name)})
             try:
                 self._temp_dir.mkdir(parents=True, exist_ok=True)
-                data = extract_character_data(bundle_path, self._temp_dir, progress_callback=cb)
+                data = extract_character_data(
+                    bundle_path, self._temp_dir, progress_callback=cb,
+                    cancel_check=lambda: gen != self._char_gen,
+                )
                 save_extracted_data(data, self._temp_dir, name)
+            except LoadCancelled:
+                # 用户中断：清理本次提取的内存与磁盘数据
+                self._character_data = None
+                shutil.rmtree(self._temp_dir / name, ignore_errors=True)
+                log("info", _("log.char_load_cancelled"))
+                self._char_busy = False
+                return
             except Exception as e:
                 log("error", _("log.process_data_failed", e=e))
                 self._emit("data_error", {"name": name, "message": str(e)})
+                self._char_busy = False
                 return
             self._character_data = data
+            self._char_busy = False
             count = len(data.get("transform_data", []))
             log("info", _("log.extract_complete", name=name, count=count))
             self._emit("data_ready", self._data_summary(data))
@@ -653,12 +822,26 @@ class JsApi:
 
     # ── 清理 / 更新 ────────────────────────────────────────
 
-    def clear_cache(self):
-        """清空 temp 缓存（事件: cache_cleared）"""
+    def clear_cache(self, keep_preview: bool = False):
+        """清空 temp 缓存（事件: cache_cleared）；keep_preview=True 时保留 preview 预览临时目录"""
         def worker():
-            shutil.rmtree(self._temp_dir, ignore_errors=True)
+            if keep_preview and self._temp_dir.exists():
+                # 保留预览临时目录，仅清理其余缓存（精灵/角色数据等）
+                for child in self._temp_dir.iterdir():
+                    if child.name == "preview":
+                        continue
+                    if child.is_dir():
+                        shutil.rmtree(child, ignore_errors=True)
+                    else:
+                        try:
+                            child.unlink()
+                        except Exception:
+                            pass
+            else:
+                shutil.rmtree(self._temp_dir, ignore_errors=True)
             self._character_data = None
             self._composite_image = None
+            self._preview_sprites = None
             log("info", _("log.cache_cleared"))
             self._emit("cache_cleared", {"temp_dir": str(self._temp_dir)})
         self._run_async(worker)
@@ -681,6 +864,15 @@ class JsApi:
             self._emit("log_cleared", {"ok": True, "count": count, "path": str(LOG_FILE) if LOG_FILE else ""})
         self._run_async(worker)
         return True
+
+    def quit_app(self) -> dict:
+        """退出程序（关闭主窗口触发退出流程）"""
+        try:
+            if self._window is not None:
+                self._window.destroy()
+        except Exception as e:
+            log("warning", f"quit_app failed: {e}")
+        return {"ok": True}
 
     def check_update(self, silent: bool = False):
         """检查更新（事件: update_result）"""
@@ -736,6 +928,8 @@ def main():
 
     # 程序启动日志（置于语言加载完成后，确保文案跟随当前语言）
     log("info", _("log.app_started", version=__version__))
+    # 启动时记录免责声明（第三方非官方工具提示）
+    log("info", _("app.disclaimer"))
 
     set_console_title()
 
@@ -760,8 +954,20 @@ def main():
     api._base_title = f"{_('app.title')} v{__version__}"  # 供调试模式标题栏附加资源占用信息
     webview.start(icon=_find_icon(), debug=_DEBUG)
 
+    # 结束时记录免责声明（第三方非官方工具提示）
+    log("info", _("app.disclaimer"))
+
     # 主窗口已关闭，进入退出流程：记录退出日志（此时 WebView2 等后台子进程可能仍在清理，故措辞为“正在退出”而非“已关闭”；若直接关闭控制台则进程立即终止，此段不会执行）
     log("info", _("log.app_exited"))
+
+    # 退出前清理 preview 临时预览目录
+    try:
+        preview_dir = BASE_DIR / "temp" / "preview"
+        if preview_dir.exists():
+            shutil.rmtree(preview_dir, ignore_errors=True)
+            log("info", _("log.preview_cleaned", path=str(preview_dir)))
+    except Exception:
+        pass
 
     # 退出前强制回收（释放 UnityPy / WebView2 等大对象），并输出资源检测日志
     try:

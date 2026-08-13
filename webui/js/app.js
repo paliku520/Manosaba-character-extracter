@@ -72,8 +72,13 @@
     hierarchyNav: { expand: [], collapse: [] },
     previewSize: null,       // 当前预览合成图实际尺寸 [w, h]
     exportCount: 0,          // 累计导出精灵数（来自后端 settings.json）
-    useChineseNames: false,  // 是否显示角色中文名（设置中调节）
+    showOriginalName: false,  // 是否显示原始文件名（设置中调节；默认显示本地化角色名）
     debugMode: false,        // 调试模式（仅本次运行，监视内存/CPU/窗口）
+    previewMode: false,      // 当前是否为无组件角色精灵预览模式
+    previewData: [],         // 无组件角色的预览精灵 [{name,size}]
+    previewThumbs: {},       // {精灵名: dataURL}
+    previewSel: new Set(),   // 已勾选精灵名
+    loading: false,          // 正在加载角色/导出（读条中禁止切换）
   };
 
   // 后端事件注册表
@@ -191,7 +196,7 @@
     const onKey = (e) => { if (e.key === 'Escape') close(); };
     const close = () => { backdrop.remove(); document.removeEventListener('keydown', onKey); };
     document.addEventListener('keydown', onKey);
-    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+    // 点击模态外部不关闭，需通过按钮 / ✕ / Esc 显式操作
     x.addEventListener('click', close);
     return { close, bodyEl, footerEl };
   }
@@ -233,13 +238,17 @@
     if (el) el.textContent = String(App.exportCount);
   }
   function showProgress(p) {
+    App.loading = true;
     const wrap = $('#progress-wrap');
     wrap.hidden = false;
     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
     $('#progress-bar').style.width = pct + '%';
     $('#progress-label').textContent = (App.lastStatus ? App.lastStatus + ' ' : '') + pct + '%';
   }
-  function clearProgress() { $('#progress-wrap').hidden = true; }
+  function clearProgress() {
+    App.loading = false;
+    $('#progress-wrap').hidden = true;
+  }
 
   // 标签页
   function switchTab(name) {
@@ -263,12 +272,11 @@
     return 0;                                               // 常规角色
   }
   function charDisplayName(name) {
-    // 仅当「设置开启中文名」且「当前语言为中文」时才显示中文角色名
-    if (!App.useChineseNames) return name;
-    if (window.I18N.current !== 'zh_CN') return name;
+    // 默认显示当前语言的本地化角色名（char.* 翻译键）；勾选“显示原始文件名”时显示原始文件名
+    if (App.showOriginalName) return name;
     const key = 'char.' + name;
     const data = window.I18N.data || {};
-    return (key in data) ? data[key] : name;        // 键缺失时回退原名
+    return (key in data) ? data[key] : name;        // 键缺失时回退原始文件名
   }
   function renderCharList() {
     const ul = $('#char-list');
@@ -298,6 +306,17 @@
     });
   }
 
+  // 刷新所有显示角色名的地方（侧边栏 / 部件页 / 预览页），切换中文名或语言时调用
+  function refreshNameDisplay() {
+    renderCharList();
+    if (!App.currentName) return;
+    const dn = charDisplayName(App.currentName);
+    const pn = $('#preview-name');
+    if (pn) pn.textContent = dn;
+    const partsName = $('#parts-name');
+    if (partsName) partsName.textContent = dn;
+  }
+
   function filterCharList(query) {
     const q = (query || '').trim().toLowerCase();
     $$('#char-list .char-item').forEach((li) => {
@@ -313,13 +332,22 @@
     api().load_directory(path);
   }
 
-  function onCharClick(name) {
+  async function onCharClick(name) {
+    if (App.loading) {
+      const ok = await confirmDialog(t('dialog.cancel_load_title'), t('dialog.cancel_load_msg'));
+      if (!ok) return;
+      api().cancel_character_load();
+    }
     console.log(t('log.js_select_char', { name }));
     App.currentName = name;
     App.characterData = null;
     App.selected.clear();
     App.thumbnails = {};
     App.partEls = {};
+    App.previewMode = false;
+    App.previewData = [];
+    App.previewThumbs = {};
+    App.previewSel.clear();
     clearPartsUI();
     clearPreview();
     renderCharList();
@@ -336,6 +364,77 @@
     $('#selected-list').innerHTML = '';
     $('#hierarchy-tree').innerHTML = '';
     $('#hierarchy-empty').hidden = false;
+    // 恢复常规部件布局（退出预览模式）
+    $('#preview-panel').hidden = true;
+    const pl = $('#parts-layout');
+    if (pl) pl.hidden = false;
+    $('#preview-grid').innerHTML = '';
+  }
+
+  // ── 无组件角色精灵预览模式 ──────────────────────────────
+
+  function enterPreviewMode(r) {
+    App.previewMode = true;
+    App.previewData = [];
+    App.previewThumbs = {};
+    App.previewSel.clear();
+    // 等待精灵加载完成（preview_ready）后再切换到预览视图
+    api().preview_bundle(r.name);
+  }
+
+  function updatePreviewCount() {
+    const total = App.previewData.length;
+    $('#preview-count').textContent = total ? t('preview.selected_count', { count: App.previewSel.size, total }) : '';
+    const btnSel = $('#btn-prev-export-sel');
+    if (btnSel) btnSel.disabled = App.previewSel.size === 0;
+  }
+
+  function renderPreviewGrid() {
+    const grid = $('#preview-grid');
+    grid.innerHTML = '';
+    // 按文件名升序（自然排序，n_n.png 数字感知）
+    const list = [...App.previewData].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    grid.hidden = list.length === 0;
+    $('#sprite-preview-empty').hidden = list.length > 0;
+    updatePreviewCount();
+    list.forEach((s) => {
+      const item = document.createElement('div');
+      item.className = 'sprite-preview-item' + (App.previewSel.has(s.name) ? ' selected' : '');
+      item.dataset.name = s.name;
+      const thumb = document.createElement('div');
+      thumb.className = 'sprite-preview-thumb';
+      const url = App.previewThumbs[s.name];
+      if (url) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = s.name;
+        thumb.appendChild(img);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'sprite-preview-meta';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'sprite-preview-name';
+      nameEl.textContent = s.name;
+      nameEl.title = s.name;
+      const sizeEl = document.createElement('div');
+      sizeEl.className = 'sprite-preview-size';
+      sizeEl.textContent = (s.size && s.size[0]) ? s.size[0] + '×' + s.size[1] : '';
+      meta.appendChild(nameEl);
+      meta.appendChild(sizeEl);
+      item.appendChild(thumb);
+      item.appendChild(meta);
+      item.addEventListener('click', () => togglePreviewSel(s.name));
+      grid.appendChild(item);
+    });
+  }
+
+  function togglePreviewSel(name) {
+    if (App.previewSel.has(name)) App.previewSel.delete(name);
+    else App.previewSel.add(name);
+    const item = document.querySelector('#preview-grid .sprite-preview-item[data-name="' + CSS.escape(name) + '"]');
+    if (item) item.classList.toggle('selected', App.previewSel.has(name));
+    updatePreviewCount();
   }
 
   function clearPreview() {
@@ -787,17 +886,17 @@
 
     const nameRow = document.createElement('div');
     nameRow.className = 'form-row';
-    nameRow.id = 'chinese-names-row';
+    nameRow.id = 'original-name-row';
     const nameSwitch = document.createElement('label');
     nameSwitch.className = 'switch';
     const nameCb = document.createElement('input');
     nameCb.type = 'checkbox';
-    nameCb.id = 'set-chinese-names';
+    nameCb.id = 'set-show-original';
     const slider = document.createElement('span');
     slider.className = 'slider';
     const nameText = document.createElement('span');
-    nameText.setAttribute('data-i18n', 'settings.chinese_names_label');
-    nameText.textContent = t('settings.chinese_names_label');
+    nameText.setAttribute('data-i18n', 'settings.original_name_label');
+    nameText.textContent = t('settings.original_name_label');
     nameSwitch.appendChild(nameCb);
     nameSwitch.appendChild(slider);
     nameSwitch.appendChild(nameText);
@@ -856,14 +955,13 @@
       if (api()) api().set_theme(themeSel.value); // 持久化到 settings.json
     });
 
-    // 仅当语言为中文时显示“显示中文名”选项
-    nameRow.style.display = (window.I18N.current === 'zh_CN') ? '' : 'none';
-    nameCb.checked = App.useChineseNames;
+    // 默认显示本地化角色名，勾选“显示原始文件名”后显示原始文件名
+    nameCb.checked = App.showOriginalName;
     nameCb.addEventListener('change', async () => {
       if (!api()) return;
-      const r = await api().set_use_chinese_names(nameCb.checked);
-      App.useChineseNames = !!r.use_chinese_names;
-      renderCharList();
+      const r = await api().set_show_original_name(nameCb.checked);
+      App.showOriginalName = !!r.show_original_name;
+      refreshNameDisplay();
     });
 
     debugCb.checked = App.debugMode;
@@ -902,7 +1000,7 @@
       renderInfoPage();       // 重建主信息页（其文本是动态渲染的）
       renderAboutPage();      // 重建关于页
       refreshPartsHeader();   // 如有已加载角色，刷新部件页头部计数
-      renderCharList();       // 角色名（开启中文名时随语言变化）
+      refreshNameDisplay();   // 角色名（开启中文名时随语言变化）
       refreshExportCount();   // 累计导出计数文本
       if (App.previewSize) applyPreviewZoom(); // 刷新缩放标签（适配/百分比）
       setStatus(t('app.status.ready'), false);
@@ -948,9 +1046,6 @@
     }
     // 其余带 data-i18n 的文本（标题/标签/按钮/主题选项）统一刷新
     window.I18N.applyDom();
-    // “显示中文名”选项仅在中文界面显示
-    const cnRow = document.querySelector('#chinese-names-row');
-    if (cnRow) cnRow.style.display = (window.I18N.current === 'zh_CN') ? '' : 'none';
   }
 
   // 语言切换后刷新部件页头部（角色名 + 计数）
@@ -1013,18 +1108,55 @@
     });
   }
 
-  function confirmExport(name) {
+  function showNoComponentDialog(name) {
+    const body = document.createElement('div');
+    const desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = t('dialog.no_component_msg');
+    body.appendChild(desc);
+
+    const mkCard = (mode, iconSvg, title, hint) => {
+      const card = document.createElement('div');
+      card.className = 'mode-card';
+      card.dataset.mode = mode;
+      const ic = document.createElement('span');
+      ic.className = 'mc-icon';
+      ic.innerHTML = iconSvg;
+      const box = document.createElement('div');
+      const t1 = document.createElement('div');
+      t1.className = 'mc-title';
+      t1.textContent = title;
+      const t2 = document.createElement('div');
+      t2.className = 'mc-desc';
+      t2.textContent = hint;
+      box.appendChild(t1); box.appendChild(t2);
+      card.appendChild(ic); card.appendChild(box);
+      return card;
+    };
+
+    const previewCard = mkCard('preview',
+      '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+      t('dialog.no_component_preview'), t('dialog.no_component_preview_hint'));
+    const exportCard = mkCard('export',
+      '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M12 11v5m0 0 2-2m-2 2-2-2"/></svg>',
+      t('dialog.no_component_export'), t('dialog.no_component_export_hint'));
+    body.appendChild(previewCard);
+    body.appendChild(exportCard);
+
     const footer = document.createElement('div');
     const cancel = btn(t('dialog.cancel'), 'btn sm', null);
-    const ok = btn(t('dialog.ok'), 'btn sm primary', null);
-    footer.appendChild(cancel); footer.appendChild(ok);
-    const { close } = showModal({
-      title: t('dialog.export_confirm_title'),
-      body: '<div class="desc">' + escapeHtml(t('dialog.export_confirm_msg', { name })) + '</div>',
-      footer,
+    footer.appendChild(cancel);
+    const { close } = showModal({ title: t('dialog.no_component_title', { name }), body, footer });
+    cancel.addEventListener('click', () => { close(); setStatus(t('app.status.ready'), false); });
+
+    previewCard.addEventListener('click', () => {
+      close();
+      enterPreviewMode({ name });
     });
-    cancel.addEventListener('click', close);
-    ok.addEventListener('click', () => { close(); api().export_sprites(name, false); });
+    exportCard.addEventListener('click', () => {
+      close();
+      api().export_sprites(name, false);
+    });
   }
 
   function offerOpen(title, message, path) {
@@ -1071,7 +1203,7 @@
     clearProgress();
     if (r.error) { setErrorStatus(); setStatus(t('app.status.analyze_failed')); toast(r.error, 'error'); return; }
     if (r.has_components) showModeDialog(r.name);
-    else confirmExport(r.name);
+    else showNoComponentDialog(r.name);
   });
 
   on('analyze_error', (r) => {
@@ -1081,9 +1213,36 @@
     toast(t('dialog.analyze_error_msg', { name: r.name, msg: r.message }), 'error');
   });
 
+  on('preview_ready', (d) => {
+    clearProgress();
+    console.log(t('log.preview_ready', { name: d.name, count: d.count }));
+    App.previewData = d.sprites || [];
+    setStatus(t('app.status.extract_done', { name: d.name, count: d.count }));
+    // 加载完成后再进入预览视图：隐藏组件选中板块，预览占满，再切到部件 tab
+    $('#preview-panel').hidden = false;
+    const pl = $('#parts-layout');
+    if (pl) pl.hidden = true;
+    $('#preview-name').textContent = charDisplayName(d.name);
+    $('#preview-count').textContent = '';
+    $('#sprite-preview-empty').hidden = true;
+    switchTab('parts');
+    api().get_preview_thumbnails();
+  });
+
+  on('preview_thumbs_ready', (map) => {
+    App.previewThumbs = map || {};
+    renderPreviewGrid();
+  });
+
+  on('preview_error', (r) => {
+    clearProgress();
+    setErrorStatus();
+    setStatus(t('app.status.analyze_failed'));
+    toast(t('dialog.process_error_msg', { msg: r.message }), 'error');
+  });
+
   on('export_complete', (r) => {
     clearProgress();
-    console.log(t('log.js_export_done', { name: r.name, count: r.count }));
     setStatus(t('app.status.export_done', { name: r.name, count: r.count }));
     toast(t('app.status.export_done', { name: r.name, count: r.count }), 'success');
     if (typeof r.export_count === 'number') {
@@ -1105,10 +1264,16 @@
 
   on('data_ready', (d) => {
     clearProgress();
-    console.log(t('log.js_extract_done', { name: d.name, count: d.count }));
     App.characterData = d;
     App.selected.clear();
     App.thumbnails = {};
+    App.previewMode = false;
+    App.previewData = [];
+    App.previewThumbs = {};
+    App.previewSel.clear();
+    $('#preview-panel').hidden = true;
+    const pl = $('#parts-layout');
+    if (pl) pl.hidden = false;
     sortParts(d); // 部件按前缀（首字母+数字）排序
     const ps = $('#parts-search');
     if (ps) ps.value = ''; // 切换角色后重置部件搜索
@@ -1321,7 +1486,8 @@
       '  <p class="about-thanks">' + t('about.thanks_text') + '</p>' +
       '</div>' +
       '<p class="about-copy">' + t('about.copyright') + '</p>' +
-      '<p class="about-note">' + t('about.license_note') + '</p>';
+      '<p class="about-note">' + t('about.license_note') + '</p>' +
+      '<p class="about-disclaimer">' + t('app.disclaimer') + '</p>';
   }
 
   // 关于页背景轮播（参考站 images/bg/01~45.webp，随机起始、定时切换）
@@ -1356,8 +1522,10 @@
     $('#btn-open-output').addEventListener('click', () => api().open_output());
     $('#btn-settings').addEventListener('click', openSettings);
     $('#btn-clear-cache').addEventListener('click', async () => {
+      switchTab('info');  // 先返回信息页，再清理
       const okc = await confirmDialog(t('left.clear_cache_confirm_title'), t('left.clear_cache_confirm_msg'));
-      if (okc) api().clear_cache();
+      if (!okc) return;
+      api().clear_cache(App.previewMode);  // 无组件预览模式时保留 preview 预览缓存
     });
     $('#char-search').addEventListener('input', (e) => filterCharList(e.target.value));
     $('#parts-search').addEventListener('input', (e) => filterParts(e.target.value));
@@ -1366,6 +1534,24 @@
 
     $('#btn-select-all').addEventListener('click', () => selectAll(true));
     $('#btn-deselect-all').addEventListener('click', () => selectAll(false));
+
+    // 无组件预览模式
+    $('#btn-prev-select-all').addEventListener('click', () => {
+      App.previewSel = new Set(App.previewData.map((s) => s.name));
+      renderPreviewGrid();
+    });
+    $('#btn-prev-clear').addEventListener('click', () => {
+      App.previewSel.clear();
+      renderPreviewGrid();
+    });
+    $('#btn-prev-export-sel').addEventListener('click', () => {
+      if (App.previewSel.size === 0) { toast(t('parts.no_selection_hint'), 'warning'); return; }
+      api().export_preview(App.currentName, Array.from(App.previewSel));
+    });
+    $('#btn-prev-export-all').addEventListener('click', () => {
+      api().export_preview(App.currentName, null);
+    });
+
     $('#btn-composite').addEventListener('click', doComposite);
     $('#btn-save').addEventListener('click', () => { if (App.characterData) api().save_composite(); });
     $('#btn-clear-preview').addEventListener('click', clearPreview);
@@ -1392,6 +1578,38 @@
 
   // ═════════════ 初始化 ═════════════
 
+  // 启动剧透提示（勾选"不再提示"并点"继续"后不再弹出，持久化到 settings.json）
+  function showSpoilerNotice() {
+    if (App.info && App.info.no_spoiler) return;
+    const body = document.createElement('div');
+    const msg = document.createElement('div');
+    msg.className = 'desc';
+    msg.textContent = t('dialog.spoiler_msg');
+    body.appendChild(msg);
+    const label = document.createElement('label');
+    label.className = 'form-row';
+    label.style.flexDirection = 'row';
+    label.style.alignItems = 'center';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    const cbText = document.createElement('span');
+    cbText.textContent = t('dialog.spoiler_never');
+    label.appendChild(cb);
+    label.appendChild(cbText);
+    body.appendChild(label);
+    const footer = document.createElement('div');
+    const quit = btn(t('dialog.spoiler_quit'), 'btn sm', null);
+    const cont = btn(t('dialog.spoiler_continue'), 'btn sm primary', null);
+    footer.appendChild(quit);
+    footer.appendChild(cont);
+    const { close } = showModal({ title: t('dialog.spoiler_title'), body, footer });
+    quit.addEventListener('click', () => { api().quit_app(); });
+    cont.addEventListener('click', () => {
+      if (cb.checked) api().set_no_spoiler(true);
+      close();
+    });
+  }
+
   async function init() {
     if (!window.pywebview || !window.pywebview.api) {
       const el = document.createElement('div');
@@ -1407,8 +1625,26 @@
       const info = await window.pywebview.api.get_app_info();
       App.info = info;
       window.I18N.set(info.translations, info.current_lang, info.lang_names);
-      $('#version-badge').textContent = 'v' + info.version;
+      const vb = $('#version-badge');
+      vb.textContent = 'v' + info.version;
+      vb.title = 'v' + info.version;  // 完整版本号（被省略号截断时悬停可见）
+      const isPrerelease = /(pre|rc|beta|alpha)/i.test(info.version || '');
+      vb.classList.toggle('prerelease', isPrerelease);
       document.title = 'Manosaba Extracter v' + info.version;
+      // 测试版：每次启动时提示
+      if (isPrerelease) {
+        const footer = document.createElement('div');
+        const ok = btn(t('dialog.ok'), 'btn sm primary', null);
+        footer.appendChild(ok);
+        const { close } = showModal({
+          title: t('dialog.prerelease_title'),
+          body: '<div class="desc">' + escapeHtml(t('dialog.prerelease_msg', { version: info.version })) + '</div>',
+          footer,
+        });
+        ok.addEventListener('click', close);
+      }
+      // 剧透提示（首次启动，或未勾选"不再提示"时）
+      showSpoilerNotice();
       // 主题：以 settings.json（后端）为权威，localStorage 仅作旧版兜底
       let theme = 'dark';
       try { theme = localStorage.getItem('msx-theme') || theme; } catch (e) { /* ignore */ }
@@ -1420,7 +1656,7 @@
       renderAboutPage();
       initAboutBg();
       App.exportCount = (typeof info.export_count === 'number') ? info.export_count : 0;
-      App.useChineseNames = !!info.use_chinese_names;
+      App.showOriginalName = !!info.show_original_name;
       App.debugMode = !!info.debug;
       refreshExportCount();
       window.pywebview.api.check_update(true); // 静默检查更新
