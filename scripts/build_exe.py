@@ -58,15 +58,19 @@ def make_version_file(
     description = description or APP_DESCRIPTION
     copyright_ = copyright_ or APP_COPYRIGHT
 
+    import re
     sys.path.insert(0, str(PROJECT_ROOT))
     from src.version import __version__
 
-    parts = __version__.split(".")
+    # 版本号可能带后缀（如 v1.2.0-prewiew-1、v1.2.0-hotfix-2），只取前导数字段作为 4 段版本
+    m = re.match(r"(\d+(?:\.\d+)*)", __version__)
+    ver_digits = m.group(1) if m else "0"
+    parts = ver_digits.split(".")
     while len(parts) < 4:
         parts.append("0")
     ver = tuple(int(p) for p in parts[:4])
     ver_str = ".".join(str(v) for v in ver)
-    # 属性中显示带 v 的版本号（如 v1.2.0）；FixedFileInfo 仍用 4 段数字供系统比较
+    # 属性中显示带 v 的完整版本号（如 v1.2.0-prewiew-1）；FixedFileInfo 仍用 4 段数字供系统比较
     display_ver = f"v{__version__}"
 
     content = f"""# UTF-8

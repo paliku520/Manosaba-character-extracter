@@ -40,22 +40,33 @@ def _normalize_version(tag: str) -> str:
 
 
 def _parse_version(version: str) -> Optional[tuple]:
-    """将版本号解析为可比较的元组；兼容 pre-view-n / hotfix-n 等后缀。
+    """将版本号解析为可比较的元组；兼容 prewiew-n / hotfix-n 等后缀。
 
-    返回 (主版本, 是否预发布, hotfix 编号)，如：
-      1.2.3            -> ((1, 2, 3), False, 0)
-      1.2.3-pre-view-1 -> ((1, 2, 3), True,  0)
-      1.2.3-hotfix-2   -> ((1, 2, 3), False, 2)
+    返回 (主版本, 发布级别, 发布编号)，发布级别：
+      2 = hotfix（同一主版本下最高）
+      1 = 正式版（无后缀）
+      0 = prewiew（预发布，最低）
+    发布编号为同级内的序号（如 hotfix-2 的 2、prewiew-1 的 1），无后缀时为 0。
+    如：
+      1.2.3            -> ((1, 2, 3), 1, 0)
+      1.2.3-prewiew-1  -> ((1, 2, 3), 0, 1)
+      1.2.3-hotfix-2   -> ((1, 2, 3), 2, 2)
     解析失败返回 None。
     """
-    nums = re.findall(r"\d+", version)
-    if not nums:
+    m = re.match(r"(\d+(?:\.\d+)*)", version)
+    if not m:
         return None
-    main = tuple(int(n) for n in nums[:3])
+    main = tuple(int(n) for n in m.group(1).split("."))
     lower = version.lower()
-    prerelease = any(k in lower for k in ("pre", "rc", "beta", "alpha"))
-    hotfix = int(nums[3]) if len(nums) > 3 and "hotfix" in lower else 0
-    return (main, prerelease, hotfix)
+    if "hotfix" in lower:
+        level = 2
+    elif any(k in lower for k in ("prewiew", "pre-view", "pre", "rc", "beta", "alpha")):
+        level = 0
+    else:
+        level = 1
+    nums = re.findall(r"\d+", version)
+    seq = int(nums[-1]) if level != 1 and len(nums) > 1 else 0
+    return (main, level, seq)
 
 
 def _is_newer(latest: str, current: str) -> bool:
@@ -64,14 +75,14 @@ def _is_newer(latest: str, current: str) -> bool:
     cv = _parse_version(current)
     if lv is None or cv is None:
         return False
-    lm, lp, lh = lv
-    cm, cp, ch = cv
+    lm, ll, lh = lv
+    cm, cl, ch = cv
     if lm != cm:
         return lm > cm
-    # 主版本相同：正式版（非预发布）优先于预发布（pre-view/beta/rc 等）
-    if lp != cp:
-        return cp and not lp
-    # 预发布状态相同：hotfix 编号较大的更新
+    # 主版本相同：hotfix(2) > 正式版(1) > prewiew(0)
+    if ll != cl:
+        return ll > cl
+    # 发布级别相同：hotfix 编号较大的更新
     return lh > ch
 
 
