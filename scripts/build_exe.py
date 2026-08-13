@@ -21,16 +21,100 @@
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 # 脚本在 scripts/ 子目录中，项目根目录在其父目录
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+
+
+# ── exe 版本信息（可自行修改）──────────────────────
+# 写入 exe 的详细信息（右键 exe → 属性 → 详细信息），可降低杀软误报。
+# 个人业余开发者无公司时，可将 APP_COMPANY 填为自己的昵称 / GitHub 用户名。
+APP_COMPANY = "paliku520(云野风云)"                                               # 公司/开发者名称
+APP_PRODUCT_NAME = "Manosaba Character Extractor"                                # 产品名称
+APP_DESCRIPTION = "Manosaba 角色立绘提取与合成工具"                                  # 文件说明
+APP_COPYRIGHT = "Copyright (c) 2026 paliku520. Licensed under GPL-3.0."          # 版权信息
 
 
 # ──────────────────────────────────────────────
 # 1. 运行 PyInstaller
 # ──────────────────────────────────────────────
 
-def run_pyinstaller(onefile: bool = False, name: str = "ManosabaExtracter", icon: str = "assets/icon.ico"):
+def make_version_file(
+    name: str,
+    company: Optional[str] = None,
+    product_name: Optional[str] = None,
+    description: Optional[str] = None,
+    copyright_: Optional[str] = None,
+) -> Path:
+    """生成 PyInstaller 版本信息文件（提供 exe 文件版本/产品名称等，降低杀软误报）。
+
+    版本号从 src/version.py 的 __version__ 读取（单一数据源），自动转成 4 段。
+    版本信息字段优先取命令行参数，未提供时回退到本文件顶部 APP_* 常量。
+    """
+    # 命令行参数优先，否则使用顶部常量
+    company = company or APP_COMPANY
+    product_name = product_name or APP_PRODUCT_NAME
+    description = description or APP_DESCRIPTION
+    copyright_ = copyright_ or APP_COPYRIGHT
+
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from src.version import __version__
+
+    parts = __version__.split(".")
+    while len(parts) < 4:
+        parts.append("0")
+    ver = tuple(int(p) for p in parts[:4])
+    ver_str = ".".join(str(v) for v in ver)
+
+    content = f"""# UTF-8
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=({ver[0]}, {ver[1]}, {ver[2]}, {ver[3]}),
+    prodvers=({ver[0]}, {ver[1]}, {ver[2]}, {ver[3]}),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'040904B0',
+          [StringStruct(u'CompanyName', u'{company}'),
+           StringStruct(u'FileDescription', u'{description}'),
+           StringStruct(u'FileVersion', u'{ver_str}'),
+           StringStruct(u'InternalName', u'{name}'),
+           StringStruct(u'LegalCopyright', u'{copyright_}'),
+           StringStruct(u'OriginalFilename', u'{name}.exe'),
+           StringStruct(u'ProductName', u'{product_name}'),
+           StringStruct(u'ProductVersion', u'{ver_str}')]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [1033, 1200])])
+  ]
+)
+"""
+    vf = PROJECT_ROOT / "build" / "version_info.txt"
+    vf.parent.mkdir(parents=True, exist_ok=True)
+    vf.write_text(content, encoding="utf-8")
+    print(f"[INFO] 已生成版本信息文件: {vf} (v{ver_str})")
+    return vf
+
+
+def run_pyinstaller(
+    onefile: bool = False,
+    name: str = "ManosabaExtracter",
+    icon: str = "assets/icon.ico",
+    company: Optional[str] = None,
+    product_name: Optional[str] = None,
+    description: Optional[str] = None,
+    copyright_: Optional[str] = None,
+):
     """使用命令行参数直接调用 PyInstaller 打包"""
     import PyInstaller.__main__
 
@@ -50,6 +134,7 @@ def run_pyinstaller(onefile: bool = False, name: str = "ManosabaExtracter", icon
         "--collect-all", "UnityPy",     # 收集 UnityPy 所有子模块和数据
         "--collect-all", "fmod_toolkit", # 收集 fmod_toolkit DLL（UnityPy 依赖）
         "--collect-all", "archspec",      # 收集 archspec JSON 数据文件
+        "--version-file", str(make_version_file(name, company, product_name, description, copyright_)),  # exe 版本信息（文件版本/产品名称等，降低杀软误报）
     ]
 
     # 处理图标
@@ -149,6 +234,22 @@ def main():
         "--icon", "--i", type=str, default="assets/icon.ico",
         help="图标文件路径（.ico 格式，相对或绝对路径均可）"
     )
+    parser.add_argument(
+        "--company", "--c", type=str, default=None,
+        help="公司/开发者名称（显示在 exe 属性中；默认用 build_exe.py 顶部 APP_COMPANY）"
+    )
+    parser.add_argument(
+        "--product", "--p", type=str, default=None,
+        help="产品名称（默认用 build_exe.py 顶部 APP_PRODUCT_NAME）"
+    )
+    parser.add_argument(
+        "--description", type=str, default=None,
+        help="文件说明（默认用 build_exe.py 顶部 APP_DESCRIPTION）"
+    )
+    parser.add_argument(
+        "--copyright", type=str, default=None,
+        help="版权信息（默认用 build_exe.py 顶部 APP_COPYRIGHT）"
+    )
     args = parser.parse_args()
 
     mode = "onefile" if args.onefile else "onedir"
@@ -183,7 +284,15 @@ def main():
         )
         print("[OK] PyInstaller 安装完成")
 
-    run_pyinstaller(onefile=args.onefile, name=args.name, icon=args.icon)
+    run_pyinstaller(
+        onefile=args.onefile,
+        name=args.name,
+        icon=args.icon,
+        company=args.company,
+        product_name=args.product,
+        description=args.description,
+        copyright_=args.copyright,
+    )
     verify_build(name=args.name, onefile=args.onefile)
 
     if args.onefile:
