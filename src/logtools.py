@@ -30,6 +30,17 @@ class LogLevel(Enum):
     DEBUG = "[DEBUG]"
     NONE = ""
 
+    @property
+    def rank(self) -> int:
+        """级别数值（越小越详细，用于按最低级别过滤）；NONE 无级别消息始终输出"""
+        return {
+            LogLevel.DEBUG: 0,
+            LogLevel.INFO: 1,
+            LogLevel.WARNING: 2,
+            LogLevel.ERROR: 3,
+            LogLevel.NONE: 99,
+        }[self]
+
     @classmethod
     def from_string(cls, name: str) -> "LogLevel":
         """将字符串转换为 LogLevel（忽略大小写，兼容别名）"""
@@ -100,6 +111,9 @@ def log(log_type: str, text: str, source: str = "PY") -> None:
         source: 日志来源标识（PY=Python / JS=JavaScript，默认 PY）
     """
     level = LogLevel.from_string(log_type)
+    # 低于配置的最低级别则跳过（例如 level=info 时忽略 debug 日志）
+    if _LOG_LEVEL is not None and level.rank < _LOG_LEVEL.rank:
+        return
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     prefix = level.value
     src = (source.upper() or "PY").strip()

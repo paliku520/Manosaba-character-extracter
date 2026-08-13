@@ -9,6 +9,7 @@
     3. 有组件数据的 bundle → 提取层级数据后拼接角色图像
 """
 
+import gc
 import json
 import re
 from pathlib import Path
@@ -30,6 +31,7 @@ def has_component_data(bundle_path: Path) -> bool:
     检测 bundle 文件中是否存在 SpriteRenderer 组件数据。
     有组件数据说明可以尝试拼接角色图像。
     """
+    env = None
     try:
         env = UnityPy.load(str(bundle_path))
         for obj in env.objects:
@@ -39,6 +41,14 @@ def has_component_data(bundle_path: Path) -> bool:
     except Exception as e:
         log("error", _("log.component_detect_failed", name=bundle_path.name, e=e))
         return False
+    finally:
+        # 释放 UnityPy 环境，避免每次分析都累积 bundle 内存
+        if env is not None:
+            try:
+                env.files.clear()
+            except Exception:
+                pass
+            env = None
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +108,12 @@ def extract_sprites(
             progress_callback(idx + 1, total)
 
     log("info", _("log.export_done", file=bundle_path.name, count=len(results), dir=save_dir))
+    # 释放 UnityPy 环境并回收，降低导出过程内存峰值
+    try:
+        env.files.clear()
+    except Exception:
+        pass
+    gc.collect()
     return results
 
 
@@ -284,6 +300,14 @@ def extract_character_data(
 
     log("info", _("log.char_data_extracted", name=character_name, count=len(transform_data)))
 
+    # 释放 UnityPy 环境（含大量已解码对象），降低提取过程内存峰值
+    try:
+        env.files.clear()
+    except Exception:
+        pass
+    env = None
+    gc.collect()
+
     return {
         "character_name": character_name,
         "sprites_dir": str(sprites_dir),
@@ -352,36 +376,37 @@ class SpriteCompositor:
         for i, part in enumerate(sorted_parts):
             try:
                 img = Image.open(part["sprite_path"]).convert("RGBA")
+                try:
+                    # 应用 SpriteRenderer.m_Color（RGBA，默认白色全不透明）
+                    c = part.get("color", {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0})
+                    cr, cg, cb, ca = c["r"], c["g"], c["b"], c["a"]
+                    if (cr, cg, cb, ca) != (1.0, 1.0, 1.0, 1.0):
+                        r, g, b, a = img.split()
+                        r = r.point(lambda v: int(v * cr))
+                        g = g.point(lambda v: int(v * cg))
+                        b = b.point(lambda v: int(v * cb))
+                        a = a.point(lambda v: int(v * ca))
+                        img = Image.merge("RGBA", (r, g, b, a))
 
-                # 应用 SpriteRenderer.m_Color（RGBA，默认白色全不透明）
-                c = part.get("color", {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0})
-                cr, cg, cb, ca = c["r"], c["g"], c["b"], c["a"]
-                if (cr, cg, cb, ca) != (1.0, 1.0, 1.0, 1.0):
-                    r, g, b, a = img.split()
-                    r = r.point(lambda v: int(v * cr))
-                    g = g.point(lambda v: int(v * cg))
-                    b = b.point(lambda v: int(v * cb))
-                    a = a.point(lambda v: int(v * ca))
-                    img = Image.merge("RGBA", (r, g, b, a))
+                    px = int(part["position"]["x"] * self.scale + cx)
+                    py = int(part["position"]["y"] * -self.scale + cy)
+                    sx, sy = img.size
+                    place_x = px - sx // 2
+                    place_y = py - sy // 2
 
-                px = int(part["position"]["x"] * self.scale + cx)
-                py = int(part["position"]["y"] * -self.scale + cy)
-                sx, sy = img.size
-                place_x = px - sx // 2
-                place_y = py - sy // 2
-
-                # alpha_composite 正确处理半透明像素
-                if img.mode == "RGBA":
-                    temp = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
-                    temp.paste(img, (place_x, place_y))
-                    composite = Image.alpha_composite(composite, temp)
-                else:
-                    composite.paste(img, (place_x, place_y), img)
+                    # alpha_composite 实例方法支持 dest 且原地合成，避免创建全画布临时图（内存峰值↓）
+                    composite.alpha_composite(img, dest=(place_x, place_y))
+                finally:
+                    img.close()  # 用后立即释放图片对象
             except Exception as e:
                 log("error", _("log.composite_failed_part", name=part['name'], e=e))
 
             if progress_callback:
                 progress_callback(i + 1, total)
+
+            # 每合成 20 个部件回收一次，释放中间图像对象
+            if (i + 1) % 20 == 0:
+                gc.collect()
 
         return composite
 

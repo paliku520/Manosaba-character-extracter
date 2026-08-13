@@ -13,6 +13,9 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Live Preview** — wheel zoom (cursor-centered), drag pan, min-zoom fits full resolution
 - **Hierarchy Viewer** — component tree, each row has a copy button
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
+- **Memory Reclaim** — Resources are released immediately during loading/extraction/compositing with GC triggers; switching characters clears the previous character's data; forced GC before exit with a resource-check log
+- **Debug Mode** — Monitor memory/CPU/window resolution in real time (shown in the title bar, effective only for the current run)
+- **Log Files** — Console logs are also written to `logs/` (named by startup time), one-click cleanup
 - **Multi-language** — Simplified Chinese / English / fiXmArge (a constructed language), auto-follows system, switchable in Settings
 - **Theme** — dark / light theme, persisted to settings
 - **Total Exports** — counts successful export operations (shown on the About page)
@@ -25,13 +28,9 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - `pip install -r requirements.txt`
 
 > Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
-- `pip install -r requirements.txt`
-
-> Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
 
 ## Usage
 
-### Run
 ### Run
 ```bash
 python run.py
@@ -45,7 +44,7 @@ python run.py
 
 ### Settings
 
-Click **Settings** on the left to configure: **Output Directory** (custom export location, remembered automatically), **Language**, **Theme** (dark/light), **Check for Updates**, **Cleanup** (`temp/` cache or `output/` directory).
+Click **Settings** on the left to configure: **Output Directory** (custom export location, remembered automatically), **Language**, **Theme** (dark/light), **Chinese Names** (optional, Chinese UI only), **Debug Mode** (monitors memory/CPU/window, off by default and effective only for the current run), **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` log files).
 
 > Settings are stored in `settings.json` in the program root directory.
 
@@ -126,22 +125,17 @@ This project is a **deep refactoring and performance-optimized version** of the 
 This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENSE) file for details.
 
 **Disclaimer**: This tool is intended for learning and personal research purposes only. The copyright of the extracted content belongs to the original game developer.
-### License
-
-This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENSE) file for details.
-
-**Disclaimer**: This tool is intended for learning and personal research purposes only. The copyright of the extracted content belongs to the original game developer.
 
 ## Packaging as EXE
 
 ```bash
 pip install pyinstaller
-python scripts\build_exe.py            # Default onedir (fast startup)
-python scripts\build_exe.py --onefile  # Single-file exe (good for distribution)
-python scripts\build_exe.py            # Default onedir (fast startup)
-python scripts\build_exe.py --onefile  # Single-file exe (good for distribution)
+python scripts\build_exe.py                          # Default onedir (fast startup)
+python scripts\build_exe.py --onefile                # Single-file exe (good for distribution)
 python scripts\build_exe.py --name MyApp --icon icon.ico
 ```
 
-> Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_exe.py --help` for more options.
+- **Version info auto-injected** (file version / product name / product version, etc., to reduce antivirus false positives)
+- Optional: `--company "Name"` (company/developer), `--product`, `--description`, `--copyright` (defaults to `APP_*` constants at the top of the script), `--console false` (GUI mode without console)
+
 > Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_exe.py --help` for more options.

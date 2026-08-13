@@ -13,6 +13,9 @@
 - **实时预览** — 合成预览支持滚轮缩放（以鼠标为中心）、拖动平移，最小缩放适配完整分辨率
 - **层级结构** — 组件树查看，每行带复制按钮
 - **缓存复用** — 已提取数据缓存到 `temp/`，重复加载无需重新解包
+- **内存回收** — 加载/提取/合成过程即时释放资源并触发 GC，切换角色清理上一角色数据，退出前强制回收并输出资源检测日志
+- **调试模式** — 设置中开启后实时监视内存/CPU/窗口分辨率（显示于窗口标题栏，仅本次运行有效）
+- **日志文件** — 控制台日志同步写入 `logs/`（按启动时间命名），可一键清理
 - **多语言** — 简体中文 / English / fiXmArge（架空语言），自动跟随系统，可在设置中切换
 - **主题切换** — 深色 / 浅色主题，持久化到设置
 - **累计导出** — 统计成功使用导出功能的次数（关于页展示）
@@ -25,13 +28,9 @@
 - `pip install -r requirements.txt`
 
 > 目前主要针对 **Windows** 充分测试，Linux/macOS 兼容性未知。
-- `pip install -r requirements.txt`
-
-> 目前主要针对 **Windows** 充分测试，Linux/macOS 兼容性未知。
 
 ## 使用
 
-### 运行
 ### 运行
 ```bash
 python run.py
@@ -45,7 +44,7 @@ python run.py
 
 ### 设置
 
-点击左侧 **设置** 可配置：**输出目录**（自定义导出位置，自动记忆）、**语言**、**主题**（深色/浅色）、**检查更新**、**清理**（`temp/` 缓存或 `output/` 目录）。
+点击左侧 **设置** 可配置：**输出目录**（自定义导出位置，自动记忆）、**语言**、**主题**（深色/浅色）、**显示中文名**（仅中文界面可选）、**调试模式**（监视内存/CPU/窗口，默认关闭且仅本次运行）、**检查更新**、**清理**（`temp/` 缓存、`output/` 目录或 `logs/` 日志文件）。
 
 > 设置保存在程序根目录的 `settings.json`。
 
@@ -127,22 +126,17 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 本项目采用 **GPL-3.0 许可证**，详见 [LICENSE](LICENSE) 文件。
 
 **免责声明**：本工具仅供学习和个人研究使用。使用本工具提取的内容，其版权归原游戏开发者所有。
-### 许可证
-
-本项目采用 **GPL-3.0 许可证**，详见 [LICENSE](LICENSE) 文件。
-
-**免责声明**：本工具仅供学习和个人研究使用。使用本工具提取的内容，其版权归原游戏开发者所有。
 
 ## 打包为 EXE
 
 ```bash
 pip install pyinstaller
-python scripts\build_exe.py            # 默认 onedir（启动快）
-python scripts\build_exe.py --onefile  # 单文件 exe（适合分发）
-python scripts\build_exe.py            # 默认 onedir（启动快）
-python scripts\build_exe.py --onefile  # 单文件 exe（适合分发）
+python scripts\build_exe.py                          # 默认 onedir（启动快）
+python scripts\build_exe.py --onefile                # 单文件 exe（适合分发）
 python scripts\build_exe.py --name MyApp --icon icon.ico
 ```
 
-> 图标需为 `.ico` 格式。`--onefile` 每次运行需解压、启动较慢。更多参数见 `python scripts\build_exe.py --help`。
+- **版本信息自动注入**（文件版本 / 产品名称 / 产品版本等，降低杀软误报）
+- 可选参数：`--company "名称"`（公司/开发者）、`--product`、`--description`、`--copyright`（默认用脚本顶部 `APP_*` 常量）、`--console false`（无控制台 GUI 模式）
+
 > 图标需为 `.ico` 格式。`--onefile` 每次运行需解压、启动较慢。更多参数见 `python scripts\build_exe.py --help`。

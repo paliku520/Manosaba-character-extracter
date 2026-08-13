@@ -785,6 +785,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Chinese Names",
         LANG_MGL: "Chinese Names",
     },
+    "settings.debug_label": {
+        LANG_CN: "调试模式",
+        LANG_EN: "Debug Mode",
+        LANG_MGL: "Debug Mode",
+    },
     # ── 部件分类 ──
 
 
@@ -1140,6 +1145,36 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "已关闭角色中文名",
         LANG_EN: "Chinese names off",
         LANG_MGL: "Chinese names off",
+    },
+    "log.debug_on": {
+        LANG_CN: "调试模式已开启（监视内存/CPU/窗口）",
+        LANG_EN: "Debug mode on (monitoring mem/CPU/window)",
+        LANG_MGL: "Debug mode on (monitoring mem/CPU/window)",
+    },
+    "log.debug_off": {
+        LANG_CN: "调试模式已关闭",
+        LANG_EN: "Debug mode off",
+        LANG_MGL: "Debug mode off",
+    },
+    "log.gc_before_exit": {
+        LANG_CN: "程序退出前已内存回收（释放 {count} 个对象），当前占用 {mem} MB",
+        LANG_EN: "GC done before exit ({count} objects collected), memory {mem} MB",
+        LANG_MGL: "GC done before exit ({count} objects collected), memory {mem} MB",
+    },
+    "log.resource_usage": {
+        LANG_CN: "资源占用: 内存 {mem} MB | CPU {cpu}%{win}",
+        LANG_EN: "Resource usage: mem {mem} MB | CPU {cpu}%{win}",
+        LANG_MGL: "Resource usage: mem {mem} MB | CPU {cpu}%{win}",
+    },
+    "log.resource_win": {
+        LANG_CN: " | 窗口 {width}x{height}",
+        LANG_EN: " | window {width}x{height}",
+        LANG_MGL: " | window {width}x{height}",
+    },
+    "log.resource_title": {
+        LANG_CN: " | 内存 {mem} MB | CPU {cpu}%{win}",
+        LANG_EN: " | mem {mem} MB | CPU {cpu}%{win}",
+        LANG_MGL: " | mem {mem} MB | CPU {cpu}%{win}",
     },
 
     # ── 角色名（中文特有翻译键；MGL 使用原始英文名）──

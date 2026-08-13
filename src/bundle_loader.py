@@ -1,6 +1,7 @@
 ﻿"""魔法少女の魔女审判 - Bundle 文件加载器
 
 加载游戏目录中的所有 bundle 文件，自动查找 characters 目录。"""
+import gc
 from pathlib import Path
 from tkinter import Tk, filedialog
 from typing import Optional
@@ -43,14 +44,11 @@ class BundleLoader:
         return get_last_directory(str(Path.home())) or str(Path.home())
 
     def _save_last_path(self, path: str) -> None:
-        """保存上次使用的路径"""
+        """保存上次使用的路径（写入 settings.json，与 GUI 层共用）"""
         try:
-            self.config_file.parent.mkdir(parents=True, exist_ok=True)
-            self.config_file.write_text(
-                json.dumps({"last_path": path}, indent=2, ensure_ascii=False),
-                encoding="utf-8",
-            )
-        except OSError as e:
+            from src.settings import save_settings
+            save_settings(last_directory=path)
+        except Exception as e:
             log("warning", _("log.saved_path_failed", e=e))
 
     def remember_directory(self, path: str) -> None:
@@ -148,35 +146,49 @@ class BundleLoader:
     def _search_dir_recursive(
         root: Path, target_name: str, max_depth: int = 8, cancel_check=None
     ) -> Path | None:
-        """递归搜索指定名称的目录，限制最大深度；cancel_check() 返回 True 时取消"""
-        # 使用 Path.rglob 替代 os.walk（更 Pythonic）
-        # 注意: rglob 不直接支持深度限制，所以我们手动控制
-        root_length = len(root.parts)
-        for entry in root.rglob("*"):
+        """递归搜索指定名称的目录，限制最大深度并剪枝；cancel_check() 返回 True 时取消"""
+        # 迭代式深度优先（DFS），跳过隐藏 / 无关目录（避免遍历大型无关目录导致卡顿）
+        stack = [(root, 0)]
+        while stack:
             if cancel_check and cancel_check():
                 raise _SearchCancelled()
-            if not entry.is_dir():
+            current, depth = stack.pop()
+            try:
+                children = sorted(
+                    (p for p in current.iterdir() if p.is_dir()),
+                    key=lambda p: p.name,
+                )
+            except OSError:
                 continue
-            # 跳过隐藏/无关目录（避免遍历大型无关目录导致卡顿）
-            dirnames[:] = [
-                d for d in dirnames
-                if not d.startswith(".") and d not in SKIP_DIRS
-            ]
-            if Path(dirpath).name == target_name:
-                return Path(dirpath)
+            for child in children:
+                if child.name == target_name:
+                    return child
+                if child.name.startswith(".") or child.name in SKIP_DIRS:
+                    continue
+                if depth + 1 < max_depth:
+                    stack.append((child, depth + 1))
         return None
 
     # ── Bundle 加载 ───────────────────────────────────────
 
     @staticmethod
     def load_bundle(bundle_path: Path) -> bool:
-        """加载单个 bundle 文件，验证是否包含精灵"""
+        """加载单个 bundle 文件，验证是否包含精灵；用后立即释放 UnityPy 环境（防内存累积）"""
+        env = None
         try:
             env = UnityPy.load(str(bundle_path))
             return any(obj.type.name == "Sprite" for obj in env.objects)
         except Exception as e:
             log("error", _("log.load_failed", name=bundle_path.name, e=e))
             return False
+        finally:
+            # 释放 UnityPy 环境（大对象）：清空已解析文件并断开引用
+            if env is not None:
+                try:
+                    env.files.clear()
+                except Exception:
+                    pass
+                env = None
 
     # ── 主流程 ────────────────────────────────────────────
 
@@ -226,7 +238,8 @@ class BundleLoader:
 
         log("info", _("log.bundle_files_found", count=len(bundle_files)))
 
-        # 加载每个 bundle
+        # 加载每个 bundle（每 GC_INTERVAL 个强制回收一次，避免 UnityPy 对象内存累积）
+        GC_INTERVAL = 5
         total = len(bundle_files)
         for i, bundle_path in enumerate(bundle_files):
             if cancel_check and cancel_check():
@@ -241,6 +254,10 @@ class BundleLoader:
                 log("warning", _("log.skipped_char", name=name))
             if progress_callback:
                 progress_callback(i + 1, total)
+            if (i + 1) % GC_INTERVAL == 0:
+                gc.collect()
+        # 全部加载完成后再次回收，释放临时对象
+        gc.collect()
 
         if result["count"] > 0:
             result["success"] = True

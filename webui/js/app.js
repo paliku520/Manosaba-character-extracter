@@ -73,6 +73,7 @@
     previewSize: null,       // 当前预览合成图实际尺寸 [w, h]
     exportCount: 0,          // 累计导出精灵数（来自后端 settings.json）
     useChineseNames: false,  // 是否显示角色中文名（设置中调节）
+    debugMode: false,        // 调试模式（仅本次运行，监视内存/CPU/窗口）
   };
 
   // 后端事件注册表
@@ -802,6 +803,24 @@
     nameSwitch.appendChild(nameText);
     nameRow.appendChild(nameSwitch);
 
+    const debugRow = document.createElement('div');
+    debugRow.className = 'form-row';
+    debugRow.id = 'debug-monitor-row';
+    const debugSwitch = document.createElement('label');
+    debugSwitch.className = 'switch';
+    const debugCb = document.createElement('input');
+    debugCb.type = 'checkbox';
+    debugCb.id = 'set-debug-monitor';
+    const debugSlider = document.createElement('span');
+    debugSlider.className = 'slider';
+    const debugText = document.createElement('span');
+    debugText.setAttribute('data-i18n', 'settings.debug_label');
+    debugText.textContent = t('settings.debug_label');
+    debugSwitch.appendChild(debugCb);
+    debugSwitch.appendChild(debugSlider);
+    debugSwitch.appendChild(debugText);
+    debugRow.appendChild(debugSwitch);
+
     const actionRow = document.createElement('div');
     actionRow.className = 'form-row';
     actionRow.style.flexDirection = 'row';
@@ -820,6 +839,7 @@
     body.appendChild(langRow);
     body.appendChild(themeRow);
     body.appendChild(nameRow);
+    body.appendChild(debugRow);
     body.appendChild(actionRow);
 
     const footer = document.createElement('div');
@@ -844,6 +864,13 @@
       const r = await api().set_use_chinese_names(nameCb.checked);
       App.useChineseNames = !!r.use_chinese_names;
       renderCharList();
+    });
+
+    debugCb.checked = App.debugMode;
+    debugCb.addEventListener('change', async () => {
+      if (!api()) return;
+      const r = await api().set_debug(debugCb.checked);
+      App.debugMode = !!r.debug;
     });
 
     outField.querySelector('#set-browse').addEventListener('click', async () => {
@@ -1394,6 +1421,7 @@
       initAboutBg();
       App.exportCount = (typeof info.export_count === 'number') ? info.export_count : 0;
       App.useChineseNames = !!info.use_chinese_names;
+      App.debugMode = !!info.debug;
       refreshExportCount();
       window.pywebview.api.check_update(true); // 静默检查更新
     } catch (e) {

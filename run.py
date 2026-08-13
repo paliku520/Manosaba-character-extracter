@@ -29,7 +29,7 @@ from PIL import Image
 # pythonnet：访问 .NET（WinForms/WebView2）必需，须在 from System import 之前加载
 import clr
 
-from src.bundleloader import BundleLoader
+from src.bundle_loader import BundleLoader
 from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
     SpriteCompositor,
@@ -47,6 +47,7 @@ from src.i18n import (
     set_lang,
 )
 from src.logtools import clear_logs, configure, log
+from src.resource_monitor import ResourceMonitor
 from src.settings import get_export_count, get_lang, get_last_directory, get_output_dir, get_theme, get_use_chinese_names, save_settings
 from src.updater import check_for_update
 from src.version import __version__
@@ -184,6 +185,9 @@ class JsApi:
         self._use_chinese_names = get_use_chinese_names()  # 是否显示角色中文名（可选项，settings.json）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
+        self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
+        self._monitor: Optional[ResourceMonitor] = None  # 资源占用监视线程（调试模式开启时创建）
+        self._base_title: str = ""              # 窗口基础标题（调试模式时附加资源占用信息）
 
     # ── 事件推送 ──────────────────────────────────────────
 
@@ -251,6 +255,7 @@ class JsApi:
             "theme": get_theme(),
             "export_count": self._export_count,
             "use_chinese_names": self._use_chinese_names,
+            "debug": self._debug_monitor,
         }
 
     def set_lang(self, code: str) -> dict:
@@ -261,9 +266,10 @@ class JsApi:
             log("info", _("log.lang_changed", code=code))
             set_console_title()
             # 同步更新主窗口标题（create_window 时标题固定，需手动 set_title）
+            self._base_title = f"{_('app.title')} v{__version__}"
             if self._window is not None:
                 try:
-                    self._window.set_title(f"{_('app.title')} v{__version__}")
+                    self._window.set_title(self._base_title)
                 except Exception as e:
                     log("warning", f"set window title failed: {e}")
         return {
@@ -285,6 +291,64 @@ class JsApi:
         save_settings(use_chinese_names=self._use_chinese_names)
         log("info", _("log.chinese_names_on") if self._use_chinese_names else _("log.chinese_names_off"))
         return {"use_chinese_names": self._use_chinese_names}
+
+    def set_debug(self, enable: bool) -> dict:
+        """开启/关闭调试模式（仅本次运行有效，不持久化）。
+
+        开启后：输出 debug 日志 + 后台线程每 5 秒采集内存/CPU/窗口分辨率，
+        推送 res_monitor 事件供前端状态栏显示。
+        """
+        enable = bool(enable)
+        if enable == self._debug_monitor:
+            return {"debug": self._debug_monitor}
+        self._debug_monitor = enable
+        if enable:
+            configure(level="debug")
+            log("info", _("log.debug_on"))
+            self._monitor = ResourceMonitor(
+                emit=self._on_res_monitor_payload,
+                window_size=self._window_size,
+            )
+            self._monitor.start()
+        else:
+            if self._monitor is not None:
+                self._monitor.stop()
+            self._monitor = None
+            configure(level="info")
+            log("info", _("log.debug_off"))
+            # 恢复标题栏（去掉资源占用信息）
+            try:
+                if self._window is not None:
+                    self._window.set_title(self._base_title)
+            except Exception:
+                pass
+        return {"debug": self._debug_monitor}
+
+    def _on_res_monitor_payload(self, payload: dict):
+        """资源占用采集回调：记录 debug 日志、推送 res_monitor 事件，并同步到窗口标题栏"""
+        win = _("log.resource_win", width=payload["width"], height=payload["height"]) if "width" in payload else ""
+        log("debug", _("log.resource_usage", mem=payload["mem_mb"], cpu=payload["cpu"], win=win))
+        self._emit("res_monitor", payload)
+        # 同步到标题栏（含窗口分辨率，文案跟随当前语言）
+        try:
+            if self._window is not None:
+                self._window.set_title(
+                    self._base_title + _("log.resource_title", mem=payload["mem_mb"], cpu=payload["cpu"], win=win)
+                )
+        except Exception:
+            pass
+
+    def _window_size(self):
+        """获取当前窗口尺寸 (w, h)；失败返回 None（跨线程访问控件需投递 GUI 线程）"""
+        window = self._window
+        if window is None:
+            return None
+        try:
+            return self._on_gui_thread(
+                lambda: (int(getattr(window, "width", 0)), int(getattr(window, "height", 0)))
+            )
+        except Exception:
+            return None
 
     # ── 目录 / 设置 ────────────────────────────────────────
 
@@ -410,7 +474,17 @@ class JsApi:
         return True
 
     def select_character(self, name: str):
-        """分析角色 bundle 是否含组件（事件: analyze_complete / analyze_error）"""
+        """分析角色 bundle 是否含组件（事件: analyze_complete / analyze_error）。
+
+        无论新角色是否有组件，都先清理上一个角色的内存临时数据
+        （提取数据/合成图），释放内存；不删除 temp/ 磁盘缓存（保留缓存复用）。
+        """
+        # 清理上一个角色的内存临时数据
+        self._character_data = None
+        self._composite_image = None
+        import gc
+        gc.collect()
+
         def worker():
             bundle_path = Path(self._bundles.get(name, ""))
             if not bundle_path.exists():
@@ -683,10 +757,21 @@ def main():
     )
     assert window is not None  # pywebview 的 create_window 始终返回 Window 实例
     api._window = window
+    api._base_title = f"{_('app.title')} v{__version__}"  # 供调试模式标题栏附加资源占用信息
     webview.start(icon=_find_icon(), debug=_DEBUG)
 
     # 主窗口已关闭，进入退出流程：记录退出日志（此时 WebView2 等后台子进程可能仍在清理，故措辞为“正在退出”而非“已关闭”；若直接关闭控制台则进程立即终止，此段不会执行）
     log("info", _("log.app_exited"))
+
+    # 退出前强制回收（释放 UnityPy / WebView2 等大对象），并输出资源检测日志
+    try:
+        import gc
+        collected = gc.collect()
+        from src.resource_monitor import process_memory_mb
+        mem = round(process_memory_mb(), 1)
+        log("info", _("log.gc_before_exit", mem=mem, count=collected))
+    except Exception:
+        log("info", _("log.gc_before_exit", mem=0, count=0))
 
     # 控制台输出退出提示
     print("\n" + "=" * 48)

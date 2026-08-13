@@ -66,6 +66,8 @@ def make_version_file(
         parts.append("0")
     ver = tuple(int(p) for p in parts[:4])
     ver_str = ".".join(str(v) for v in ver)
+    # 属性中显示带 v 的版本号（如 v1.2.0）；FixedFileInfo 仍用 4 段数字供系统比较
+    display_ver = f"v{__version__}"
 
     content = f"""# UTF-8
 VSVersionInfo(
@@ -86,12 +88,12 @@ VSVersionInfo(
           u'040904B0',
           [StringStruct(u'CompanyName', u'{company}'),
            StringStruct(u'FileDescription', u'{description}'),
-           StringStruct(u'FileVersion', u'{ver_str}'),
+           StringStruct(u'FileVersion', u'{display_ver}'),
            StringStruct(u'InternalName', u'{name}'),
            StringStruct(u'LegalCopyright', u'{copyright_}'),
            StringStruct(u'OriginalFilename', u'{name}.exe'),
            StringStruct(u'ProductName', u'{product_name}'),
-           StringStruct(u'ProductVersion', u'{ver_str}')]
+           StringStruct(u'ProductVersion', u'{display_ver}')]
         )
       ]
     ),
@@ -110,6 +112,7 @@ def run_pyinstaller(
     onefile: bool = False,
     name: str = "ManosabaExtracter",
     icon: str = "assets/icon.ico",
+    console: bool = True,
     company: Optional[str] = None,
     product_name: Optional[str] = None,
     description: Optional[str] = None,
@@ -125,7 +128,7 @@ def run_pyinstaller(
     args = [
         str(PROJECT_ROOT / "run.py"),
         "--onedir" if not onefile else "--onefile",
-        "--console",                    # 保留控制台窗口
+        "--console" if console else "--windowed",  # 保留 / 不保留控制台窗口
         "--clean",                      # 清理缓存
         "--noconfirm",                  # 覆盖输出目录
         "--name", name,                 # 输出文件名
@@ -209,8 +212,15 @@ def main():
 
     import argparse
 
+    class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
+        """固定帮助宽度，避免终端过窄导致帮助信息折行错乱"""
+        def __init__(self, prog):
+            super().__init__(prog, max_help_position=40, width=100)
+
     parser = argparse.ArgumentParser(
-        description="使用 PyInstaller 将项目打包为 exe（保留控制台）",
+        prog="build_exe.py",
+        usage="%(prog)s [options]",
+        description="将项目打包为 exe（PyInstaller）",
         epilog=(
             "示例:\n"
             "  python scripts\\build_exe.py\n"
@@ -220,41 +230,42 @@ def main():
             "  onedir  -> dist\\名称\\名称.exe + _internal\\\n"
             "  onefile -> dist\\名称.exe\n"
         ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=_HelpFormatter,
     )
+    parser.add_argument("--onefile", action="store_true",
+                        help="打包为单个 exe（适合分发）")
+    parser.add_argument("--name", type=str, default="ManosabaExtracter",
+                        help="输出文件名（不含 .exe）")
+    parser.add_argument("--icon", "--i", type=str, default="assets/icon.ico",
+                        help="图标路径（.ico）")
+    parser.add_argument("--company", "--c", type=str, default=None,
+                        help="公司/开发者名称（默认用顶部 APP_COMPANY）")
+    parser.add_argument("--product", "--p", type=str, default=None,
+                        help="产品名称（默认用顶部 APP_PRODUCT_NAME）")
+    parser.add_argument("--description", type=str, default=None,
+                        help="文件说明（默认用顶部 APP_DESCRIPTION）")
+    parser.add_argument("--copyright", type=str, default=None,
+                        help="版权信息（默认用顶部 APP_COPYRIGHT）")
+    def _parse_bool(s: str) -> bool:
+        v = str(s).strip().lower()
+        if v in ("true", "1", "yes", "y", "on"):
+            return True
+        if v in ("false", "0", "no", "n", "off"):
+            return False
+        raise argparse.ArgumentTypeError(f"无效的布尔值: {s}（请用 true/false）")
+
     parser.add_argument(
-        "--onefile", action="store_true",
-        help="打包为单个 exe（启动较慢，但只有一个文件，适合分发）"
-    )
-    parser.add_argument(
-        "--name", type=str, default="ManosabaExtracter",
-        help="输出文件名，不含 .exe（默认: ManosabaExtracter）"
-    )
-    parser.add_argument(
-        "--icon", "--i", type=str, default="assets/icon.ico",
-        help="图标文件路径（.ico 格式，相对或绝对路径均可）"
-    )
-    parser.add_argument(
-        "--company", "--c", type=str, default=None,
-        help="公司/开发者名称（显示在 exe 属性中；默认用 build_exe.py 顶部 APP_COMPANY）"
-    )
-    parser.add_argument(
-        "--product", "--p", type=str, default=None,
-        help="产品名称（默认用 build_exe.py 顶部 APP_PRODUCT_NAME）"
-    )
-    parser.add_argument(
-        "--description", type=str, default=None,
-        help="文件说明（默认用 build_exe.py 顶部 APP_DESCRIPTION）"
-    )
-    parser.add_argument(
-        "--copyright", type=str, default=None,
-        help="版权信息（默认用 build_exe.py 顶部 APP_COPYRIGHT）"
+        "--console", type=_parse_bool, nargs="?", const=True, default=True,
+        metavar="BOOL",
+        help="是否保留控制台窗口（true/false，默认 true）",
     )
     args = parser.parse_args()
 
     mode = "onefile" if args.onefile else "onedir"
+    console_txt = "保留控制台" if args.console else "不保留控制台(GUI)"
     print(f"[INFO] 打包模式: --{mode}")
     print(f"[INFO] 输出名称: {args.name}")
+    print(f"[INFO] 控制台: {console_txt}")
     if args.icon:
         print(f"[INFO] 自定义图标: {args.icon}")
     print()
@@ -288,6 +299,7 @@ def main():
         onefile=args.onefile,
         name=args.name,
         icon=args.icon,
+        console=args.console,
         company=args.company,
         product_name=args.product,
         description=args.description,
