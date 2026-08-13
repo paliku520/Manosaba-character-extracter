@@ -38,12 +38,12 @@ class BundleLoader:
     # ── 路径记忆 ──────────────────────────────────────────
 
     def _load_last_path(self) -> str:
-        """加载上次使用的路径（从程序根目录 settings.json 读取）"""
+        """加载上次使用的路径（从 data/settings.json 读取）"""
         from src.settings import get_last_directory
         return get_last_directory(str(Path.home())) or str(Path.home())
 
     def _save_last_path(self, path: str) -> None:
-        """保存上次使用的路径（写入 settings.json，与 GUI 层共用）"""
+        """保存上次使用的路径（写入 data/settings.json，与 GUI 层共用）"""
         try:
             from src.settings import save_settings
             save_settings(last_directory=path)

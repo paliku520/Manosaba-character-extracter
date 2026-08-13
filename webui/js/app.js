@@ -256,10 +256,15 @@
     $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + name));
   }
 
-  // 主题
-  function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    try { localStorage.setItem('msx-theme', theme); } catch (e) { /* ignore */ }
+  // 主题：底色（dark/light）+ 主题色（accent，default=默认绿）
+  function applyTheme(theme, accent) {
+    if (theme) document.documentElement.dataset.theme = theme;
+    const acc = accent || 'default';
+    document.documentElement.dataset.accent = acc;
+    try {
+      localStorage.setItem('msx-theme', theme || 'dark');
+      localStorage.setItem('msx-accent', acc);
+    } catch (e) { /* ignore */ }
   }
 
   // ═════════════ 侧边栏 ═════════════
@@ -658,7 +663,16 @@
       const cnt = document.createElement('span');
       cnt.className = 'g-count';
       cnt.textContent = parts.length;
-      h.appendChild(caret); h.appendChild(nameSpan); h.appendChild(cnt);
+      const desel = document.createElement('button');
+      desel.type = 'button';
+      desel.className = 'part-deselect';
+      desel.textContent = t('parts.deselect_group');
+      desel.title = cat;
+      desel.addEventListener('click', (e) => {
+        e.stopPropagation();   // 不触发展开/折叠
+        deselectGroup(g);
+      });
+      h.appendChild(caret); h.appendChild(nameSpan); h.appendChild(desel); h.appendChild(cnt);
       // 点击分组标题折叠/展开
       h.addEventListener('click', () => g.classList.toggle('collapsed'));
       g.appendChild(h);
@@ -736,6 +750,23 @@
     console.log(t('log.js_selected', { count: App.selected.size, total: App.characterData.transform_data.length }));
     updateSelUI();
     if (App.autoUpdate && checked) schedulePreview();
+  }
+
+  // 取消指定分组内所有部件的选择（分组头部的“取消选择”按钮）
+  function deselectGroup(groupEl) {
+    if (!App.characterData) return;
+    let removed = 0;
+    groupEl.querySelectorAll('.part-item').forEach((item) => {
+      const cb = item.querySelector('input[type=checkbox]');
+      const name = item.querySelector('.part-name').textContent;
+      if (App.selected.delete(name)) removed++;
+      if (cb) cb.checked = false;
+    });
+    if (removed > 0) {
+      console.log(t('log.js_selected', { count: App.selected.size, total: App.characterData.transform_data.length }));
+      updateSelUI();
+      if (App.autoUpdate) schedulePreview();
+    }
   }
 
   function schedulePreview() {
@@ -832,8 +863,132 @@
 
   // ═════════════ 设置窗口 ═════════════
 
+  // 主题色选项（值 + i18n 键）与色值映射
+  const ACCENTS = [
+    ['default', 'settings.accent_default'],
+    ['alisa', 'settings.accent_alisa'],
+    ['anan', 'settings.accent_anan'],
+    ['coco', 'settings.accent_coco'],
+    ['ema', 'settings.accent_ema'],
+    ['hanna', 'settings.accent_hanna'],
+    ['hiro', 'settings.accent_hiro'],
+    ['jailer', 'settings.accent_jailer'],
+    ['leia', 'settings.accent_leia'],
+    ['margo', 'settings.accent_margo'],
+    ['meruru', 'settings.accent_meruru'],
+    ['miria', 'settings.accent_miria'],
+    ['nanoka', 'settings.accent_nanoka'],
+    ['noah', 'settings.accent_noah'],
+    ['sherry', 'settings.accent_sherry'],
+    ['warden', 'settings.accent_warden'],
+    ['yuki', 'settings.accent_yuki'],
+  ];
+  const ACCENT_COLORS = {
+    default: '#35d07f',
+    alisa: '#EA4D3E', anan: '#9D97F9', coco: '#F77449', ema: '#FF8FB4',
+    hanna: '#A7CB1E', hiro: '#F84F5A', jailer: '#C5C9D4', leia: '#FDB95B',
+    margo: '#B87BF0', meruru: '#E2BFB8', miria: '#EFD28D', nanoka: '#84909A',
+    noah: '#65E4EB', sherry: '#89B5FA', warden: '#B3B1C5', yuki: '#C3D4ED',
+  };
+
+  // 当前打开的主题色下拉（仅维护一个，供 document 点击关闭）
+  let activeColorPicker = null;
+  document.addEventListener('click', () => {
+    if (activeColorPicker) activeColorPicker.closeList();
+  });
+
+  // 主题色自定义下拉：选项左侧带颜色小方块
+  function createAccentPicker({ value }) {
+    const wrap = document.createElement('div');
+    wrap.className = 'color-picker';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'color-picker-btn';
+    const swatch = document.createElement('span');
+    swatch.className = 'cp-swatch';
+    const label = document.createElement('span');
+    label.className = 'cp-label';
+    const caret = document.createElement('span');
+    caret.className = 'cp-caret';
+    caret.innerHTML =
+      '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+    btn.appendChild(swatch); btn.appendChild(label); btn.appendChild(caret);
+    wrap.appendChild(btn);
+
+    const list = document.createElement('div');
+    list.className = 'color-picker-list';
+    const items = {};
+    ACCENTS.forEach(([v, key]) => {
+      const it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'color-picker-item';
+      it.dataset.value = v;
+      const sw = document.createElement('span');
+      sw.className = 'cp-swatch';
+      sw.style.background = ACCENT_COLORS[v] || '#888';
+      const nm = document.createElement('span');
+      nm.className = 'cp-name';
+      nm.setAttribute('data-i18n', key);
+      nm.textContent = t(key);
+      it.appendChild(sw); it.appendChild(nm);
+      it.addEventListener('click', () => {
+        api.value = v;
+        api.closeList();
+        wrap.focus();
+      });
+      list.appendChild(it);
+      items[v] = it;
+    });
+    wrap.appendChild(list);
+
+    let current = value;
+    const api = {
+      el: wrap,
+      get value() { return current; },
+      set value(v) {
+        if (!(v in items)) return;
+        current = v;
+        const key = (ACCENTS.find((o) => o[0] === v) || [])[1] || '';
+        swatch.style.background = ACCENT_COLORS[v] || '#888';
+        label.setAttribute('data-i18n', key);
+        label.textContent = t(key);
+        Object.keys(items).forEach((k) => items[k].classList.toggle('selected', k === v));
+        if (api.onChange) api.onChange(v);
+      },
+      onChange: null,
+      openList() {
+        if (activeColorPicker && activeColorPicker !== api) activeColorPicker.closeList();
+        activeColorPicker = api;
+        list.classList.add('open');
+      },
+      closeList() { list.classList.remove('open'); },
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (list.classList.contains('open')) api.closeList();
+      else api.openList();
+    });
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') api.closeList(); });
+    api.value = value; // 初始化显示
+    return api;
+  }
+
   function openSettings() {
     const body = document.createElement('div');
+    // 设置分区：外观 / 显示 / 数据
+    const settingsSection = (titleKey) => {
+      const sec = document.createElement('div');
+      sec.className = 'settings-section';
+      const h = document.createElement('div');
+      h.className = 'settings-section-title';
+      h.setAttribute('data-i18n', titleKey);
+      h.textContent = t(titleKey);
+      sec.appendChild(h);
+      return sec;
+    };
+    const secAppearance = settingsSection('settings.section_appearance');
+    const secDisplay = settingsSection('settings.section_display');
+    const secData = settingsSection('settings.section_data');
 
     const outRow = document.createElement('div');
     outRow.className = 'form-row';
@@ -883,6 +1038,15 @@
       '<option value="dark" data-i18n="settings.theme_dark">' + t('settings.theme_dark') + '</option>' +
       '<option value="light" data-i18n="settings.theme_light">' + t('settings.theme_light') + '</option>';
     themeRow.appendChild(themeSel);
+
+    const accentRow = document.createElement('div');
+    accentRow.className = 'form-row';
+    const accentLabel = document.createElement('label');
+    accentLabel.setAttribute('data-i18n', 'settings.accent_label');
+    accentLabel.textContent = t('settings.accent_label');
+    accentRow.appendChild(accentLabel);
+    const accentPicker = createAccentPicker({ value: document.documentElement.dataset.accent || App.info.accent || 'default' });
+    accentRow.appendChild(accentPicker.el);
 
     const nameRow = document.createElement('div');
     nameRow.className = 'form-row';
@@ -934,12 +1098,20 @@
     actionRow.querySelector('#set-clear-output').textContent = t('settings.clear_output_btn');
     actionRow.querySelector('#set-clear-log').textContent = t('settings.clear_log_btn');
 
-    body.appendChild(outRow);
-    body.appendChild(langRow);
-    body.appendChild(themeRow);
-    body.appendChild(nameRow);
-    body.appendChild(debugRow);
-    body.appendChild(actionRow);
+    // 外观：主题（深/浅）/ 主题色 / 语言
+    secAppearance.appendChild(themeRow);
+    secAppearance.appendChild(accentRow);
+    secAppearance.appendChild(langRow);
+    // 显示：显示原始文件名 / 调试模式
+    secDisplay.appendChild(nameRow);
+    secDisplay.appendChild(debugRow);
+    // 数据：输出目录 / 维护操作
+    secData.appendChild(outRow);
+    secData.appendChild(actionRow);
+
+    body.appendChild(secAppearance);
+    body.appendChild(secDisplay);
+    body.appendChild(secData);
 
     const footer = document.createElement('div');
     const closeBtn = btn('', 'btn sm', null);
@@ -951,9 +1123,15 @@
 
     themeSel.value = document.documentElement.dataset.theme || 'dark';
     themeSel.addEventListener('change', () => {
-      applyTheme(themeSel.value);
+      applyTheme(themeSel.value, accentPicker.value);
       if (api()) api().set_theme(themeSel.value); // 持久化到 settings.json
     });
+
+    accentPicker.onChange = (v) => {
+      applyTheme(themeSel.value, v);
+      App.info.accent = v;              // 同步记忆，重新打开设置时正确回显
+      if (api()) api().set_accent(v);   // 持久化到 settings.json
+    };
 
     // 默认显示本地化角色名，勾选“显示原始文件名”后显示原始文件名
     nameCb.checked = App.showOriginalName;
@@ -1649,7 +1827,10 @@
       let theme = 'dark';
       try { theme = localStorage.getItem('msx-theme') || theme; } catch (e) { /* ignore */ }
       if (info.theme === 'dark' || info.theme === 'light') theme = info.theme;
-      applyTheme(theme);
+      let accent = 'default';
+      try { accent = localStorage.getItem('msx-accent') || accent; } catch (e) { /* ignore */ }
+      if (info.accent) accent = info.accent;
+      applyTheme(theme, accent);
       bindEvents();
       renderCharList();
       renderInfoPage();

@@ -48,7 +48,7 @@ python run.py
 
 Click **Settings** on the left to configure: **Output Directory** (custom export location, remembered automatically), **Language**, **Theme** (dark/light), **Chinese Names** (optional, Chinese UI only), **Debug Mode** (monitors memory/CPU/window, off by default and effective only for the current run), **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` log files).
 
-> Settings are stored in `settings.json` in the program root directory.
+> Settings are stored in `data/settings.json` under the program directory (hidden from casual users).
 
 ### Output Structure
 

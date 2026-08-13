@@ -1099,6 +1099,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Failed to save settings: {e}", 
         LANG_MGL: "Failed to save settings: {e}", 
     },
+    "log.settings_repaired": {
+        LANG_CN: "设置文件已损坏，已自动修复（原文件备份到 {path}）", 
+        LANG_EN: "Settings file was corrupted and auto-repaired (backup: {path})", 
+        LANG_MGL: "Settings file was corrupted and auto-repaired (backup: {path})", 
+    },
     "log.skipped_char": {
         LANG_CN: "跳过角色: {name} (未找到精灵资源)", 
         LANG_EN: "Skipped: {name} (no sprites found)", 
@@ -1118,6 +1123,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "主题已切换: {theme}", 
         LANG_EN: "Theme switched: {theme}", 
         LANG_MGL: "Theme switched: {theme}", 
+    },
+    "log.accent_changed": {
+        LANG_CN: "主题色已切换: {accent}", 
+        LANG_EN: "Accent switched: {accent}", 
+        LANG_MGL: "Accent switched: {accent}", 
     },
 
     # ── parts.* ──
@@ -1140,6 +1150,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "取消全选", 
         LANG_EN: "Deselect All", 
         LANG_MGL: "Alte Ca-nay", 
+    },
+    "parts.deselect_group": {
+        LANG_CN: "取消选择",
+        LANG_EN: "Deselect",
+        LANG_MGL: "Ca-nay Alte",
     },
     "parts.empty_hint": {
         LANG_CN: "请先在左侧选择一个角色进入拼接模式", 
@@ -1309,6 +1324,111 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "浅色", 
         LANG_EN: "Light", 
         LANG_MGL: "Sha-Rui", 
+    },
+    "settings.accent_label": {
+        LANG_CN: "主题色",
+        LANG_EN: "Accent Color",
+        LANG_MGL: "MEif oF Toim",
+    },
+    "settings.accent_default": {
+        LANG_CN: "默认（绿）",
+        LANG_EN: "Default (Green)",
+        LANG_MGL: "Taven (Green)",
+    },
+    "settings.accent_alisa": {
+        LANG_CN: "紫藤亚里沙（红）",
+        LANG_EN: "Alisa (Red)",
+        LANG_MGL: "Alisa (Red)",
+    },
+    "settings.accent_anan": {
+        LANG_CN: "夏目安安（紫）",
+        LANG_EN: "Anan (Violet)",
+        LANG_MGL: "Anan (Violet)",
+    },
+    "settings.accent_coco": {
+        LANG_CN: "泽渡可可（橙）",
+        LANG_EN: "Coco (Orange)",
+        LANG_MGL: "Coco (Orange)",
+    },
+    "settings.accent_ema": {
+        LANG_CN: "樱羽艾玛（粉）",
+        LANG_EN: "Ema (Pink)",
+        LANG_MGL: "Ema (Pink)",
+    },
+    "settings.accent_hanna": {
+        LANG_CN: "远野汉娜（黄绿）",
+        LANG_EN: "Hanna (Lime)",
+        LANG_MGL: "Hanna (Lime)",
+    },
+    "settings.accent_hiro": {
+        LANG_CN: "二阶堂希罗（红）",
+        LANG_EN: "Hiro (Red)",
+        LANG_MGL: "Hiro (Red)",
+    },
+    "settings.accent_jailer": {
+        LANG_CN: "看守（银灰）",
+        LANG_EN: "Jailer (Silver)",
+        LANG_MGL: "Jailer (Silver)",
+    },
+    "settings.accent_leia": {
+        LANG_CN: "莲见蕾雅（琥珀）",
+        LANG_EN: "Leia (Amber)",
+        LANG_MGL: "Leia (Amber)",
+    },
+    "settings.accent_margo": {
+        LANG_CN: "宝生玛格（紫）",
+        LANG_EN: "Margo (Violet)",
+        LANG_MGL: "Margo (Violet)",
+    },
+    "settings.accent_meruru": {
+        LANG_CN: "冰上梅露露（粉）",
+        LANG_EN: "Meruru (Pink)",
+        LANG_MGL: "Meruru (Pink)",
+    },
+    "settings.accent_miria": {
+        LANG_CN: "佐伯米莉亚（黄）",
+        LANG_EN: "Miria (Yellow)",
+        LANG_MGL: "Miria (Yellow)",
+    },
+    "settings.accent_nanoka": {
+        LANG_CN: "黑部奈叶香（灰）",
+        LANG_EN: "Nanoka (Gray)",
+        LANG_MGL: "Nanoka (Gray)",
+    },
+    "settings.accent_noah": {
+        LANG_CN: "城崎诺亚（青）",
+        LANG_EN: "Noah (Cyan)",
+        LANG_MGL: "Noah (Cyan)",
+    },
+    "settings.accent_sherry": {
+        LANG_CN: "橘雪莉（蓝）",
+        LANG_EN: "Sherry (Blue)",
+        LANG_MGL: "Sherry (Blue)",
+    },
+    "settings.accent_warden": {
+        LANG_CN: "典狱长（雾紫）",
+        LANG_EN: "Warden (Mist)",
+        LANG_MGL: "Warden (Mist)",
+    },
+    "settings.accent_yuki": {
+        LANG_CN: "月代雪（淡蓝）",
+        LANG_EN: "Yuki (Ice)",
+        LANG_MGL: "Yuki (Ice)",
+    },
+    "settings.section_appearance": {
+        LANG_CN: "外观",
+        LANG_EN: "Appearance",
+        LANG_MGL: "Sha-Rui",
+    },
+    "settings.section_display": {
+        LANG_CN: "显示",
+        LANG_EN: "Display",
+        LANG_MGL: "Lai Nei",
+    },
+    "settings.section_data": {
+        LANG_CN: "数据",
+        LANG_EN: "Data",
+        LANG_MGL: "data",
     },
     "settings.title": {
         LANG_CN: "设置", 

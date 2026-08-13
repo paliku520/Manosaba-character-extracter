@@ -50,7 +50,7 @@ from src.i18n import (
 )
 from src.logtools import clear_logs, configure, log
 from src.resource_monitor import ResourceMonitor
-from src.settings import get_export_count, get_lang, get_last_directory, get_no_spoiler, get_output_dir, get_show_original_name, get_theme, save_settings
+from src.settings import ACCENT_NAMES, get_accent, get_export_count, get_lang, get_last_directory, get_no_spoiler, get_output_dir, get_show_original_name, get_theme, save_settings
 from src.updater import check_for_update
 from src.version import __version__
 
@@ -270,6 +270,7 @@ class JsApi:
             "bundle_count": len(self._bundles),
             "frozen": getattr(sys, "frozen", False),
             "theme": get_theme(),
+            "accent": get_accent(),
             "export_count": self._export_count,
             "show_original_name": self._show_original_name,
             "no_spoiler": self._no_spoiler,
@@ -302,6 +303,13 @@ class JsApi:
             save_settings(theme=theme)
             log("info", _("log.theme_changed", theme=theme))
         return {"theme": theme}
+
+    def set_accent(self, accent: str) -> dict:
+        """保存主题色（default/角色名）到 settings.json，供下次启动恢复"""
+        if accent in ACCENT_NAMES:
+            save_settings(accent=accent)
+            log("info", _("log.accent_changed", accent=accent))
+        return {"accent": accent}
 
     def set_show_original_name(self, enable: bool) -> dict:
         """保存是否显示原始文件名到 settings.json"""
