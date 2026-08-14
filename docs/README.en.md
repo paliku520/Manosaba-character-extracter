@@ -3,31 +3,27 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md)
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
-Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**. Supports automatic component data detection, direct sprite export, and full character illustration compositing. The UI is an **Electron frameless window** (Chromium rendering, native drag / double-click maximize / Aero Snap / edge resize), with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
+Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**: auto-detect component data, export sprites directly, or composite full illustrations. The UI is an **Electron frameless window**, with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
 
 ## Features
 
-- **Auto Detection** — Automatically detects bundle component data: preview/export directly when absent, or export/composite when present
-- **Character Illustration Compositing** — Composites full illustrations by component position & depth, with categorized parts, thumbnail previews, and live compositing preview
-- **Part Management** — search, natural sorting (prefix letters + numbers), collapsible groups, select all; click a selected sprite to copy its name
-- **Live Preview** — wheel zoom (cursor-centered), drag pan, min-zoom fits full resolution
-- **Sprite Preview** — no-component characters can preview all sprites in a single-row grid (sorted by filename), check to export selected or all
-- **Hierarchy Viewer** — component tree, each row has a copy button
+- **Auto Detection** — Detect component data: preview/export directly when absent, or export/composite when present
+- **Character Compositing** — Composite full illustrations by part position & depth, with categories, thumbnails, and live preview
+- **Part Management** — search, natural sorting, collapsible groups, select all, click to copy name
+- **Live Preview** — wheel zoom (cursor-centered), drag pan
+- **Sprite Preview** — one-click preview of all sprites for no-component characters, check to export
+- **Hierarchy Viewer** — component tree, copy button per row
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
-- **Memory Reclaim** — Resources are released immediately during loading/extraction/compositing with GC triggers; switching characters clears the previous character's data; forced GC before exit with a resource-check log
-- **Debug Mode** — Monitor memory/CPU/window resolution in real time (shown in the title bar, effective only for the current run)
-- **Log Files** — Console logs are also written to `logs/` (named by startup time), one-click cleanup; preview temp files are auto-cleaned on character switch/exit
-- **Multi-language** — Simplified Chinese / English / fiXmArge (a constructed language), auto-follows system, switchable in Settings
-- **Theme** — dark / light theme, persisted to settings
-- **Total Exports** — counts successful export operations (shown on the About page)
-- **About Page** — developer info, project links, rotating background, check for updates
-- **Auto Update Check** — Silently checks for new GitHub versions at startup (version tags compatible with `pre-view-n` / `hotfix-n`; badge green = stable, yellow = pre-release)
-- **Disclaimer** — Sidebar and About page state “This tool is a third-party unofficial tool and is not affiliated with the game official”; also logged at startup
+- **Memory Reclaim** — Releases resources immediately with GC triggers; forced GC before exit
+- **Debug Mode** — Monitor memory/CPU/window resolution (current run only)
+- **Log Files** — Console logs also written to `logs/`, one-click cleanup
+- **Multi-language / Theme** — Simplified Chinese / English / fiXmArge; dark/light theme persisted
+- **Total Exports / About / Auto Update Check / Disclaimer** (third-party unofficial tool)
 
 ## Requirements
 
-- **Python 3.10+**: `pip install -r requirements.txt` (core logic: bundle parsing / image processing)
-- **Node.js 18+**: `cd electron && npm install` (Electron UI shell)
+- **Python 3.10+**: `pip install -r requirements.txt`
+- **Node.js 18+**: `cd electron && npm install`
 
 > Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
 
@@ -47,32 +43,31 @@ npm start          # equivalent to npx electron .
 python run.py
 ```
 
-> Electron mode: the `backend.py` child process reuses the `JsApi` business logic from `run.py` (stdio JSON-RPC); window control is handled by the Electron main process; the `webui/` frontend is shared by both modes.
-
 ### Steps
-2. Click a character on the left → the program auto-detects:
-   - **No component data** → Choose **Preview Sprites / Export All Directly / Cancel**
-   - **With component data** → Choose **Direct Export** or **Composite Character**
-3. Composite mode: check parts → live preview → save composite PNG
+
+1. Click a character on the left → the program auto-detects:
+   - **No component data** → Preview Sprites / Export All Directly / Cancel
+   - **With component data** → Direct Export / Composite Character
+2. Composite mode: check parts → live preview → save composite PNG
 
 ### Settings
 
-Click **Settings** on the left to configure: **Output Directory** (custom export location, remembered automatically), **Language**, **Theme** (dark/light), **Chinese Names** (optional, Chinese UI only), **Debug Mode** (monitors memory/CPU/window, off by default and effective only for the current run), **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` log files).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme**, **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
-> Settings are stored in `data/settings.json` under the program directory (hidden from casual users).
+> Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 
 ### Data Storage Paths (Packaged Build)
 
-After installation, the app reads/writes the following data under its **install directory** (example: installed to `D:\mce`):
+After installation, the app reads/writes the following data under its **install directory** (example: `D:\mce`):
 
-| Path | Purpose | Notes |
-|---|---|---|
-| `D:\mce\data` | Settings | `settings.json` (language, theme, output dir, etc.; hidden attribute) |
-| `D:\mce\output` | Export output | Exported sprites / composited illustration PNGs |
-| `D:\mce\temp` | Sprite cache | Extracted data cache; clearable to free space |
-| `D:\mce\resources\backend\logs` | Runtime logs | Console log files (named by startup time), one-click cleanup |
+| Path | Purpose |
+|---|---|
+| `D:\mce\data` | Settings `settings.json` |
+| `D:\mce\output` | Exported sprites / composite PNGs |
+| `D:\mce\temp` | Sprite cache (clearable) |
+| `D:\mce\resources\backend\logs` | Runtime logs (one-click cleanup) |
 
-> For the portable (zip) build, the same folders are created under the **extraction directory** (replace `D:\mce` in the table with the actual extraction directory); the `data/` path can be redirected via the `MCE_DATA_DIR` environment variable.
+> For the portable (zip) build, the same folders are created under the extraction directory; `data/` can be redirected via the `MCE_DATA_DIR` environment variable.
 
 ### Output Structure
 
@@ -88,30 +83,27 @@ temp/                  # Sprite cache (clearable, speeds up re-loading)
 ### Illustration Compositing Layer Order / Mask Handling Incomplete
 
 **Problem Description**
-- The current version of the illustration compositing feature cannot fully reproduce the original game's illustration layer effects. Some character parts (e.g., eyes, hair, face masks) may differ from the in-game display after compositing.
+The current version cannot fully reproduce the original game's illustration layer effects; some parts (eyes, hair, face masks) may differ from the in-game display.
 
 **Specific Symptoms**
 - Some layer stacking orders are inconsistent with the original game
-- ClippingMask layers are not handled correctly — they are rendered as normal sprites instead of invisible clipping regions
-- Affected character parts include but are not limited to: eyes, hair, facial expression parts, etc.
+- ClippingMask layers are rendered as normal sprites instead of invisible clipping regions
 
 **Comparison**
 
-Below is a comparison between the current compositor output (left) and the original game (right):
-
 ![Compositing Comparison](./images/comparison.png)
 
-**Root Cause Analysis**
-- The game's character illustrations use Unity's `SpriteRenderer` + `ClippingMask` mechanism for complex layer clipping effects. The current compositor only performs simple layer stacking based on `sorting_order`, without implementing the following:
+**Root Cause Analysis (may be inaccurate)**
+- The game's illustrations use Unity's `SpriteRenderer` + `ClippingMask` for layer clipping; the current compositor only stacks by `sorting_order`, without implementing:
 
-1. **Clipping Mask**: `ClippingMask`-type sprites are used to clip the display region of target layers
-2. **Mask Scope**: Each `ClippingMask` only affects specific parts within a range (e.g., `ClippingMask_Eyes` only affects the eye area), not globally
-3. **Transparent Masks**: Masks have a `color.a < 1.0` transparency property that needs proper handling
+1. **Clipping Mask**: `ClippingMask`-type sprites clip the display region of target layers
+2. **Mask Scope**: Each mask only affects specific parts (e.g., `ClippingMask_Eyes` only affects the eye area), not globally
+3. **Transparent Masks**: Masks have a `color.a < 1.0` transparency property
 
 **Workarounds**
-1. Export all sprite files directly and manually edit them using image editing software such as Adobe Photoshop.
-2. Use the [Manosaba mod](http://manosabamoddoc.fuyumi.xyz/) by [雪莉苹果汁](https://space.bilibili.com/3546949672241842) on Bilibili, which allows editing directly within the game (the tool provides component structure information).
-3. Wait for future fixes.
+1. Export all sprites directly and edit manually with Photoshop or similar
+2. Use the [Manosaba mod](http://manosabamoddoc.fuyumi.xyz/) by [雪莉苹果汁](https://space.bilibili.com/3546949672241842) to edit within the game (the tool provides component structure info)
+3. Wait for future fixes
 
 ## Project Structure
 
@@ -165,20 +157,19 @@ This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENS
 ```bash
 pip install pyinstaller
 python scripts\build_pywebview.py                          # Default onedir (fast startup)
-python scripts\build_pywebview.py --onefile                # Single-file exe (good for distribution)
+python scripts\build_pywebview.py --onefile                # Single-file exe
 python scripts\build_pywebview.py --name MyApp --icon icon.ico
 ```
 
-- **Version info auto-injected** (file version / product name / product version, etc., to reduce antivirus false positives)
-- Optional: `--company "Name"` (company/developer), `--product`, `--description`, `--copyright` (defaults to `APP_*` constants at the top of the script), `--console false` (GUI mode without console)
-
-> Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_pywebview.py --help` for more options.
+- Version info auto-injected (file version / product name, etc., to reduce antivirus false positives); optional `--company/--product/--description/--copyright` (defaults to `APP_*` constants), `--console false`
+- Icons must be `.ico`; `--onefile` starts slower; see `--help` for more options
 
 ### Electron App
 ```bash
-python scripts\build_electron_backend.py   # Build only the Python backend child process → dist/backend/
+python scripts\build_electron_backend.py   # Build only the Python backend → dist/backend/
 python scripts\build_electron.py            # One-click: backend + portable zip + installer Setup.exe
 ```
 
-- `build_electron.py` options: `--backend-only` (backend only), `--app-only` (app only, requires existing backend), `--zip-only` (portable zip only), `--installer-only` (installer Setup.exe only), `--no-clean` / `--clean-dist`
-- electron-builder config: `electron/electron-builder.yml` (portable zip + nsis installer; requires electron/node_modules installed)
+- `build_electron.py` options: `--backend-only` / `--app-only` / `--zip-only` / `--installer-only` / `--no-clean` / `--clean-dist`
+- electron-builder config: `electron/electron-builder.yml` (requires electron/node_modules installed)
+- see `--help` for more options
