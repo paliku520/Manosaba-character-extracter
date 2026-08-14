@@ -1,12 +1,12 @@
 """
-打包脚本 — 使用 PyInstaller 将项目封装为 exe（保留控制台）
+打包脚本 — 使用 PyInstaller 将项目封装为 PyWebView 独立版 exe（保留控制台）
 
 使用方法:
-    python scripts\build_exe.py                          # 默认 onedir 模式
-    python scripts\build_exe.py --onefile                # 打包为单个 exe
-    python scripts\build_exe.py --name "MyApp"           # 自定义名称
-    python scripts\build_exe.py --icon "assets/icon.ico"   # 自定义图标
-    python scripts\build_exe.py -h                       # 查看完整帮助
+    python scripts\build_pywebview.py                          # 默认 onedir 模式
+    python scripts\build_pywebview.py --onefile                # 打包为单个 exe
+    python scripts\build_pywebview.py --name "MyApp"           # 自定义名称
+    python scripts\build_pywebview.py --icon "assets/icon.ico"   # 自定义图标
+    python scripts\build_pywebview.py -h                       # 查看完整帮助
 
 输出目录: dist/
   - onedir 模式: dist\\名称\\名称.exe + _internal\\ 文件夹
@@ -26,12 +26,20 @@ from typing import Optional
 # 脚本在 scripts/ 子目录中，项目根目录在其父目录
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 
+# MCE 字符画（与 electron/main.js 的 MCE_BANNER 一致）
+MCE_BANNER = """███╗   ███╗ ██████╗███████╗
+████╗ ████║██╔════╝██╔════╝
+██╔████╔██║██║     █████╗  
+██║╚██╔╝██║██║     ██╔══╝  
+██║ ╚═╝ ██║╚██████╗███████╗
+╚═╝     ╚═╝ ╚═════╝╚══════╝"""
+
 
 # ── exe 版本信息（可自行修改）──────────────────────
 # 写入 exe 的详细信息（右键 exe → 属性 → 详细信息），可降低杀软误报。
 # 个人业余开发者无公司时，可将 APP_COMPANY 填为自己的昵称 / GitHub 用户名。
 APP_COMPANY = "paliku520(云野风云)"                                               # 公司/开发者名称
-APP_PRODUCT_NAME = "Manosaba Character Extractor"                                # 产品名称
+APP_PRODUCT_NAME = "Manosaba Character Extracter"                                # 产品名称
 APP_DESCRIPTION = "Manosaba 角色立绘提取与合成工具"                                  # 文件说明
 APP_COPYRIGHT = "Copyright (c) 2026 paliku520. Licensed under GPL-3.0."          # 版权信息
 
@@ -125,6 +133,7 @@ def run_pyinstaller(
     """使用命令行参数直接调用 PyInstaller 打包"""
     import PyInstaller.__main__
 
+    print(MCE_BANNER)
     print("=" * 60)
     print("  开始打包...")
     print("=" * 60)
@@ -209,9 +218,10 @@ def clean_dir(path: Path, label: str):
 
 def main():
     print()
-    print("  ╔══════════════════════════════════════╗")
-    print("  ║  Manosaba-character-extracter 打包   ║")
-    print("  ╚══════════════════════════════════════╝")
+    print("  ╔═══════════════════════════════════════════╗")
+    print("  ║  Manosaba-character-extracter 打包        ║")
+    print("  ║       (PyWebView 版本)                    ║")
+    print("  ╚═══════════════════════════════════════════╝")
     print()
 
     import argparse
@@ -222,13 +232,13 @@ def main():
             super().__init__(prog, max_help_position=40, width=100)
 
     parser = argparse.ArgumentParser(
-        prog="build_exe.py",
+        prog="build_pywebview.py",
         usage="%(prog)s [options]",
-        description="将项目打包为 exe（PyInstaller）",
+        description="将项目打包为 PyWebView 独立版 exe（PyInstaller）",
         epilog=(
             "示例:\n"
-            "  python scripts\\build_exe.py\n"
-            "  python scripts\\build_exe.py --onefile --name MyApp --icon assets/icon.ico\n"
+            "  python scripts\\build_pywebview.py\n"
+            "  python scripts\\build_pywebview.py --onefile --name MyApp --icon assets/icon.ico\n"
             "\n"
             "输出目录: dist/\n"
             "  onedir  -> dist\\名称\\名称.exe + _internal\\\n"

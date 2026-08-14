@@ -11,6 +11,8 @@
 前端: webui/ (HTML/CSS/JS)，通过 js_api 桥接调用本模块。
 """
 
+from __future__ import annotations  # 注解惰性求值：Electron 后端子进程（backend.py）无需真正导入 pywebview/pythonnet
+
 import base64
 import io
 import json
@@ -21,24 +23,37 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
-import webview
+try:
+    import webview
+except ImportError:
+    webview = None  # type: ignore[assignment]  # Electron 模式（backend.py）不依赖 pywebview
+
+# 类型标注：PyWebView 模式为模块，Electron 模式为 None（Any 使两模式均可通过类型检查）
+webview: Any  # type: ignore[misc]
+
 from PIL import Image
 
-# pythonnet：访问 .NET（WinForms/WebView2）必需，须在 from System import 之前加载
-import clr
+# pythonnet：PyWebView 模式访问 .NET（WinForms/WebView2）必需；Electron 模式不需要
+try:
+    import clr  # noqa: F401
+except ImportError:
+    clr = None  # Electron 模式（backend.py）不依赖 pythonnet
 
 from src.bundle_loader import BundleLoader
 from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
     LoadCancelled,
     SpriteCompositor,
-    extract_character_data,
-    extract_sprites,
     has_component_data,
 )
-from src.export_manager import export_sprites, save_composite
+from src.export_manager import save_composite
+from src.worker_client import (
+    LoadCancelledInWorker,
+    WorkerTimeoutError,
+    run_extract_worker,
+)
 from src.i18n import (
     LANG_CN,
     LANG_EN,
@@ -48,7 +63,7 @@ from src.i18n import (
     current_lang,
     set_lang,
 )
-from src.logtools import clear_logs, configure, log
+from src.logtools import clear_logs, configure, flush_logs, log, log_raw
 from src.resource_monitor import ResourceMonitor
 from src.settings import ACCENT_NAMES, get_accent, get_export_count, get_lang, get_last_directory, get_no_spoiler, get_output_dir, get_show_original_name, get_theme, save_settings
 from src.updater import check_for_update
@@ -181,7 +196,7 @@ class JsApi:
     """
 
     def __init__(self, output_dir: Optional[Path] = None):
-        self._window: Optional[webview.Window] = None
+        self._window: Optional[Any] = None
         self._loader = BundleLoader()
         self._compositor = SpriteCompositor(scale=100.0)
 
@@ -204,6 +219,7 @@ class JsApi:
         self._base_title: str = ""              # 窗口基础标题（调试模式时附加资源占用信息）
         self._char_gen = 0                      # 角色加载代号：递增以中断旧加载
         self._char_busy = False                 # 是否正在加载角色/导出（读条中禁止切换）
+        self._work_lock = threading.Lock()      # 提取类任务互斥锁：避免并发写 temp/（旧任务取消清理与新任务写入竞争）
         self._char_has_component: Dict[str, bool] = {}  # 加载目录时缓存的角色组件状态（避免点击时重复解析 bundle）
 
     # ── 事件推送 ──────────────────────────────────────────
@@ -512,6 +528,11 @@ class JsApi:
         无论新角色是否有组件，都先清理上一个角色的内存临时数据
         （提取数据/合成图），释放内存；不删除 temp/ 磁盘缓存（保留缓存复用）。
         """
+        # 取消正在进行的前一个任务（preview_bundle / export_sprites / load_char）：
+        # 递增代号使其 cancel_check 触发 LoadCancelled 退出，避免并发写同一 preview 目录
+        # 导致文件交错/被删（如快速重复选择角色时出现提取失败）
+        self._char_gen += 1
+        self._char_busy = False
         # 清理上一个角色的内存临时数据
         self._character_data = None
         self._composite_image = None
@@ -560,54 +581,65 @@ class JsApi:
             target = self._temp_dir / "preview" / name
             def cb(cur, total):
                 self._emit("progress", {"current": cur, "total": total, "phase": "preview"})
+            # 立即给出反馈（等待锁期间也显示，避免首次 UnityPy 解析 bundle 看似卡死）
             self._emit("status", {"text": _("app.status.extracting", name=name)})
-            try:
-                existing = list(target.glob("*.png")) if target.exists() else []
-                if existing:
-                    # 复用已提取的预览缓存（不重新解析 bundle）
-                    sprites = []
-                    for p in sorted(existing):
-                        if gen != self._char_gen:
-                            raise LoadCancelled()
-                        try:
-                            with Image.open(p) as im:
-                                size = list(im.size)
-                        except Exception:
-                            size = [0, 0]
-                        sprites.append({"name": p.stem, "path_id": -1, "file_path": str(p), "size": size})
-                else:
-                    target.mkdir(parents=True, exist_ok=True)
-                    sprites = extract_sprites(
-                        bundle_path, self._temp_dir / "preview",
-                        progress_callback=cb, cancel_check=lambda: gen != self._char_gen,
-                    )
-            except LoadCancelled:
-                # 用户中断：清理预览临时数据
-                shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
-                self._preview_sprites = None
-                log("info", _("log.char_load_cancelled"))
-                return
-            except Exception as e:
-                log("error", _("log.process_data_failed", e=e))
-                self._emit("preview_error", {"name": name, "message": str(e)})
-                return
-            finally:
-                self._char_busy = False
-            self._preview_sprites = sprites
-            log("info", _("log.preview_ready", name=name, count=len(sprites)))
-            self._emit("preview_ready", {
-                "name": name,
-                "count": len(sprites),
-                "sprites": [{"name": s["name"], "size": s["size"]} for s in sprites],
-            })
+            self._emit("progress", {"current": 0, "total": 1, "phase": "preview"})
+            with self._work_lock:   # 等待前一个任务（含取消清理）完全退出，避免并发写 preview/ 目录
+                try:
+                    existing = list(target.glob("*.png")) if target.exists() else []
+                    if existing:
+                        # 复用已提取的预览缓存（不重新解析 bundle）
+                        sprites = []
+                        for p in sorted(existing):
+                            if gen != self._char_gen:
+                                raise LoadCancelled()
+                            try:
+                                with Image.open(p) as im:
+                                    size = list(im.size)
+                            except Exception:
+                                size = [0, 0]
+                            sprites.append({"name": p.stem, "path_id": -1, "file_path": str(p), "size": size})
+                    else:
+                        target.mkdir(parents=True, exist_ok=True)
+                        sprites = self._extract_via_worker(
+                            "extract_sprites",
+                            {
+                                "bundle_path": str(bundle_path),
+                                "output_dir": str(self._temp_dir / "preview"),
+                            },
+                            cb,
+                            lambda: gen != self._char_gen,
+                        )
+                except LoadCancelled:
+                    # 用户中断：清理预览临时数据（锁内执行，不会与新任务并发删除）
+                    shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
+                    self._preview_sprites = None
+                    log("info", _("log.char_load_cancelled"))
+                    return
+                except Exception as e:
+                    log("error", _("log.process_data_failed", e=e))
+                    self._emit("preview_error", {"name": name, "message": str(e)})
+                    return
+                finally:
+                    self._char_busy = False
+                self._preview_sprites = sprites
+                log("info", _("log.preview_ready", name=name, count=len(sprites)))
+                self._emit("preview_ready", {
+                    "name": name,
+                    "count": len(sprites),
+                    "sprites": [{"name": s["name"], "size": s["size"]} for s in sprites],
+                })
         self._run_async(worker)
         return True
 
     def get_preview_thumbnails(self):
-        """为当前预览精灵生成完整预览图 data URL（事件: preview_thumbs_ready）"""
+        """为当前预览精灵生成完整预览图 data URL（事件: progress / preview_thumbs_ready）"""
         def worker():
+            sprites = self._preview_sprites or []
+            total = len(sprites)
             result = {}
-            for s in (self._preview_sprites or []):
+            for i, s in enumerate(sprites):
+                self._emit("progress", {"current": i, "total": total, "phase": "preview_thumbs"})
                 url = _sprite_full_data_url(Path(s["file_path"]), max_side=768)
                 if url:
                     result[s["name"]] = url
@@ -662,6 +694,28 @@ class JsApi:
         log("info", _("log.char_load_cancelled"))
         return {"ok": True}
 
+    def _extract_via_worker(self, kind: str, args: Dict, cb, cancel_check) -> Any:
+        """经独立子进程执行 UnityPy 提取（方案 A，绕开 backend 内首次提取卡死）。
+
+        - 子进程无进展超时（killed）→ 自动重试一次；仍失败则抛 WorkerTimeoutError
+        - 用户取消 → 抛 LoadCancelled（上层按原逻辑清理）
+        """
+        for attempt in (1, 2):
+            try:
+                return run_extract_worker(
+                    kind, args, progress_callback=cb, cancel_check=cancel_check,
+                )
+            except LoadCancelledInWorker:
+                raise LoadCancelled()
+            except WorkerTimeoutError as e:
+                if attempt == 2:
+                    raise
+                log("warning", f"[worker] {kind} 子进程无进展(killed)，重试… ({e})")
+            except (OSError, BrokenPipeError) as e:
+                if attempt == 2:
+                    raise
+                log("warning", f"[worker] {kind} 子进程启动失败，重试… ({e})")
+
     def export_sprites(self, name: str, has_components: bool):
         """导出角色全部精灵（事件: progress / export_complete / export_error）"""
         def worker():
@@ -671,32 +725,39 @@ class JsApi:
             def cb(cur, total):
                 self._emit("progress", {"current": cur, "total": total, "phase": "export"})
             self._emit("status", {"text": _("app.status.exporting", name=name)})
+            self._emit("progress", {"current": 0, "total": 1, "phase": "export"})
             log("info", _("log.export_start", name=name))
-            try:
-                results = export_sprites(
-                    bundle_path, self._output_dir,
-                    has_components=bool(has_components), progress_callback=cb,
-                    cancel_check=lambda: gen != self._char_gen,
-                )
-            except LoadCancelled:
-                log("info", _("log.char_load_cancelled"))
+            with self._work_lock:   # 与提取类任务互斥，避免并发读写临时/输出目录
+                try:
+                    results = self._extract_via_worker(
+                        "export_sprites",
+                        {
+                            "bundle_path": str(bundle_path),
+                            "output_dir": str(self._output_dir),
+                            "has_components": bool(has_components),
+                        },
+                        cb,
+                        lambda: gen != self._char_gen,
+                    )
+                except LoadCancelled:
+                    log("info", _("log.char_load_cancelled"))
+                    self._char_busy = False
+                    return
+                except Exception as e:
+                    log("error", _("log.export_failed", name=name, e=e))
+                    self._emit("export_error", {"name": name, "message": str(e)})
+                    self._char_busy = False
+                    return
+                # 累计导出次数（每次成功导出 +1，不按图片数量）
+                self._export_count += 1
+                save_settings(export_count=self._export_count)
                 self._char_busy = False
-                return
-            except Exception as e:
-                log("error", _("log.export_failed", name=name, e=e))
-                self._emit("export_error", {"name": name, "message": str(e)})
-                self._char_busy = False
-                return
-            # 累计导出次数（每次成功导出 +1，不按图片数量）
-            self._export_count += 1
-            save_settings(export_count=self._export_count)
-            self._char_busy = False
-            log("info", _("log.export_complete", name=name, count=len(results)))
-            self._emit("export_complete", {
-                "name": name, "count": len(results),
-                "output_dir": str(self._output_dir / name),
-                "export_count": self._export_count,
-            })
+                log("info", _("log.export_complete", name=name, count=len(results)))
+                self._emit("export_complete", {
+                    "name": name, "count": len(results),
+                    "output_dir": str(self._output_dir / name),
+                    "export_count": self._export_count,
+                })
         self._run_async(worker)
         return True
 
@@ -706,40 +767,48 @@ class JsApi:
             gen = self._char_gen
             self._char_busy = True
             bundle_path = Path(self._bundles.get(name, ""))
-            cached = load_extracted_data(self._temp_dir, name)
-            if cached:
-                self._character_data = cached
-                log("info", _("log.extract_cache_hit", name=name))
-                self._char_busy = False
-                self._emit("data_ready", self._data_summary(cached))
-                return
             def cb(cur, total):
                 self._emit("progress", {"current": cur, "total": total, "phase": "extract"})
+            # 立即给出反馈（等待锁期间也显示，避免首次 UnityPy 解析 bundle 看似卡死）
             self._emit("status", {"text": _("app.status.extracting", name=name)})
-            try:
-                self._temp_dir.mkdir(parents=True, exist_ok=True)
-                data = extract_character_data(
-                    bundle_path, self._temp_dir, progress_callback=cb,
-                    cancel_check=lambda: gen != self._char_gen,
-                )
-                save_extracted_data(data, self._temp_dir, name)
-            except LoadCancelled:
-                # 用户中断：清理本次提取的内存与磁盘数据
-                self._character_data = None
-                shutil.rmtree(self._temp_dir / name, ignore_errors=True)
-                log("info", _("log.char_load_cancelled"))
+            self._emit("progress", {"current": 0, "total": 1, "phase": "extract"})
+            with self._work_lock:   # 等待前一个任务（含取消清理）完全退出，避免并发写 temp/ 导致文件被删
+                cached = load_extracted_data(self._temp_dir, name)
+                if cached:
+                    self._character_data = cached
+                    log("info", _("log.extract_cache_hit", name=name))
+                    self._char_busy = False
+                    self._emit("data_ready", self._data_summary(cached))
+                    return
+                try:
+                    self._temp_dir.mkdir(parents=True, exist_ok=True)
+                    data = self._extract_via_worker(
+                        "extract_character",
+                        {
+                            "bundle_path": str(bundle_path),
+                            "output_dir": str(self._temp_dir),
+                        },
+                        cb,
+                        lambda: gen != self._char_gen,
+                    )
+                    save_extracted_data(data, self._temp_dir, name)
+                except LoadCancelled:
+                    # 用户中断：清理本次提取的内存与磁盘数据（锁内执行，不会与新任务并发删除）
+                    self._character_data = None
+                    shutil.rmtree(self._temp_dir / name, ignore_errors=True)
+                    log("info", _("log.char_load_cancelled"))
+                    self._char_busy = False
+                    return
+                except Exception as e:
+                    log("error", _("log.process_data_failed", e=e))
+                    self._emit("data_error", {"name": name, "message": str(e)})
+                    self._char_busy = False
+                    return
+                self._character_data = data
                 self._char_busy = False
-                return
-            except Exception as e:
-                log("error", _("log.process_data_failed", e=e))
-                self._emit("data_error", {"name": name, "message": str(e)})
-                self._char_busy = False
-                return
-            self._character_data = data
-            self._char_busy = False
-            count = len(data.get("transform_data", []))
-            log("info", _("log.extract_complete", name=name, count=count))
-            self._emit("data_ready", self._data_summary(data))
+                count = len(data.get("transform_data", []))
+                log("info", _("log.extract_complete", name=name, count=count))
+                self._emit("data_ready", self._data_summary(data))
         self._run_async(worker)
         return True
 
@@ -776,8 +845,12 @@ class JsApi:
         self._run_async(worker)
         return True
 
-    def composite(self, selected_names: List[str]):
-        """合成角色图像并推送预览 data URL（事件: progress / composite_done）"""
+    def composite(self, selected_names: List[str], sketch_text: str = "", sketch_size: int = 56, sketch_align: str = "center"):
+        """合成角色图像并推送预览 data URL（事件: progress / composite_done）
+
+        sketch_text: Anan 素描本自定义文字（空则忽略）；sketch_size: 文字字号（像素）
+        sketch_align: 文字对齐方式（left/center/right）
+        """
         def worker():
             if not self._character_data:
                 self._emit("composite_done", {"ok": False, "error": "no_data"})
@@ -790,6 +863,9 @@ class JsApi:
                     self._character_data["transform_data"],
                     selected_names=selected_names,
                     progress_callback=cb,
+                    sketchbook_text=sketch_text or None,
+                    sketch_font_size=int(sketch_size or 56),
+                    sketch_align=(sketch_align or "center"),
                 )
             except Exception as e:
                 log("error", _("log.composite_failed", e=e))
@@ -882,6 +958,177 @@ class JsApi:
             log("warning", f"quit_app failed: {e}")
         return {"ok": True}
 
+    # ── 无边框标题栏窗口控制（frameless）──────────────────
+
+    def window_minimize(self) -> dict:
+        """最小化窗口（标题栏最小化按钮）"""
+        try:
+            if self._window is not None:
+                self._window.minimize()
+        except Exception as e:
+            log("warning", f"window_minimize failed: {e}")
+        return {"ok": True}
+
+    def window_maximize(self) -> dict:
+        """最大化/还原切换：最大化到工作区（不覆盖任务栏），还原恢复原位置大小"""
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return {"ok": False}
+        try:
+            if getattr(self, "_win_max", False):
+                restore = getattr(self, "_win_restore", None)
+                if restore:
+                    self._win_set(hwnd, *restore)
+                self._win_max = False
+            else:
+                self._win_restore = self._win_rect(hwnd)
+                self._win_set(hwnd, *self._work_area())
+                self._win_max = True
+        except Exception as e:
+            log("warning", f"window_maximize failed: {e}")
+        return {"ok": True, "maximized": getattr(self, "_win_max", False)}
+
+    def window_drag_start(self, screen_x: int, screen_y: int) -> dict:
+        """开始拖动标题栏：若处于最大化状态则还原为原大小，并使标题栏贴合鼠标位置"""
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return {"ok": False}
+        try:
+            if getattr(self, "_win_max", False):
+                restore = getattr(self, "_win_restore", None)
+                rect = self._win_rect(hwnd)
+                if restore and rect:
+                    _, _, rw, rh = restore
+                    scale = self._system_scale()
+                    # 前端 screen 坐标为逻辑像素 → 转物理像素（与 GetWindowRect 单位一致）
+                    sx_p = int(screen_x * scale)
+                    sy_p = int(screen_y * scale)
+                    # 鼠标在当前（最大化）窗口内的物理偏移；横偏移限制在还原宽度内、纵偏移限制在标题栏高度内
+                    off_x = sx_p - rect[0]
+                    off_y = sy_p - rect[1]
+                    title_h = int(36 * scale)
+                    off_x = max(0, min(off_x, max(rw - 1, 0)))
+                    off_y = max(0, min(off_y, title_h))
+                    # 还原窗口左上角 = 鼠标位置 - 鼠标在窗口内的偏移（贴合鼠标）
+                    self._win_set(hwnd, sx_p - off_x, sy_p - off_y, rw, rh)
+                    self._win_max = False
+        except Exception as e:
+            log("warning", f"window_drag_start failed: {e}")
+        return {"ok": True, "maximized": getattr(self, "_win_max", False)}
+
+    def window_move(self, dx: int, dy: int) -> dict:
+        """按增量移动窗口（前端 screen 坐标为逻辑像素，需 ×DPI 转为物理像素）"""
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return {"ok": False}
+        try:
+            r = self._win_rect(hwnd)
+            if r:
+                scale = self._system_scale()
+                self._win_set(hwnd, r[0] + int(dx * scale), r[1] + int(dy * scale), r[2], r[3])
+        except Exception as e:
+            log("warning", f"window_move failed: {e}")
+        return {"ok": True}
+
+    def window_resize(self, direction: str, dx: int, dy: int) -> dict:
+        """按方向调整窗口大小（边缘/角落缩放）。
+        direction 为 l/r/t/b 组合（如 'l'、'r'、'tl'、'br'），增量单位为物理像素。
+        以「固定边不动」推导新位置，尺寸达到最小值后相应边保持不动，避免窗口偏移。
+        """
+        hwnd = self._get_hwnd()
+        if not hwnd:
+            return {"ok": False}
+        try:
+            r = self._win_rect(hwnd)
+            if not r:
+                return {"ok": False}
+            ox, oy, ow, oh = r
+            dx, dy = int(dx), int(dy)
+            # 计算新尺寸
+            nw, nh = ow, oh
+            if "l" in direction:
+                nw = ow - dx
+            if "r" in direction:
+                nw = ow + dx
+            if "t" in direction:
+                nh = oh - dy
+            if "b" in direction:
+                nh = oh + dy
+            # 最小尺寸（物理像素 ≈ 逻辑 960x640 × 系统缩放）
+            scale = self._system_scale()
+            min_w, min_h = int(960 * scale), int(640 * scale)
+            nw = max(nw, min_w)
+            nh = max(nh, min_h)
+            # 计算新位置：固定对边，缩放边移动
+            nx, ny = ox, oy
+            if "l" in direction:
+                nx = ox + (ow - nw)   # 右边固定：左边 = 原左 + (原宽 - 新宽)
+            if "t" in direction:
+                ny = oy + (oh - nh)   # 下边固定：上边 = 原上 + (原高 - 新高)
+            self._win_set(hwnd, nx, ny, nw, nh)
+        except Exception as e:
+            log("warning", f"window_resize failed: {e}")
+        return {"ok": True}
+
+    # ── Win32 窗口操作辅助 ─────────────────────────────
+
+    def _get_hwnd(self) -> Optional[int]:
+        """获取主窗口句柄（WinForms 控件需在 GUI 线程访问，仅首次获取后缓存）"""
+        if getattr(self, "_hwnd", None):
+            return self._hwnd
+
+        def _g() -> Optional[int]:
+            w = self._window
+            native = getattr(w, "native", None) if w is not None else None
+            if native is None:
+                return None
+            handle = getattr(native, "Handle", None)
+            # pythonnet 的 IntPtr 不能直接 int()，需先 ToInt64()
+            return int(handle.ToInt64()) if handle is not None else None
+
+        try:
+            hwnd = self._on_gui_thread(_g)
+        except Exception as e:
+            log("warning", f"get hwnd failed: {e}")
+            hwnd = None
+        self._hwnd = hwnd
+        return hwnd
+
+    @staticmethod
+    def _win_rect(hwnd: int) -> Optional[tuple]:
+        """获取窗口位置与大小（物理像素）"""
+        import ctypes
+        from ctypes import wintypes
+        r = wintypes.RECT()
+        if ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(r)):
+            return r.left, r.top, r.right - r.left, r.bottom - r.top
+        return None
+
+    @staticmethod
+    def _win_set(hwnd: int, x: int, y: int, w: int, h: int) -> None:
+        """设置窗口位置与大小（SetWindowPos，跨线程安全）"""
+        import ctypes
+        SWP_NOZORDER = 0x0004
+        ctypes.windll.user32.SetWindowPos(hwnd, 0, int(x), int(y), int(w), int(h), SWP_NOZORDER)
+
+    @staticmethod
+    def _work_area() -> tuple:
+        """主显示器工作区（物理像素，不含任务栏）：(left, top, width, height)"""
+        import ctypes
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
+        return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
+
+    @staticmethod
+    def _system_scale() -> float:
+        """系统 DPI 缩放系数（物理像素 / 逻辑像素）"""
+        try:
+            import ctypes
+            return ctypes.windll.user32.GetDpiForSystem() / 96.0
+        except Exception:
+            return 1.0
+
     def check_update(self, silent: bool = False):
         """检查更新（事件: update_result）"""
         def worker():
@@ -941,10 +1188,13 @@ def main():
 
     set_console_title()
 
-    # 启动提示：提醒用户不要轻易关闭控制台
-    print("\n" + "=" * 48)
-    print(_("console.startup_msg"))
-    print("=" * 48 + "\n")
+    # 启动提示走日志队列（与日志串行写流，避免并发写导致换行粘连）
+    log_raw("")
+    log_raw("=" * 48)
+    log_raw(_("console.startup_msg"))
+    log_raw("=" * 48)
+    log_raw("")
+    flush_logs()
 
     api = JsApi()
     window = webview.create_window(
@@ -956,6 +1206,7 @@ def main():
         min_size=(960, 640),
         background_color="#0f1115",
         text_select=True,
+        frameless=False,   # 原生窗口（无边框体验请使用 Electron 模式；PyWebView 作为备用回退）
     )
     assert window is not None  # pywebview 的 create_window 始终返回 Window 实例
     api._window = window
@@ -987,10 +1238,13 @@ def main():
     except Exception:
         log("info", _("log.gc_before_exit", mem=0, count=0))
 
-    # 控制台输出退出提示
-    print("\n" + "=" * 48)
-    print(_("console.exit_msg"))
-    print("=" * 48 + "\n")
+    # 控制台输出退出提示（走日志队列，与日志串行；退出前 flush 保证写出）
+    log_raw("")
+    log_raw("=" * 48)
+    log_raw(_("console.exit_msg"))
+    log_raw("=" * 48)
+    log_raw("")
+    flush_logs()
 
 
 if __name__ == "__main__":

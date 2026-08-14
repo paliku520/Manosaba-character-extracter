@@ -24,6 +24,11 @@ settings.json.bak
 venv/
 .venv/
 
+# ── Node / Electron ──
+node_modules/
+electron/dist/
+electron/release/
+
 # ── 编辑器 ──
 .vscode/
 .idea/

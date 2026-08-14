@@ -14,7 +14,11 @@ from src.i18n import _
 
 
 def _get_config_dir() -> Path:
-    """返回配置目录（程序根目录下 data/，兼容 PyInstaller 冻结环境）"""
+    """返回配置目录（默认程序根目录下 data/；支持 MCE_DATA_DIR 环境变量重定向，兼容 PyInstaller 冻结环境）"""
+    import os
+    env = os.environ.get("MCE_DATA_DIR")
+    if env:
+        return Path(env) / "data"
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).parent
     else:

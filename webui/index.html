@@ -3,10 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Manosaba Extracter</title>
+  <title>Manosaba Character Extracter</title>
   <link rel="stylesheet" href="css/style.css">
+  <script>
+    // 启动前应用 Electron 主进程注入的主题/主题色/语言标记（head 阶段 documentElement 已存在）
+    (function () {
+      try {
+        var p = new URLSearchParams(location.search);
+        var t = p.get('theme'); if (t) document.documentElement.dataset.theme = t;
+        var a = p.get('accent'); if (a) document.documentElement.dataset.accent = a;
+        var l = p.get('lang'); if (l) document.documentElement.lang = l;
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
 </head>
 <body>
+  <!-- ══════════ 启动加载界面 ══════════ -->
+  <div id="splash">
+    <div class="splash-inner">
+      <img class="splash-logo" src="assets/logo.ico" alt="logo">
+      <div class="splash-bar"><div class="splash-bar-fill" id="splash-bar-fill"></div></div>
+      <div class="splash-text">正在加载...</div>
+    </div>
+  </div>
+  <script>
+    // 启动加载文本随语言（splash 元素已存在；无 data-i18n，避免 I18N.applyDom 覆盖导致文本跳动）
+    (function () {
+      try {
+        var l = new URLSearchParams(location.search).get('lang');
+        if (l) {
+          var txt = document.querySelector('.splash-text');
+          if (txt) txt.textContent = (l === 'zh_CN') ? '正在加载...' : 'Loading...';
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
+
+  <!-- ══════════ 无边框标题栏 ══════════ -->
+  <div id="titlebar">
+    <div class="tb-drag" id="tb-drag">
+      <img class="tb-logo" src="assets/icon.ico" alt="logo">
+      <span class="tb-title" id="tb-title"></span>
+    </div>
+    <span class="tb-res" id="tb-res" hidden></span>
+    <div class="tb-btns">
+      <button class="tb-btn" id="tb-console" data-i18n-title="titlebar.console" aria-label="Console">
+        <svg viewBox="0 0 16 16" width="12" height="12"><path d="M2.5 4l4 4-4 4M8.5 12.5h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      </button>
+      <button class="tb-btn" id="tb-min" data-i18n-title="titlebar.minimize" aria-label="Minimize">
+        <svg viewBox="0 0 10 10" width="10" height="10"><path d="M1.5 5.5h7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+      <button class="tb-btn" id="tb-max" data-i18n-title="titlebar.maximize" aria-label="Maximize">
+        <svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+      </button>
+      <button class="tb-btn tb-close" id="tb-close" data-i18n-title="titlebar.close" aria-label="Close">
+        <svg viewBox="0 0 10 10" width="10" height="10"><path d="M1.5 1.5l7 7m0-7l-7 7" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </div>
+
   <div id="app">
 
     <!-- ══════════ 侧边栏 ══════════ -->
@@ -107,6 +162,11 @@
               <button id="btn-prev-export-all" class="btn sm" data-i18n="preview.export_all">导出全部</button>
             </div>
           </div>
+          <!-- 缩略图加载进度条（组件选择页面内） -->
+          <div id="sprite-preview-progress" class="sprite-preview-progress" hidden>
+            <div class="sprite-preview-progress-track"><div id="sprite-preview-progress-bar" class="sprite-preview-progress-bar"></div></div>
+            <span id="sprite-preview-progress-label" class="sprite-preview-progress-label"></span>
+          </div>
           <div id="preview-grid" class="sprite-preview-grid"></div>
           <div id="sprite-preview-empty" class="empty-state" hidden>
             <div class="empty-icon"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
@@ -159,6 +219,24 @@
                 <button id="btn-save" class="btn sm" data-i18n="parts.save_composite">保存合成图</button>
                 <button id="btn-clear-preview" class="btn sm ghost" data-i18n="parts.clear_preview">清空预览</button>
               </div>
+              <div id="sketch-input-wrap" class="sketch-input-wrap" hidden>
+                <button type="button" id="btn-sketch-edit" class="btn sm sketch-edit-btn">
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M11.5 1.5l3 3L5.5 13.5 2 14l.5-3.5L11.5 1.5zM9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>
+                  <span data-i18n="parts.sketch_edit">编辑文字</span>
+                  <span id="sketch-text-summary" class="sketch-text-summary"></span>
+                </button>
+                <div class="sketch-controls-row">
+                  <label for="sketch-size" data-i18n="parts.sketch_size">字号</label>
+                  <input type="range" id="sketch-size" min="32" max="100" step="2" value="56">
+                  <span id="sketch-size-value" class="sketch-size-value">56</span>
+                  <div class="sketch-seg" id="sketch-align">
+                    <span class="seg-ind" aria-hidden="true"></span>
+                    <button type="button" data-align="left" data-i18n="parts.align_left">左</button>
+                    <button type="button" data-align="center" class="active" data-i18n="parts.align_center">中</button>
+                    <button type="button" data-align="right" data-i18n="parts.align_right">右</button>
+                  </div>
+                </div>
+              </div>
               <div class="preview-zoom">
                 <label class="zoom-label" for="zoom-slider" data-i18n="parts.zoom">缩放</label>
                 <input type="range" id="zoom-slider" min="0" max="100" step="1" value="0" disabled>
@@ -206,6 +284,18 @@
   <div id="modal-root"></div>
   <!-- 通知容器 -->
   <div id="toast-root"></div>
+
+  <!-- 无边框窗口边缘/角落缩放手柄 -->
+  <div id="resize-handles">
+    <div class="rh rh-n" data-dir="t"></div>
+    <div class="rh rh-s" data-dir="b"></div>
+    <div class="rh rh-e" data-dir="r"></div>
+    <div class="rh rh-w" data-dir="l"></div>
+    <div class="rh rh-nw" data-dir="tl"></div>
+    <div class="rh rh-ne" data-dir="tr"></div>
+    <div class="rh rh-sw" data-dir="bl"></div>
+    <div class="rh rh-se" data-dir="br"></div>
+  </div>
 
   <script src="js/i18n.js"></script>
   <script src="js/app.js"></script>

@@ -1,0 +1,38 @@
+appId: com.paliku520.manosaba-extracter
+productName: Manosaba Character Extracter
+# 简写名 MCE：可执行文件（executableName）、绿色版 zip 与安装包（artifactName）
+executableName: MCE   # 主程序 exe 文件名（顶层配置项）
+compression: normal   # 压缩等级（normal 打包快；maximum 更小但耗时数倍）
+directories:
+  output: ../dist
+target: win
+files:
+  - main.js
+  - preload.js
+  - package.json
+# 前端页面（file:// 加载，相对资源路径不变）与 Python 后端子进程（PyInstaller 打包产物）
+extraResources:
+  - from: ../webui
+    to: webui
+    filter:
+      - "**/*"
+  - from: ../dist/backend
+    to: backend
+    filter:
+      - "**/*"
+win:
+  icon: ../webui/assets/icon.ico
+  artifactName: MCE-${version}-win.${ext}   # 绿色版 zip 文件名（nsis 安装包由下方覆盖）
+  target:
+    - zip       # 绿色版（zip 解压到任意盘即用，不占 C 盘临时空间；避免 portable 每次运行在 %TEMP% 解压）
+    - nsis      # 安装版
+nsis:
+  oneClick: false
+  perMachine: true            # 默认安装到 C:\Program Files（安装时请求管理员权限 UAC）
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Manosaba Character Extracter
+  artifactName: MCE-Setup-${version}.${ext}
+electronDownload:
+  mirror: https://npmmirror.com/mirrors/electron/

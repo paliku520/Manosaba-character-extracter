@@ -1,8 +1,11 @@
-﻿from datetime import datetime
+﻿import queue
+import sys
+import threading
+import time
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
-import sys
 
 # 尝试导入 colorama，如果未安装则给出提示
 try:
@@ -61,21 +64,101 @@ class LogLevel(Enum):
 # 全局配置
 _LOG_FILE: Optional[Path] = None
 _LOG_LEVEL: LogLevel = LogLevel.INFO
+_LOG_STREAM = sys.stdout  # 控制台输出流（Electron 后端子进程可改为 stderr，避免污染 JSON 协议）
+_ENABLE_COLOR = True       # 是否输出 ANSI 颜色（管道转发场景建议关闭，避免外部终端乱码）
+
+# 异步日志写入：log() 只入队，由独立 daemon 线程消费写流/文件。
+# 避免 stderr 管道缓冲满（Electron 终端渲染慢/下游未及时读取）时阻塞调用线程（worker）。
+_LOG_QUEUE: "queue.Queue[Optional[tuple]]" = queue.Queue()
+_LOG_WRITER: Optional[threading.Thread] = None
+_WRITER_LOCK = threading.Lock()
 
 
-def configure(log_file: Optional[str | Path] = None, level: str = "info") -> None:
+def _writer_loop() -> None:
+    """后台日志线程：消费队列，分别写入控制台流与文件"""
+    while True:
+        item = _LOG_QUEUE.get()
+        if item is None:
+            return
+        stream_msg, file_msg, stream, log_file = item
+        if stream is not None and stream_msg is not None:
+            try:
+                stream.write(stream_msg + "\n")
+                stream.flush()
+            except Exception:
+                pass
+        if log_file is not None and file_msg is not None:
+            try:
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write(file_msg + "\n")
+            except OSError:
+                pass
+
+
+def _ensure_writer() -> None:
+    """确保日志后台线程已启动（懒启动）"""
+    global _LOG_WRITER
+    if _LOG_WRITER is not None:
+        return
+    with _WRITER_LOCK:
+        if _LOG_WRITER is None:
+            _LOG_WRITER = threading.Thread(target=_writer_loop, name="log-writer", daemon=True)
+            _LOG_WRITER.start()
+
+
+def flush_logs(timeout: float = 2.0) -> None:
+    """退出前同步消费日志队列直到空（确保日志完整落盘/输出）"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            item = _LOG_QUEUE.get(timeout=0.1)
+        except queue.Empty:
+            if _LOG_QUEUE.empty():
+                return
+            continue
+        _writer_loop_item(item)
+
+
+def _writer_loop_item(item) -> None:
+    """处理单个队列条目（供 flush 与后台线程复用）"""
+    stream_msg, file_msg, stream, log_file = item
+    if stream is not None and stream_msg is not None:
+        try:
+            stream.write(stream_msg + "\n")
+            stream.flush()
+        except Exception:
+            pass
+    if log_file is not None and file_msg is not None:
+        try:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(file_msg + "\n")
+        except OSError:
+            pass
+
+
+def configure(
+    log_file: Optional[str | Path] = None,
+    level: str = "info",
+    stream=None,
+    color: bool = True,
+) -> None:
     """
     配置日志系统
 
     Args:
         log_file: 日志文件路径，为 None 则仅输出到控制台
         level: 最低输出级别（debug/info/warning/error/none）
+        stream: 控制台输出流（默认 sys.stdout；Electron 后端子进程建议传 sys.stderr）
+        color: 是否输出 ANSI 颜色（默认 True；重定向/管道转发场景建议 False 避免乱码）
     """
-    global _LOG_FILE, _LOG_LEVEL
+    global _LOG_FILE, _LOG_LEVEL, _LOG_STREAM, _ENABLE_COLOR
     if log_file is not None:
         path = Path(log_file)
         path.parent.mkdir(parents=True, exist_ok=True)
         _LOG_FILE = path
+    if stream is not None:
+        _LOG_STREAM = stream
+    _ENABLE_COLOR = color
     _LOG_LEVEL = LogLevel.from_string(level)
 
 
@@ -125,8 +208,8 @@ def log(log_type: str, text: str, source: str = "PY") -> None:
     else:
         full_message = f"[{timestamp}] [{src}] {text}"
 
-    # 控制台输出（给来源与日志级别添加颜色）
-    if COLORAMA_AVAILABLE and level != LogLevel.NONE:
+    # 控制台输出（给来源与日志级别添加颜色；禁用颜色时输出纯文本）
+    if COLORAMA_AVAILABLE and _ENABLE_COLOR and level != LogLevel.NONE:
         color, style = _get_color(level)
         src_color = _get_source_color(src)
         if prefix:
@@ -138,18 +221,22 @@ def log(log_type: str, text: str, source: str = "PY") -> None:
             )
         else:
             colored_message = f"[{timestamp}] {src_color}[{src}]{Style.RESET_ALL} {text}"
-        print(colored_message)
     else:
-        print(full_message)
+        colored_message = full_message
 
-    # 文件输出（不带颜色，保持纯文本）
-    if _LOG_FILE is not None:
-        try:
-            with open(_LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(full_message + "\n")
-        except OSError as e:
-            error_msg = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [ERROR] 写入日志文件失败: {e}"
-            print(error_msg)
+    # 异步输出（入队，后台线程写流与文件；不阻塞调用线程）
+    _ensure_writer()
+    _LOG_QUEUE.put((colored_message, full_message, _LOG_STREAM, _LOG_FILE))
+
+
+def log_raw(text: str) -> None:
+    """原样输出一行到控制台流（无时间戳/级别前缀，不进日志文件）。
+
+    与 log() 共用同一后台写线程与队列，保证与普通日志串行输出、互不粘连
+    （用于启动/退出 banner 等需要整行原样显示、且不能与日志并发写同一流导致换行丢失的场景）。
+    """
+    _ensure_writer()
+    _LOG_QUEUE.put((str(text), None, _LOG_STREAM, None))
 
 
 def clear_logs() -> int:

@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md)
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
-Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**. Supports automatic component data detection, direct sprite export, and full character illustration compositing. Built with a **modern PyWebView GUI** (WebView2 rendering).
+Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**. Supports automatic component data detection, direct sprite export, and full character illustration compositing. The UI is an **Electron frameless window** (Chromium rendering, native drag / double-click maximize / Aero Snap / edge resize), with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
 
 ## Features
 
@@ -26,19 +26,30 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 ## Requirements
 
-- Python 3.10+
-- `pip install -r requirements.txt`
+- **Python 3.10+**: `pip install -r requirements.txt` (core logic: bundle parsing / image processing)
+- **Node.js 18+**: `cd electron && npm install` (Electron UI shell)
 
 > Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
 
 ## Usage
 
 ### Run
+
+**Recommended: Electron frameless window** (native Aero Snap / drag / double-click maximize / edge resize)
+```bash
+cd electron
+npm install        # first time only
+npm start          # equivalent to npx electron .
+```
+
+**Alternative: PyWebView / WebView2 mode**
 ```bash
 python run.py
 ```
 
-1. Click **Load Game Directory** → Select the game root directory or the `characters` directory
+> Electron mode: the `backend.py` child process reuses the `JsApi` business logic from `run.py` (stdio JSON-RPC); window control is handled by the Electron main process; the `webui/` frontend is shared by both modes.
+
+### Steps
 2. Click a character on the left → the program auto-detects:
    - **No component data** → Choose **Preview Sprites / Export All Directly / Cancel**
    - **With component data** → Choose **Direct Export** or **Composite Character**
@@ -49,6 +60,19 @@ python run.py
 Click **Settings** on the left to configure: **Output Directory** (custom export location, remembered automatically), **Language**, **Theme** (dark/light), **Chinese Names** (optional, Chinese UI only), **Debug Mode** (monitors memory/CPU/window, off by default and effective only for the current run), **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` log files).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden from casual users).
+
+### Data Storage Paths (Packaged Build)
+
+After installation, the app reads/writes the following data under its **install directory** (example: installed to `D:\mce`):
+
+| Path | Purpose | Notes |
+|---|---|---|
+| `D:\mce\data` | Settings | `settings.json` (language, theme, output dir, etc.; hidden attribute) |
+| `D:\mce\output` | Export output | Exported sprites / composited illustration PNGs |
+| `D:\mce\temp` | Sprite cache | Extracted data cache; clearable to free space |
+| `D:\mce\resources\backend\logs` | Runtime logs | Console log files (named by startup time), one-click cleanup |
+
+> For the portable (zip) build, the same folders are created under the **extraction directory** (replace `D:\mce` in the table with the actual extraction directory); the `data/` path can be redirected via the `MCE_DATA_DIR` environment variable.
 
 ### Output Structure
 
@@ -92,15 +116,20 @@ Below is a comparison between the current compositor output (left) and the origi
 ## Project Structure
 
 ```
-├── run.py             # Main entry (PyWebView backend + JsApi bridge)
-├── webui/             # Frontend (index.html + css/ + js/, fully local, no CDN)
+├── run.py             # PyWebView mode entry (WebView2, fallback)
+├── backend.py         # Electron mode Python backend child process (stdio JSON-RPC)
+├── electron/          # Electron UI shell
+│   ├── main.js        #   main process: frameless window + Python child bridge + window control
+│   ├── preload.js     #   bridge layer: emulates the pywebview API, zero frontend changes
+│   └── package.json
+├── webui/             # Frontend (index.html + css/ + js/, fully local, no CDN, shared by both modes)
 ├── src/               # Core modules (loading, compositing, export, cache, i18n, settings, etc.)
 ├── scripts/           # PyInstaller packaging scripts
 ├── output/            # Output directory (generated at runtime)
 └── temp/              # Sprite cache (generated at runtime)
 ```
 
-Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [pywebview](https://github.com/r0x0r/pywebview) (modern GUI, WebView2 rendering).
+Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [Electron](https://www.electronjs.org/) (frameless UI shell, Chromium rendering + native Aero Snap), [pywebview](https://github.com/r0x0r/pywebview) (fallback WebView2 mode).
 
 ## Acknowledgments & License
 
@@ -132,14 +161,24 @@ This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENS
 
 ## Packaging as EXE
 
+### PyWebView Standalone
 ```bash
 pip install pyinstaller
-python scripts\build_exe.py                          # Default onedir (fast startup)
-python scripts\build_exe.py --onefile                # Single-file exe (good for distribution)
-python scripts\build_exe.py --name MyApp --icon icon.ico
+python scripts\build_pywebview.py                          # Default onedir (fast startup)
+python scripts\build_pywebview.py --onefile                # Single-file exe (good for distribution)
+python scripts\build_pywebview.py --name MyApp --icon icon.ico
 ```
 
 - **Version info auto-injected** (file version / product name / product version, etc., to reduce antivirus false positives)
 - Optional: `--company "Name"` (company/developer), `--product`, `--description`, `--copyright` (defaults to `APP_*` constants at the top of the script), `--console false` (GUI mode without console)
 
-> Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_exe.py --help` for more options.
+> Icons must be in `.ico` format. `--onefile` extracts on each run and starts slower. See `python scripts\build_pywebview.py --help` for more options.
+
+### Electron App
+```bash
+python scripts\build_electron_backend.py   # Build only the Python backend child process → dist/backend/
+python scripts\build_electron.py            # One-click: backend + portable zip + installer Setup.exe
+```
+
+- `build_electron.py` options: `--backend-only` (backend only), `--app-only` (app only, requires existing backend), `--zip-only` (portable zip only), `--installer-only` (installer Setup.exe only), `--no-clean` / `--clean-dist`
+- electron-builder config: `electron/electron-builder.yml` (portable zip + nsis installer; requires electron/node_modules installed)

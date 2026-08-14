@@ -1,5 +1,5 @@
 /* ============================================================
- * app.js — Manosaba Extracter 前端主逻辑 (PyWebView)
+ * app.js — Manosaba Character Extracter 前端主逻辑 (PyWebView)
  * 通过 window.pywebview.api 调用 Python 后端，
  * 后端通过 window.__pywebview.events.<事件> 推送结果。
  * ============================================================ */
@@ -74,11 +74,15 @@
     exportCount: 0,          // 累计导出精灵数（来自后端 settings.json）
     showOriginalName: false,  // 是否显示原始文件名（设置中调节；默认显示本地化角色名）
     debugMode: false,        // 调试模式（仅本次运行，监视内存/CPU/窗口）
+    windowMaximized: false,  // 窗口是否最大化（标题栏按钮图标 / 禁用手柄缩放）
     previewMode: false,      // 当前是否为无组件角色精灵预览模式
     previewData: [],         // 无组件角色的预览精灵 [{name,size}]
     previewThumbs: {},       // {精灵名: dataURL}
     previewSel: new Set(),   // 已勾选精灵名
     loading: false,          // 正在加载角色/导出（读条中禁止切换）
+    sketchText: '',          // Anan 素描本已应用的文字（点“应用”后生效）
+    sketchSize: 56,          // Anan 素描本文字字号（已应用）
+    sketchAlign: 'center',   // Anan 素描本文字对齐：left/center/right（已应用）
   };
 
   // 后端事件注册表
@@ -239,21 +243,82 @@
   }
   function showProgress(p) {
     App.loading = true;
+    App._progressPhase = (p && p.phase) || '';
     const wrap = $('#progress-wrap');
     wrap.hidden = false;
     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
     $('#progress-bar').style.width = pct + '%';
-    $('#progress-label').textContent = (App.lastStatus ? App.lastStatus + ' ' : '') + pct + '%';
+    // 进度条只显示百分比，避免与状态栏文本重复
+    $('#progress-label').textContent = pct + '%';
+    // 合成（composite）不反映到任务栏
+    if (App._progressPhase !== 'composite') taskbarProgress(pct);
   }
   function clearProgress() {
+    const wasVisible = !$('#progress-wrap').hidden;
+    const phase = App._progressPhase || '';
     App.loading = false;
+    App._progressPhase = '';
     $('#progress-wrap').hidden = true;
+    // 读条完成后任务栏黄色闪烁吸引注意（无读条时仅防御性调用，不闪烁；合成不闪烁）
+    if (wasVisible && phase !== 'composite') taskbarDone();
+  }
+
+  // 任务栏（仅 Electron / Windows 原生；非 Electron 环境静默跳过）
+  // 读条期间在任务栏图标显示进度；读条完成后任务栏黄色闪烁（启动 splash 走 setSplashProgress，不触发）
+  // 注意：Electron setProgressBar 接收 0~1 小数，这里把 0~100 的百分比换算后传入
+  function taskbarProgress(pct) {
+    const tb = window.__electron && window.__electron.taskbar;
+    if (tb && tb.progress) tb.progress(pct / 100);
+  }
+  function taskbarDone() {
+    const tb = window.__electron && window.__electron.taskbar;
+    if (tb && tb.flash) tb.flash();
   }
 
   // 标签页
+  const TAB_ORDER = ['info', 'parts', 'hierarchy', 'about'];
+
+  // active 指示条移动到当前 tab（左右滑动动画由 CSS transition 驱动）
+  function moveTabIndicator() {
+    const tabs = $('.tabs');
+    const active = tabs && tabs.querySelector('.tab.active');
+    const ind = tabs && tabs.querySelector('.tab-indicator');
+    if (!tabs || !active || !ind) return;
+    ind.style.left = active.offsetLeft + 'px';
+    ind.style.width = active.offsetWidth + 'px';
+  }
+
+  // 初始化 tab 指示条
+  function initTabIndicator() {
+    const tabs = $('.tabs');
+    if (!tabs || tabs.querySelector('.tab-indicator')) return;
+    const ind = document.createElement('span');
+    ind.className = 'tab-indicator';
+    tabs.appendChild(ind);
+    moveTabIndicator();
+    window.addEventListener('resize', moveTabIndicator);
+  }
+
   function switchTab(name) {
+    const prev = App._activeTab || null;
+    App._activeTab = name;
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-    $$('.tab-panel').forEach((p) => p.classList.toggle('active', p.id === 'tab-' + name));
+    $$('.tab-panel').forEach((p) => {
+      const active = p.id === 'tab-' + name;
+      if (active) {
+        // 滑动方向：新 tab 在旧 tab 右侧 → 从右滑入；左侧 → 从左滑入；首次无方向
+        let dir = '';
+        if (prev && prev !== name) {
+          const iOld = TAB_ORDER.indexOf(prev);
+          const iNew = TAB_ORDER.indexOf(name);
+          dir = (iNew > iOld) ? 'right' : 'left';
+        }
+        if (dir) p.dataset.dir = dir;
+        else delete p.dataset.dir;
+      }
+      p.classList.toggle('active', active);
+    });
+    moveTabIndicator();
   }
 
   // 主题：底色（dark/light）+ 主题色（accent，default=默认绿）
@@ -353,10 +418,12 @@
     App.previewData = [];
     App.previewThumbs = {};
     App.previewSel.clear();
+    App.sketchText = '';   // 切换角色时清空素描本自定义文字
     clearPartsUI();
     clearPreview();
     renderCharList();
     setStatus(t('app.status.analyzing', { name }), true);
+    App.loading = true;   // 分析/提取进行中：期间再次点击会先确认取消，避免并发加载
     api().select_character(name);
   }
 
@@ -383,6 +450,7 @@
     App.previewData = [];
     App.previewThumbs = {};
     App.previewSel.clear();
+    App.loading = true;   // 预览提取进行中：期间再次点击会先确认取消，避免并发提取
     // 等待精灵加载完成（preview_ready）后再切换到预览视图
     api().preview_bundle(r.name);
   }
@@ -392,6 +460,24 @@
     $('#preview-count').textContent = total ? t('preview.selected_count', { count: App.previewSel.size, total }) : '';
     const btnSel = $('#btn-prev-export-sel');
     if (btnSel) btnSel.disabled = App.previewSel.size === 0;
+  }
+
+  // 组件选择页面内的缩略图加载进度条
+  function showSpritePreviewProgress(p) {
+    const wrap = $('#sprite-preview-progress');
+    if (!wrap) return;
+    wrap.hidden = false;
+    const pct = p && p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
+    $('#sprite-preview-progress-bar').style.width = pct + '%';
+    $('#sprite-preview-progress-label').textContent = t('preview.loading_thumbs') + ' ' + pct + '%';
+    taskbarProgress(pct);
+  }
+  function hideSpritePreviewProgress() {
+    const wrap = $('#sprite-preview-progress');
+    if (wrap && !wrap.hidden) {
+      wrap.hidden = true;
+      taskbarDone();
+    }
   }
 
   function renderPreviewGrid() {
@@ -700,6 +786,8 @@
         item.querySelector('.part-alpha').textContent = 'α ' + Number(alpha).toFixed(2);
 
         const cb = item.querySelector('input[type=checkbox]');
+        // 重建列表时恢复勾选状态（语言切换等会重建，App.selected 仍保留选中项）
+        cb.checked = App.selected.has(p.name);
         // 仅点击复选框切换勾选；点击卡片其他区域不触发选择/合成
         cb.addEventListener('change', () => onPartToggle(p.name, cb.checked));
 
@@ -707,6 +795,16 @@
         g.appendChild(item);
       });
       list.appendChild(g);
+    });
+
+    // 重建列表后恢复已缓存的缩略图（语言切换等重建时 App.thumbnails 仍保留）
+    Object.keys(App.thumbnails).forEach((name) => {
+      const el = App.partEls[name];
+      if (!el) return;
+      const img = document.createElement('img');
+      img.src = App.thumbnails[name];
+      el.thumb.innerHTML = '';
+      el.thumb.appendChild(img);
     });
   }
 
@@ -718,8 +816,115 @@
     if (App.autoUpdate) schedulePreview();
   }
 
+  // ── Anan 素描本自定义文字（特殊合成逻辑）──
+  // 仅 Anan 角色，且选中 Arms01/Arms02 其中之一（拿素描本的手臂变体）时启用；
+  // 普通手臂 ArmL/ArmR 不触发。文字经后端渲染到素描本的 Option_Arms0x 位置。
+  function isAnanSketchMode() {
+    if (!App.characterData) return false;
+    const isAnan = App.currentName === 'anan' || (App.characterData.name || '') === 'anan';
+    if (!isAnan) return false;
+    const arms = ['Arms01', 'Arms02'].filter((n) => App.selected.has(n));
+    return arms.length === 1;
+  }
+
+  // 字号滑块值同步到右侧数字
+  function syncSketchSizeLabel() {
+    const slider = $('#sketch-size');
+    const v = $('#sketch-size-value');
+    if (slider && v) v.textContent = slider.value;
+  }
+
+  // 对齐分段：高亮 + 滑动指示条位置同步到已应用的对齐方式
+  function syncSketchAlign() {
+    const seg = $('#sketch-align');
+    if (!seg) return;
+    const val = App.sketchAlign || 'center';
+    const ind = seg.querySelector('.seg-ind');
+    let idx = 0;
+    seg.querySelectorAll('button[data-align]').forEach((b, i) => {
+      b.classList.toggle('active', b.dataset.align === val);
+      if (b.dataset.align === val) idx = i;
+    });
+    if (ind) ind.style.transform = 'translateX(' + (idx * 100) + '%)';
+  }
+
+  // “编辑文字”按钮上显示已应用文字的摘要（首行截断）
+  function syncSketchSummary() {
+    const s = $('#sketch-text-summary');
+    if (!s) return;
+    const text = (App.sketchText || '').trim();
+    const first = text.split('\n')[0] || '';
+    const shown = first.length > 22 ? first.slice(0, 22) + '…' : first;
+    s.textContent = shown ? ' ' + shown : '';
+    const btn = $('#btn-sketch-edit');
+    if (btn) btn.classList.toggle('has-text', !!text);
+  }
+
+  // 打开素描本文字编辑模态窗口（最大 5 行；确定后提交并刷新预览）
+  function openSketchModal() {
+    const ta = document.createElement('textarea');
+    ta.className = 'sketch-modal-textarea';
+    ta.rows = 5;
+    ta.maxLength = 500;
+    ta.value = App.sketchText || '';
+    // 最大行数限制：超过 5 行时截断到前 5 行
+    ta.addEventListener('input', () => {
+      const lines = ta.value.split('\n');
+      if (lines.length > 5) {
+        ta.value = lines.slice(0, 5).join('\n');
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+      }
+    });
+    const footer = document.createElement('div');
+    const no = btn(t('dialog.cancel'), 'btn sm', () => close());
+    const yes = btn(t('dialog.ok'), 'btn sm primary', () => {
+      App.sketchText = ta.value;
+      close();
+      syncSketchSummary();
+      if (isAnanSketchMode() && App.selected.size > 0) schedulePreview();
+    });
+    footer.appendChild(no); footer.appendChild(yes);
+    const { close } = showModal({ titleKey: 'parts.sketch_label', body: ta, footer });
+    setTimeout(() => ta.focus(), 60);
+  }
+
+  // 切换角色/选择变化时同步素描本输入区显隐；首次进入时从已应用状态回填
+  let sketchInputWasHidden = true;
+  function updateSketchInput() {
+    const wrap = $('#sketch-input-wrap');
+    if (!wrap) return;
+    const active = isAnanSketchMode();
+    if (active && sketchInputWasHidden) {
+      const slider = $('#sketch-size');
+      if (slider) slider.value = App.sketchSize || 56;
+      syncSketchSizeLabel();
+      syncSketchAlign();
+      syncSketchSummary();
+    }
+    sketchInputWasHidden = !active;
+    wrap.hidden = !active;
+    const editBtn = $('#btn-sketch-edit');
+    const slider = $('#sketch-size');
+    const seg = $('#sketch-align');
+    if (editBtn) editBtn.disabled = !active;
+    if (slider) slider.disabled = !active;
+    if (seg) seg.querySelectorAll('button[data-align]').forEach((b) => { b.disabled = !active; });
+  }
+
+  // 合成时传递的文字/字号/对齐参数：仅素描模式有效，否则空串/默认（后端忽略）
+  function sketchTextArg() {
+    return isAnanSketchMode() ? (App.sketchText || '').trim() : '';
+  }
+  function sketchSizeArg() {
+    return isAnanSketchMode() ? (App.sketchSize || 56) : 56;
+  }
+  function sketchAlignArg() {
+    return isAnanSketchMode() ? (App.sketchAlign || 'center') : 'center';
+  }
+
   function updateSelUI() {
     $('#sel-count').textContent = App.selected.size;
+    updateSketchInput();
     const ul = $('#selected-list');
     ul.innerHTML = '';
     if (!App.characterData || App.selected.size === 0) {
@@ -773,7 +978,7 @@
     clearTimeout(App.previewTimer);
     App.previewTimer = setTimeout(() => {
       if (!App.characterData || App.selected.size === 0) return;
-      api().composite(Array.from(App.selected));
+      api().composite(Array.from(App.selected), sketchTextArg(), sketchSizeArg(), sketchAlignArg());
     }, 500);
   }
 
@@ -784,7 +989,7 @@
       return;
     }
     console.log(t('log.js_composite_start', { count: App.selected.size }));
-    api().composite(Array.from(App.selected));
+    api().composite(Array.from(App.selected), sketchTextArg(), sketchSizeArg(), sketchAlignArg());
   }
 
   // ═════════════ 层级树 ═════════════
@@ -893,6 +1098,8 @@
 
   // 当前打开的主题色下拉（仅维护一个，供 document 点击关闭）
   let activeColorPicker = null;
+  let settingsLangDropdown = null;    // 设置弹窗语言下拉引用（语言切换后刷新）
+  let settingsThemeDropdown = null;   // 设置弹窗主题下拉引用
   document.addEventListener('click', () => {
     if (activeColorPicker) activeColorPicker.closeList();
   });
@@ -973,6 +1180,83 @@
     return api;
   }
 
+  // 通用自绘下拉（软件风格，替代原生 <select>；复用 color-picker 样式与互斥逻辑）
+  function createDropdown({ options, value }) {
+    const wrap = document.createElement('div');
+    wrap.className = 'color-picker';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'color-picker-btn';
+    const label = document.createElement('span');
+    label.className = 'cp-label';
+    const caret = document.createElement('span');
+    caret.className = 'cp-caret';
+    caret.innerHTML =
+      '<svg viewBox="0 0 16 16" width="12" height="12"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+    btn.appendChild(label); btn.appendChild(caret);
+    wrap.appendChild(btn);
+
+    const list = document.createElement('div');
+    list.className = 'color-picker-list';
+    const items = {};
+    options.forEach((o) => {
+      const it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'color-picker-item';
+      it.dataset.value = o.value;
+      const nm = document.createElement('span');
+      nm.className = 'cp-name';
+      nm.textContent = o.label;
+      it.appendChild(nm);
+      it.addEventListener('click', () => {
+        api.value = o.value;
+        api.closeList();
+        wrap.focus();
+      });
+      list.appendChild(it);
+      items[o.value] = it;
+    });
+    wrap.appendChild(list);
+
+    let current = value;
+    const api = {
+      el: wrap,
+      get value() { return current; },
+      set value(v) {
+        if (!(v in items)) return;
+        current = v;
+        const o = options.find((x) => x.value === v);
+        if (o) label.textContent = o.label;
+        Object.keys(items).forEach((k) => items[k].classList.toggle('selected', k === v));
+        if (api.onChange) api.onChange(v);
+      },
+      onChange: null,
+      openList() {
+        if (activeColorPicker && activeColorPicker !== api) activeColorPicker.closeList();
+        activeColorPicker = api;
+        list.classList.add('open');
+      },
+      closeList() { list.classList.remove('open'); },
+      refreshLabels(getLabel) {
+        // 语言/主题切换后刷新选项文本（选项集合不变，仅 label 变化）
+        Object.keys(items).forEach((k) => {
+          const nm = items[k].querySelector('.cp-name');
+          if (nm) nm.textContent = getLabel(k);
+        });
+        const o = options.find((x) => x.value === current);
+        if (o) label.textContent = getLabel(o.value);
+      },
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (list.classList.contains('open')) api.closeList();
+      else api.openList();
+    });
+    wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') api.closeList(); });
+    api.value = value; // 初始化显示
+    return api;
+  }
+
   function openSettings() {
     const body = document.createElement('div');
     // 设置分区：外观 / 显示 / 数据
@@ -1013,17 +1297,15 @@
     langLabel.setAttribute('data-i18n', 'lang.label');
     langLabel.textContent = t('lang.label');
     langRow.appendChild(langLabel);
-    const langSel = document.createElement('select');
-    langSel.className = 'input';
-    langSel.id = 'set-lang';
-    (App.info.langs || []).forEach((code) => {
-      const opt = document.createElement('option');
-      opt.value = code;
-      opt.textContent = (App.info.lang_names && App.info.lang_names[code]) || code;
-      if (code === App.info.current_lang) opt.selected = true;
-      langSel.appendChild(opt);
+    const langDropdown = createDropdown({
+      options: (App.info.langs || []).map((code) => ({
+        value: code,
+        label: (App.info.lang_names && App.info.lang_names[code]) || code,
+      })),
+      value: App.info.current_lang,
     });
-    langRow.appendChild(langSel);
+    settingsLangDropdown = langDropdown;
+    langRow.appendChild(langDropdown.el);
 
     const themeRow = document.createElement('div');
     themeRow.className = 'form-row';
@@ -1031,13 +1313,15 @@
     themeLabel.setAttribute('data-i18n', 'settings.theme_label');
     themeLabel.textContent = t('settings.theme_label');
     themeRow.appendChild(themeLabel);
-    const themeSel = document.createElement('select');
-    themeSel.className = 'input';
-    themeSel.id = 'set-theme';
-    themeSel.innerHTML =
-      '<option value="dark" data-i18n="settings.theme_dark">' + t('settings.theme_dark') + '</option>' +
-      '<option value="light" data-i18n="settings.theme_light">' + t('settings.theme_light') + '</option>';
-    themeRow.appendChild(themeSel);
+    const themeDropdown = createDropdown({
+      options: [
+        { value: 'dark', label: t('settings.theme_dark') },
+        { value: 'light', label: t('settings.theme_light') },
+      ],
+      value: document.documentElement.dataset.theme || 'dark',
+    });
+    settingsThemeDropdown = themeDropdown;
+    themeRow.appendChild(themeDropdown.el);
 
     const accentRow = document.createElement('div');
     accentRow.className = 'form-row';
@@ -1121,14 +1405,13 @@
     const { close } = showModal({ titleKey: 'settings.title', body, footer });
     closeBtn.addEventListener('click', close);
 
-    themeSel.value = document.documentElement.dataset.theme || 'dark';
-    themeSel.addEventListener('change', () => {
-      applyTheme(themeSel.value, accentPicker.value);
-      if (api()) api().set_theme(themeSel.value); // 持久化到 settings.json
-    });
+    themeDropdown.onChange = (v) => {
+      applyTheme(v, accentPicker.value);
+      if (api()) api().set_theme(v); // 持久化到 settings.json
+    };
 
     accentPicker.onChange = (v) => {
-      applyTheme(themeSel.value, v);
+      applyTheme(themeDropdown.value, v);
       App.info.accent = v;              // 同步记忆，重新打开设置时正确回显
       if (api()) api().set_accent(v);   // 持久化到 settings.json
     };
@@ -1147,6 +1430,15 @@
       if (!api()) return;
       const r = await api().set_debug(debugCb.checked);
       App.debugMode = !!r.debug;
+      // 关闭调试时隐藏标题栏资源信息
+      if (!App.debugMode) {
+        const el = $('#tb-res');
+        if (el) el.hidden = true;
+      }
+      // Electron 模式：开启调试时弹出 cmd 风格日志控制台窗口
+      if (App.debugMode && window.__electron && window.__electron.openLogConsole) {
+        window.__electron.openLogConsole();
+      }
     });
 
     outField.querySelector('#set-browse').addEventListener('click', async () => {
@@ -1169,21 +1461,40 @@
       toast(t('app.status.settings_saved', { path: r.output_dir }), 'success');
     });
 
-    langSel.addEventListener('change', async (e) => {
-      const r = await api().set_lang(e.target.value);
-      window.I18N.set(r.translations, r.current_lang, r.lang_names);
-      App.info.current_lang = r.current_lang;
-      App.info.lang_names = r.lang_names;
-      refreshSettingsModal();
-      renderInfoPage();       // 重建主信息页（其文本是动态渲染的）
-      renderAboutPage();      // 重建关于页
-      refreshPartsHeader();   // 如有已加载角色，刷新部件页头部计数
-      refreshNameDisplay();   // 角色名（开启中文名时随语言变化）
-      refreshExportCount();   // 累计导出计数文本
-      if (App.previewSize) applyPreviewZoom(); // 刷新缩放标签（适配/百分比）
-      setStatus(t('app.status.ready'), false);
-      toast(t('app.status.ready'), 'success');
-    });
+    langDropdown.onChange = async (v) => {
+      try {
+        const r = await api().set_lang(v);
+        window.I18N.set(r.translations, r.current_lang, r.lang_names);
+        App.info.current_lang = r.current_lang;
+        App.info.lang_names = r.lang_names;
+        // 各界面独立刷新（某一步异常不中断其余），错误经 log_js 输出到日志便于定位
+        const steps = [
+          ['refreshSettingsModal', refreshSettingsModal],
+          ['renderInfoPage', renderInfoPage],
+          ['renderAboutPage', renderAboutPage],
+          ['renderCharList', renderCharList],
+          ['renderParts', () => { if (App.characterData) renderParts(App.characterData); }],
+          ['renderHierarchy', () => { if (App.characterData) renderHierarchy(App.characterData.hierarchy); }],
+          ['renderPreviewGrid', () => { if (App.previewData && App.previewData.length) renderPreviewGrid(); }],
+          ['updateSelUI', updateSelUI],
+          ['refreshPartsHeader', refreshPartsHeader],
+          ['refreshNameDisplay', refreshNameDisplay],
+          ['moveTabIndicator', moveTabIndicator],
+          ['updateTitleBar', updateTitleBar],
+          ['refreshExportCount', refreshExportCount],
+          ['applyPreviewZoom', () => { if (App.previewSize) applyPreviewZoom(); }],
+        ];
+        steps.forEach(([name, fn]) => {
+          try { fn(); } catch (e) {
+            console.error('[lang] step "' + name + '" failed: ' + (e && e.message ? e.message : e));
+          }
+        });
+        setStatus(t('app.status.ready'), false);
+        toast(t('app.status.ready'), 'success');
+      } catch (e) {
+        console.error('[lang] set_lang failed: ' + (e && e.message ? e.message : e));
+      }
+    };
 
     actionRow.querySelector('#set-check-update').addEventListener('click', () => {
       setStatus(t('app.status.checking_update'), true);
@@ -1210,17 +1521,14 @@
   // 语言切换后刷新已打开的设置模态框文本
   function refreshSettingsModal() {
     // 语言下拉选项使用最新的 lang_names（动态语言名，非固定翻译键）
-    const langSel = document.querySelector('#set-lang');
-    if (langSel) {
-      const current = langSel.value;
-      langSel.innerHTML = '';
-      (App.info.langs || []).forEach((code) => {
-        const opt = document.createElement('option');
-        opt.value = code;
-        opt.textContent = (App.info.lang_names && App.info.lang_names[code]) || code;
-        if (code === current) opt.selected = true;
-        langSel.appendChild(opt);
-      });
+    if (settingsLangDropdown) {
+      settingsLangDropdown.refreshLabels((code) =>
+        (App.info.lang_names && App.info.lang_names[code]) || code);
+    }
+    // 主题下拉文本随语言刷新
+    if (settingsThemeDropdown) {
+      settingsThemeDropdown.refreshLabels((v) =>
+        v === 'light' ? t('settings.theme_light') : t('settings.theme_dark'));
     }
     // 其余带 data-i18n 的文本（标题/标签/按钮/主题选项）统一刷新
     window.I18N.applyDom();
@@ -1351,10 +1659,42 @@
     open.addEventListener('click', () => { api().open_path(path); close(); });
   }
 
+  // 标题栏：应用名 + 版本（随语言切换）
+  function updateTitleBar() {
+    const el = $('#tb-title');
+    if (el) el.textContent = t('app.title') + ' v' + (App.info ? App.info.version : '');
+  }
+
+  // 窗口最大化状态：切换标题栏按钮图标 + 控制缩放手柄显隐
+  function setMaxState(maximized) {
+    App.windowMaximized = !!maximized;
+    const btn = $('#tb-max');
+    if (btn) {
+      btn.innerHTML = App.windowMaximized
+        ? '<svg viewBox="0 0 10 10" width="10" height="10"><path d="M2.5 2.5h5v5h-5z" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 3.5V1.5h5" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>'
+        : '<svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+    }
+    const rh = $('#resize-handles');
+    if (rh) rh.style.display = App.windowMaximized ? 'none' : '';
+  }
+
   // ═════════════ 后端事件 ═════════════
 
   on('status', (s) => setStatus(s.text, true));
-  on('progress', showProgress);
+  on('progress', (p) => {
+    // 缩略图生成阶段 → 组件选择页面内进度条；其余 → 侧边栏底部进度条
+    if (p && p.phase === 'preview_thumbs') showSpritePreviewProgress(p);
+    else showProgress(p);
+  });
+
+  // 调试模式：资源占用信息同步到标题栏
+  on('res_monitor', (p) => {
+    const el = $('#tb-res');
+    if (!el) return;
+    const win = (p && p.width) ? t('log.resource_win', { width: p.width, height: p.height }) : '';
+    el.textContent = t('log.resource_title', { mem: p.mem_mb, cpu: p.cpu, win: win }).replace(/^\s*\|\s*/, '');
+    el.hidden = false;
+  });
 
   on('load_complete', (r) => {
     clearProgress();
@@ -1380,6 +1720,9 @@
   on('analyze_complete', (r) => {
     clearProgress();
     if (r.error) { setErrorStatus(); setStatus(t('app.status.analyze_failed')); toast(r.error, 'error'); return; }
+    // 恢复状态栏：询问对话框（含点叉号关闭）期间不再显示"正在分析"
+    setStatus(t('app.status.ready'), false);
+    toast(t('app.status.analyze_done', { name: r.name }), 'success');
     if (r.has_components) showModeDialog(r.name);
     else showNoComponentDialog(r.name);
   });
@@ -1396,6 +1739,7 @@
     console.log(t('log.preview_ready', { name: d.name, count: d.count }));
     App.previewData = d.sprites || [];
     setStatus(t('app.status.extract_done', { name: d.name, count: d.count }));
+    toast(t('app.status.extract_done', { name: d.name, count: d.count }), 'success');
     // 加载完成后再进入预览视图：隐藏组件选中板块，预览占满，再切到部件 tab
     $('#preview-panel').hidden = false;
     const pl = $('#parts-layout');
@@ -1404,19 +1748,20 @@
     $('#preview-count').textContent = '';
     $('#sprite-preview-empty').hidden = true;
     switchTab('parts');
+    // 生成缩略图期间在组件选择页面内显示加载进度条（后端逐张发 progress）
+    showSpritePreviewProgress({ current: 0, total: 1 });
     api().get_preview_thumbnails();
   });
 
   on('preview_thumbs_ready', (map) => {
-    App.previewThumbs = map || {};
-    renderPreviewGrid();
-  });
-
-  on('preview_error', (r) => {
     clearProgress();
-    setErrorStatus();
-    setStatus(t('app.status.analyze_failed'));
-    toast(t('dialog.process_error_msg', { msg: r.message }), 'error');
+    App.previewThumbs = map || {};
+    hideSpritePreviewProgress();
+    // 缩略图生成完成：恢复状态栏、提示加载完毕并渲染网格
+    const pn = $('#preview-name');
+    setStatus(t('app.status.extract_done', { name: pn ? pn.textContent : '', count: App.previewData.length }), false);
+    toast(t('log.preview_ready', { name: pn ? pn.textContent : '', count: App.previewData.length }), 'success');
+    renderPreviewGrid();
   });
 
   on('export_complete', (r) => {
@@ -1661,11 +2006,120 @@
       '</div>' +
       '<div class="about-section">' +
       '  <h3>' + _aI('heart') + t('about.thanks_title') + '</h3>' +
-      '  <p class="about-thanks">' + t('about.thanks_text') + '</p>' +
+      '  <p class="about-thanks" id="about-thanks-easter">' + t('about.thanks_text') + '</p>' +
       '</div>' +
       '<p class="about-copy">' + t('about.copyright') + '</p>' +
       '<p class="about-note">' + t('about.license_note') + '</p>' +
       '<p class="about-disclaimer">' + t('app.disclaimer') + '</p>';
+
+    // 彩蛋入口：点击致谢文本触发
+    const easterEl = el.querySelector('#about-thanks-easter');
+    if (easterEl) easterEl.addEventListener('click', showEasterEgg);
+    // 彩蛋入口：点击 logo 播放 kiang 音频
+    const logoBox = el.querySelector('.about-icon');
+    if (logoBox) logoBox.addEventListener('click', playKiangSound);
+  }
+
+  // 彩蛋：点击关于页 logo 播放 kiang 目录音频（每次点击从头重播）
+  let _kiangAudio = null;
+  function playKiangSound() {
+    if (!_kiangAudio) {
+      _kiangAudio = new Audio('assets/kiang/0201Trial08_Ema022.wav');
+      _kiangAudio.volume = 0.8;
+    }
+    _kiangAudio.currentTime = 0;
+    _kiangAudio.play().catch(() => {});
+  }
+
+  // ═════════════ 彩蛋（执行按钮：心跳 → 长按填充 → 完成音效/对勾 → 过渡关闭） ═════════════
+  const EASTER_FILL_RATE = 100 / 9;  // 长按时填充速度（%/秒，约 9 秒填满，贴近 001 音效时长）
+  const EASTER_DRAIN_RATE = 35;      // 松开时进度倒退速度（%/秒）
+
+  function showEasterEgg() {
+    // 移除旧覆盖层（重复点击时重建）
+    const old = $('#easter-overlay');
+    if (old) old.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'easter-overlay';
+    overlay.id = 'easter-overlay';
+    overlay.innerHTML =
+      '<div class="easter-phone">' +
+      '  <button type="button" class="exec-btn" id="exec-btn" aria-label="execution">' +
+      '    <img class="exec-layer exec-base" src="assets/execution/ExecutionButton_Base.png" alt="">' +
+      '    <div class="exec-fill"></div>' +
+      '    <img class="exec-layer exec-frame" src="assets/execution/ExecutionButton_Frame.png" alt="">' +
+      '    <img class="exec-label" src="assets/execution/ExecutionButton_Label.png" alt="">' +
+      '    <img class="exec-check" src="assets/execution/ExecutionButton_CheckIcon.png" alt="">' +
+      '  </button>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    const eb = overlay.querySelector('#exec-btn');
+    const fill = overlay.querySelector('.exec-fill');
+    const check = overlay.querySelector('.exec-check');
+
+    // 三个音效：心跳（进入即播，循环）/ 长按（按住循环）/ 完成（一次）
+    const sHeart = new Audio('assets/execution/Sfx_Scenario_035 Human heartbeat.wav');
+    const sHold = new Audio('assets/execution/Sfx_System_ExecuteButton_001.wav');
+    const sDone = new Audio('assets/execution/Sfx_System_ExecuteButton_002.wav');
+    sHeart.loop = false; sHeart.volume = .55;  // 心跳只播一次
+    sHold.loop = true; sHold.volume = .6;
+    sDone.volume = .9;
+    sHeart.play().catch(() => {});
+
+    let progress = 0, holding = false, completed = false, raf = null, lastTs = 0;
+
+    function tick(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = Math.min((ts - lastTs) / 1000, .1);
+      lastTs = ts;
+      if (holding) {
+        progress = Math.min(100, progress + EASTER_FILL_RATE * dt);
+        if (progress >= 100) { complete(); return; }
+      } else {
+        // 未按住 → 进度倒退
+        progress = Math.max(0, progress - EASTER_DRAIN_RATE * dt);
+      }
+      fill.style.height = progress + '%';
+      raf = requestAnimationFrame(tick);
+    }
+    function startHold(e) {
+      if (completed) return;
+      e.preventDefault();
+      holding = true; lastTs = 0;
+      if (!raf) raf = requestAnimationFrame(tick);
+      sHold.currentTime = 0;
+      sHold.play().catch(() => {});
+    }
+    function stopHold() {
+      holding = false;
+      sHold.pause(); sHold.currentTime = 0;
+    }
+    function complete() {
+      completed = true; holding = false;
+      if (raf) { cancelAnimationFrame(raf); raf = null; }
+      eb.disabled = true;   // 禁止再次长按
+      // 强制立即恢复未长按大小（覆盖仍可能生效的 :active 缩放）
+      eb.style.transition = 'none';
+      eb.style.transform = 'rotate(0deg)';
+      sHold.pause(); sHold.currentTime = 0;
+      sHeart.pause(); sHeart.currentTime = 0;
+      fill.style.height = '100%';
+      sDone.currentTime = 0;
+      sDone.play().catch(() => {});
+      check.classList.add('show');
+      // 过渡关闭界面（填满后 1.5 秒才开始淡出）
+      setTimeout(() => {
+        overlay.classList.add('closing');
+        setTimeout(() => overlay.remove(), 500);
+      }, 1500);
+    }
+
+    eb.addEventListener('pointerdown', startHold);
+    eb.addEventListener('pointerleave', stopHold);
+    eb.addEventListener('pointercancel', stopHold);
+    window.addEventListener('pointerup', stopHold);
+    // 进入彩蛋后不能直接退出：仅完成执行后过渡关闭（不提供点击遮罩关闭）
   }
 
   // 关于页背景轮播（参考站 images/bg/01~45.webp，随机起始、定时切换）
@@ -1696,6 +2150,48 @@
   // ═════════════ 事件绑定 ═════════════
 
   function bindEvents() {
+    // 运行模式：Electron = 自绘无边框标题栏；PyWebView 原生窗口 = 隐藏自绘标题栏/缩放手柄（用系统标题栏）
+    if (!window.__ELECTRON__) {
+      const tb = $('#titlebar');
+      if (tb) tb.style.display = 'none';
+      const rh = $('#resize-handles');
+      if (rh) rh.style.display = 'none';
+    }
+    // 无边框标题栏：窗口控制（拖动/双击最大化/Aero Snap 由 Electron 原生处理）
+    if (window.__ELECTRON__ && $('#titlebar')) {
+      $('#tb-min').addEventListener('click', () => api() && api().window_minimize());
+      $('#tb-max').addEventListener('click', async () => {
+        if (!api()) return;
+        const r = await api().window_maximize();
+        if (r && 'maximized' in r) setMaxState(r.maximized);
+      });
+      $('#tb-close').addEventListener('click', () => api() && api().quit_app());
+      // 日志控制台按钮（原生 cmd 窗口，随时可开，不依赖调试模式）
+      const tbConsole = $('#tb-console');
+      if (tbConsole) {
+        tbConsole.addEventListener('click', () => {
+          if (window.__electron && window.__electron.openLogConsole) window.__electron.openLogConsole();
+        });
+      }
+    }
+    // 无边框窗口边缘/角落缩放
+    let resizeState = null;
+    $$('#resize-handles .rh').forEach((h) => {
+      h.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || App.windowMaximized) return;
+        resizeState = { dir: h.dataset.dir, sx: e.screenX, sy: e.screenY };
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!resizeState) return;
+      const dx = e.screenX - resizeState.sx;
+      const dy = e.screenY - resizeState.sy;
+      resizeState.sx = e.screenX; resizeState.sy = e.screenY;
+      if (api()) api().window_resize(resizeState.dir, dx, dy);
+    });
+    document.addEventListener('mouseup', () => { resizeState = null; });
     $('#btn-load').addEventListener('click', onLoadClick);
     $('#btn-open-output').addEventListener('click', () => api().open_output());
     $('#btn-settings').addEventListener('click', openSettings);
@@ -1737,6 +2233,36 @@
       App.autoUpdate = e.target.checked;
       if (App.autoUpdate && App.selected.size > 0) schedulePreview();
     });
+
+    // Anan 素描本自定义文字：“编辑文字”按钮 → 模态编辑（确定后即刷新预览）
+    const btnSketchEdit = $('#btn-sketch-edit');
+    if (btnSketchEdit) btnSketchEdit.addEventListener('click', openSketchModal);
+    // 字号滑块：实时应用并刷新预览
+    const sketchSize = $('#sketch-size');
+    if (sketchSize) {
+      sketchSize.addEventListener('input', () => {
+        App.sketchSize = Number(sketchSize.value);
+        syncSketchSizeLabel();
+        if (isAnanSketchMode() && App.selected.size > 0) schedulePreview();
+      });
+    }
+    // 对齐分段按钮：点击即时应用并滑动指示条
+    const sketchAlignSeg = $('#sketch-align');
+    if (sketchAlignSeg) {
+      sketchAlignSeg.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-align]');
+        if (!btn) return;
+        App.sketchAlign = btn.dataset.align;
+        const ind = sketchAlignSeg.querySelector('.seg-ind');
+        let idx = 0;
+        sketchAlignSeg.querySelectorAll('button[data-align]').forEach((b, i) => {
+          b.classList.toggle('active', b === btn);
+          if (b === btn) idx = i;
+        });
+        if (ind) ind.style.transform = 'translateX(' + (idx * 100) + '%)';
+        if (isAnanSketchMode() && App.selected.size > 0) schedulePreview();
+      });
+    }
 
     bindPreviewZoom();
 
@@ -1788,6 +2314,23 @@
     });
   }
 
+  // 启动进度条更新
+  function setSplashProgress(p) {
+    const fill = $('#splash-bar-fill');
+    if (fill) fill.style.width = Math.min(100, Math.max(0, p)) + '%';
+  }
+
+  // 隐藏启动加载界面：进度条满后停顿一下，再缓慢淡出
+  function hideSplash() {
+    setSplashProgress(100);
+    const sp = $('#splash');
+    if (!sp) return;
+    setTimeout(() => {
+      sp.classList.add('hide');
+      setTimeout(() => { if (sp.parentNode) sp.parentNode.removeChild(sp); }, 650);
+    }, 600);
+  }
+
   async function init() {
     if (!window.pywebview || !window.pywebview.api) {
       const el = document.createElement('div');
@@ -1800,15 +2343,19 @@
       return;
     }
     try {
+      setSplashProgress(15);
       const info = await window.pywebview.api.get_app_info();
+      setSplashProgress(45);
       App.info = info;
       window.I18N.set(info.translations, info.current_lang, info.lang_names);
+      setSplashProgress(60);
+      updateTitleBar();
       const vb = $('#version-badge');
       vb.textContent = 'v' + info.version;
       vb.title = 'v' + info.version;  // 完整版本号（被省略号截断时悬停可见）
       const isPrerelease = /(pre|rc|beta|alpha)/i.test(info.version || '');
       vb.classList.toggle('prerelease', isPrerelease);
-      document.title = 'Manosaba Extracter v' + info.version;
+      document.title = 'Manosaba Character Extracter v' + info.version;
       // 测试版：每次启动时提示
       if (isPrerelease) {
         const footer = document.createElement('div');
@@ -1831,7 +2378,9 @@
       try { accent = localStorage.getItem('msx-accent') || accent; } catch (e) { /* ignore */ }
       if (info.accent) accent = info.accent;
       applyTheme(theme, accent);
+      setSplashProgress(80);
       bindEvents();
+      initTabIndicator();   // tab 指示条（active 下划线滑动动画）
       renderCharList();
       renderInfoPage();
       renderAboutPage();
@@ -1841,8 +2390,10 @@
       App.debugMode = !!info.debug;
       refreshExportCount();
       window.pywebview.api.check_update(true); // 静默检查更新
+      hideSplash();
     } catch (e) {
       toast('初始化失败: ' + e, 'error');
+      hideSplash();
     }
   }
 

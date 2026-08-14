@@ -12,7 +12,7 @@ from typing import Dict
 # ── 语言代码 ──────────────────────────────────────────────
 LANG_CN = "zh_CN"       # 简体中文
 LANG_EN = "en_US"       # 英语
-LANG_MGL = "mgl_MG"     # 魔女语 (fiXmArge Language)(架空语言)
+LANG_MGL = "mgl_MG"     # 魔女语 (fiXmArge Language or Magical girl language)(架空语言)
 
 
 # ── 当前语言（默认简体中文） ──────────────────────────────
@@ -158,6 +158,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Analyzing: {name} ...", 
         LANG_MGL: "AnxAn: {name} ...", 
     },
+    "app.status.analyze_done": {
+        LANG_CN: "已分析: {name}", 
+        LANG_EN: "Analyzed: {name}", 
+        # 魔女语由用户自行补充
+    },
     "app.status.cancelled": {
         LANG_CN: "已取消", 
         LANG_EN: "Cancelled", 
@@ -227,6 +232,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "魔法少女的魔女审判 - 角色立绘提取工具", 
         LANG_EN: "Manosaba - Character Sprite Tool", 
         LANG_MGL: "Manosaba - eXi' Toim", 
+    },
+    "app.loading": {
+        LANG_CN: "正在加载...",
+        LANG_EN: "Loading...",
+        LANG_MGL: "Toim...",
     },
 
     # ── char.* ──
@@ -392,10 +402,20 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Program exited.\n\nNote: Console closing delay is normal (WebView2 cleanup usually takes 1-3 seconds). Please wait for it to disappear automatically.\n\nWARNING: Closing this console directly may interrupt tasks or cause exceptions.\n\nThank you for using the Manosaba Sprite Tool!", 
         LANG_MGL: "Program exited.\n\nNote: Console closing delay is normal (WebView2 cleanup usually takes 1-3 seconds). Please wait for it to disappear automatically.\n\nWARNING: Closing this console directly may interrupt tasks or cause exceptions.\n\nThank you for using the Manosaba Sprite Tool!", 
     },
+    "console.exit_msg_electron": {
+        LANG_CN: "应用已安全退出。\n\n提示：如果后端服务（Python）未完全关闭，\n系统会在几秒内自动清理。",
+        LANG_EN: "Application exited safely.\n\nNote: If the backend service (Python) has not fully closed,\nthe system will clean it up automatically within a few seconds.",
+        LANG_MGL: "Application exited safely.\n\nNote: If the backend service (Python) has not fully closed,\nthe system will clean it up automatically within a few seconds.",
+    },
     "console.startup_msg": {
         LANG_CN: "欢迎使用「魔裁立绘提取工具」！\n本控制台用于显示运行日志。\n\n提示：请不要轻易关闭本控制台，否则程序会立即退出。\n如需退出程序，请点击主窗口右上角的关闭按钮。", 
         LANG_EN: "Welcome to the Manosaba Sprite Tool!\nThis console shows runtime logs.\n\nTip: Do not close this console casually, or the program will exit immediately.\nTo quit, click the close button on the top-right of the main window.", 
         LANG_MGL: "Welcome to the Manosaba Sprite Tool!\nThis console shows runtime logs.\n\nTip: Do not close this console casually, or the program will exit immediately.\nTo quit, click the close button on the top-right of the main window.", 
+    },
+    "console.startup_msg_electron": {
+        LANG_CN: "欢迎使用「魔裁立绘提取工具」！\n本窗口为日志控制台，仅用于显示运行日志。\n\n提示：关闭此窗口不会退出程序。\n如需退出程序，请点击主窗口右上角的关闭按钮。", 
+        LANG_EN: "Welcome to the Manosaba Sprite Tool!\nThis window is the log console, used to show runtime logs.\n\nTip: Closing this window will not exit the program.\nTo quit, click the close button on the top-right of the main window.", 
+        LANG_MGL: "Welcome to the Manosaba Sprite Tool!\nThis window is the log console, used to show runtime logs.\n\nTip: Closing this window will not exit the program.\nTo quit, click the close button on the top-right of the main window.", 
     },
     "console.title": {
         LANG_CN: "魔法少女的魔女审判 - 角色立绘提取工具 - 控制台", 
@@ -540,9 +560,9 @@ T: Dict[str, Dict[str, str]] = {
         LANG_MGL: "KeI·tion Alte to output Ge-mon, Nii Lai Nei", 
     },
     "dialog.no_component_msg": {
-        LANG_CN: "此角色不含组件数据，无法拼接立绘。请选择处理方式：", 
-        LANG_EN: "This character has no component data and cannot be composited. Choose how to proceed:", 
-        LANG_MGL: "JIO has Nii hA-k, Nii gDie. Alte We-Ho:", 
+        LANG_CN: "此角色不含组件数据，无法拼接立绘\n（这意味着这个文件不需要拼装）。\n请选择处理方式：",
+        LANG_EN: "This character has no component data and cannot be composited\n (this file does not need assembling).\nPlease choose how to proceed:",
+        LANG_MGL: "JIO has Nii hA-k, Nii gDie\n (Nii need assemble).\nAlte We-Ho:",
     },
     "dialog.no_component_preview": {
         LANG_CN: "预览精灵", 
@@ -1196,6 +1216,51 @@ T: Dict[str, Dict[str, str]] = {
         LANG_EN: "Selected Sprites", 
         LANG_MGL: "Alte KeI·tion", 
     },
+    "parts.sketch_label": {
+        LANG_CN: "素描本文字",
+        LANG_EN: "Sketchbook Text",
+        LANG_MGL: "hA-k oF FuWana",
+    },
+    "parts.sketch_placeholder": {
+        LANG_CN: "输入显示在素描本上的文字…",
+        LANG_EN: "Enter text shown on the sketchbook…",
+        LANG_MGL: "Coword iN FuWana…",
+    },
+    "parts.sketch_size": {
+        LANG_CN: "字号",
+        LANG_EN: "Font Size",
+        LANG_MGL: "Sha-Rui",
+    },
+    "parts.sketch_apply": {
+        LANG_CN: "应用",
+        LANG_EN: "Apply",
+        LANG_MGL: "gDie",
+    },
+    "parts.sketch_edit": {
+        LANG_CN: "编辑文字",
+        LANG_EN: "Edit Text",
+        LANG_MGL: "KeI·tion Coword",
+    },
+    "parts.sketch_align": {
+        LANG_CN: "对齐",
+        LANG_EN: "Align",
+        LANG_MGL: "rEcanRey",
+    },
+    "parts.align_left": {
+        LANG_CN: "左",
+        LANG_EN: "Left",
+        LANG_MGL: "mu·Yon",
+    },
+    "parts.align_center": {
+        LANG_CN: "中",
+        LANG_EN: "Center",
+        LANG_MGL: "Alte",
+    },
+    "parts.align_right": {
+        LANG_CN: "右",
+        LANG_EN: "Right",
+        LANG_MGL: "Taven",
+    },
     "parts.total": {
         LANG_CN: "个部件", 
         LANG_EN: "parts", 
@@ -1217,6 +1282,11 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "此角色无组件数据，已进入精灵预览模式（选中后导出）",
         LANG_EN: "This character has no component data. Sprite preview mode (select to export)",
         LANG_MGL: "JIO has Nii hA-k. Lai Nei mode (Alte then KeI·tion)",
+    },
+    "preview.loading_thumbs": {
+        LANG_CN: "正在加载精灵预览...",
+        LANG_EN: "Loading sprite preview...",
+        LANG_MGL: "Toim Lai Nei...",
     },
     "preview.clear": {
         LANG_CN: "取消选择", 
@@ -1451,6 +1521,28 @@ T: Dict[str, Dict[str, str]] = {
         LANG_CN: "部件选择", 
         LANG_EN: "Part Selection", 
         LANG_MGL: "hA-k Alte", 
+    },
+
+    # ── titlebar.* ──
+    "titlebar.minimize": {
+        LANG_CN: "最小化",
+        LANG_EN: "Minimize",
+        LANG_MGL: "Sha-Rui",
+    },
+    "titlebar.maximize": {
+        LANG_CN: "最大化",
+        LANG_EN: "Maximize",
+        LANG_MGL: "gDie",
+    },
+    "titlebar.close": {
+        LANG_CN: "关闭 (Alt + F4)",
+        LANG_EN: "Close (Alt + F4)",
+        LANG_MGL: "FineNd (Alt + F4)",
+    },
+    "titlebar.console": {
+        LANG_CN: "日志控制台 (Ctrl+Shift+L)",
+        LANG_EN: "Log Console (Ctrl+Shift+L)",
+        LANG_MGL: "Log Console (Ctrl+Shift+L)",
     },
 }
 

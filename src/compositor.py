@@ -11,12 +11,13 @@
 
 import gc
 import json
+import os
 import re
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, cast
 
 import UnityPy
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 
 from src.logtools import log
 from src.i18n import _
@@ -180,8 +181,11 @@ def extract_character_data(
 
     for obj in env.objects:
         try:
-            data = obj.read()
             t = obj.type.name
+            # 只 read 需要的类型；跳过 Texture2D/AudioClip 等无关大对象（其 read 会解码，首次冷加载极慢）
+            if t not in ("GameObject", "Transform", "SpriteRenderer"):
+                continue
+            data = obj.read()
 
             if t == "GameObject":
                 comps = getattr(data, "m_Component", [])
@@ -353,6 +357,9 @@ class SpriteCompositor:
         selected_names: Optional[List[str]] = None,
         custom_depths: Optional[Dict[str, int]] = None,
         progress_callback=None,
+        sketchbook_text: Optional[str] = None,
+        sketch_font_size: int = 56,
+        sketch_align: str = "center",
     ) -> Optional[Image.Image]:
         """
         合成角色图像。
@@ -362,6 +369,10 @@ class SpriteCompositor:
             selected_names: 要包含的部件名称列表，None 表示全部
             custom_depths:  自定义深度 {部件名: 排序值}，None 用原始顺序
             progress_callback: 可选进度回调 fn(current, total)
+            sketchbook_text: 自定义素描本文字（Anan 选中 Arms01/Arms02 时生效）；
+                             提供后隐藏默认笔迹（Option_Arms*）并在其位置绘制自定义文字
+            sketch_font_size: 素描本文字字号（像素），默认 56
+            sketch_align: 素描本文字对齐方式（left/center/right），默认 center
 
         Returns:
             PIL Image (RGBA)，失败返回 None
@@ -376,13 +387,26 @@ class SpriteCompositor:
         if custom_depths:
             sorted_parts = sorted(
                 [p for p in transform_data if p["name"] in selected_names],
-                key=lambda x: custom_depths.get(x["name"], x["sorting_order"]),
+                key=lambda x: custom_depths[x["name"]] if x["name"] in custom_depths else x["sorting_order"],
             )
         else:
             sorted_parts = sorted(
                 [p for p in transform_data if p["name"] in selected_names],
                 key=lambda x: x["sorting_order"],
             )
+
+        # ── 自定义素描本文字（Anan 专属：选中 Arms01/Arms02 时）──
+        # 锚点取 Option_Arms01_01 / Option_Arms02_01 的坐标；提供文字时隐藏默认笔迹（Option_Arms*）
+        sketch_anchor = None
+        if sketchbook_text and sketchbook_text.strip():
+            sel = set(selected_names)
+            variant = "Arms01" if "Arms01" in sel else ("Arms02" if "Arms02" in sel else None)
+            if variant:
+                ref_name = f"Option_{variant}_01"
+                ref = next((p for p in transform_data if p["name"] == ref_name), None)
+                if ref:
+                    sketch_anchor = (float(ref["position"]["x"]), float(ref["position"]["y"]))
+                    sorted_parts = [p for p in sorted_parts if not p["name"].startswith("Option_Arms")]
 
         # 计算画布大小
         canvas_size = self._calc_canvas_size(sorted_parts)
@@ -426,7 +450,83 @@ class SpriteCompositor:
             if (i + 1) % 20 == 0:
                 gc.collect()
 
+        # 在素描本上绘制自定义文字（锚点 = Option_Arms0x_01 坐标）
+        if sketch_anchor is not None:
+            self._draw_sketch_text(composite, sketchbook_text or "", sketch_anchor, cx, cy,
+                                   font_size=sketch_font_size, align=sketch_align)
+
         return composite
+
+    # ── 自定义素描本文字绘制 ──────────────────────────────
+
+    # 常见中文字体（Windows）；按顺序尝试，找不到则退回默认字体
+    _SKETCH_FONTS = [
+        "C:/Windows/Fonts/msyh.ttc",     # 微软雅黑
+        "C:/Windows/Fonts/msyhbd.ttc",   # 微软雅黑 Bold
+        "C:/Windows/Fonts/simhei.ttf",   # 黑体
+        "C:/Windows/Fonts/simsun.ttc",   # 宋体
+        "C:/Windows/Fonts/arial.ttf",
+    ]
+
+    def _load_sketch_font(self, size: int = 56) -> ImageFont.FreeTypeFont:
+        """加载用于素描本文字的字体（优先中文字体）"""
+        for path in self._SKETCH_FONTS:
+            if os.path.exists(path):
+                try:
+                    return ImageFont.truetype(path, size)
+                except Exception:
+                    continue
+        return cast(ImageFont.FreeTypeFont, ImageFont.load_default())
+
+    def _draw_sketch_text(
+        self,
+        canvas: Image.Image,
+        text: str,
+        anchor: Tuple[float, float],
+        cx: int,
+        cy: int,
+        font_size: int = 56,
+        align: str = "center",
+    ) -> None:
+        """在素描本上以 anchor（Unity 坐标）为锚点绘制自定义文字。
+
+        深灰铅笔笔迹风格，支持多行（\n 换行）；整体以锚点为中心（垂直居中，
+        水平方向文字块居中），行内按 align（left/center/right）对齐。
+        """
+        try:
+            lines = [ln for ln in str(text).split("\n") if ln]
+            if not lines:
+                return
+            font = self._load_sketch_font(font_size)
+            draw = ImageDraw.Draw(canvas)
+            px = int(anchor[0] * self.scale + cx)
+            py = int(-anchor[1] * self.scale + cy)
+            align = (align or "center").lower()
+
+            line_h = int(font.size * 1.4)
+            widths = []
+            for ln in lines:
+                bbox = draw.textbbox((0, 0), ln, font=font)
+                widths.append(bbox[2] - bbox[0])
+            max_w = max(widths)
+            # 文字块整体垂直居中于锚点；水平方向以锚点为中心
+            total_h = line_h * len(lines) - int(font.size * 0.4)
+            y = py - total_h // 2
+            color = (70, 70, 70, 255)  # 深灰，接近铅笔笔迹
+            for ln, w in zip(lines, widths):
+                bbox = draw.textbbox((0, 0), ln, font=font)
+                if align == "left":
+                    x = px - max_w // 2 - bbox[0]
+                elif align == "right":
+                    x = px + max_w // 2 - w - bbox[0]
+                else:  # center
+                    x = px - w // 2 - bbox[0]
+                draw.text((x, y - bbox[1]), ln, font=font, fill=color)
+                y += line_h
+            # 记录完整文字内容（多行时保留换行，方便日志里核对输入）
+            log("info", f"[composite] 素描本自定义文字 ({len(lines)} 行, 宽 {max_w}px, 对齐 {align}):\n" + "\n".join(lines))
+        except Exception as e:
+            log("warning", f"[composite] 绘制素描本文字失败: {e}")
 
     def _calc_canvas_size(self, parts: List[Dict]) -> Tuple[int, int]:
         """根据部件位置和尺寸计算画布大小"""

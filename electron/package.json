@@ -1,0 +1,13 @@
+{
+  "name": "manosaba-extracter",
+  "productName": "Manosaba Character Extracter",
+  "version": "1.2.0-prewiew-2",
+  "description": "魔法少女的魔女审判 - 角色立绘提取与拼接工具 (Electron UI Shell)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}

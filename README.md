@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md) 
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
-从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 文件中提取角色精灵，支持自动检测组件数据、直接导出精灵或拼接完整立绘。采用 **PyWebView 现代图形界面**（WebView2 渲染）。
+从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 文件中提取角色精灵，支持自动检测组件数据、直接导出精灵或拼接完整立绘。界面采用 **Electron 无边框窗口**（Chromium 渲染，原生拖动 / 双击最大化 / Aero Snap / 边缘缩放），核心逻辑由 **Python 后端**（子进程 + stdio JSON-RPC）承担。
 
 ## 功能
 
@@ -26,19 +26,30 @@
 
 ## 环境要求
 
-- Python 3.10+
-- `pip install -r requirements.txt`
+- **Python 3.10+**：`pip install -r requirements.txt`（核心逻辑：bundle 解析 / 图像处理）
+- **Node.js 18+**：`cd electron && npm install`（Electron 界面壳）
 
 > 目前主要针对 **Windows** 充分测试，Linux/macOS 兼容性未知。
 
 ## 使用
 
 ### 运行
+
+**推荐：Electron 无边框窗口**（原生 Aero Snap / 拖动 / 双击最大化 / 边缘缩放）
+```bash
+cd electron
+npm install        # 首次安装依赖
+npm start          # 启动（等价 npx electron .）
+```
+
+**备选：PyWebView / WebView2 模式**
 ```bash
 python run.py
 ```
 
-1. 点击 **加载游戏目录** → 选择游戏根目录或 `characters` 目录
+> Electron 模式：后端 `backend.py` 复用 `run.py` 的 `JsApi` 业务逻辑（stdio JSON-RPC），窗口控制由 Electron 主进程处理，前端 `webui/` 两个模式共用。
+
+### 使用步骤
 2. 点击左侧角色 → 程序自动检测：
    - **无组件数据** → 选择「预览精灵 / 直接导出全部 / 取消」
    - **有组件数据** → 选择「直接导出」或「拼接角色图像」
@@ -49,6 +60,19 @@ python run.py
 点击左侧 **设置** 可配置：**输出目录**（自定义导出位置，自动记忆）、**语言**、**主题**（深色/浅色）、**显示中文名**（仅中文界面可选）、**调试模式**（监视内存/CPU/窗口，默认关闭且仅本次运行）、**检查更新**、**清理**（`temp/` 缓存、`output/` 目录或 `logs/` 日志文件）。
 
 > 设置保存在程序目录下 `data/` 文件夹内的 `settings.json`（已设为隐藏属性，避免误改）。
+
+### 数据存储路径（打包版）
+
+打包安装后，程序在**安装目录**下读写以下数据（以安装到 `D:\mce` 为例）：
+
+| 路径 | 用途 | 说明 |
+|---|---|---|
+| `D:\mce\data` | 设置文件 | `settings.json`（语言、主题、输出目录等，已设隐藏属性） |
+| `D:\mce\output` | 导出输出 | 导出的精灵 / 合成的立绘 PNG |
+| `D:\mce\temp` | 精灵缓存 | 已提取数据缓存，可清理以释放空间 |
+| `D:\mce\resources\backend\logs` | 运行日志 | 控制台日志文件（按启动时间命名），可一键清理 |
+
+> 绿色版（zip）解压到任意目录后，数据同样生成在**解压目录**下（把上表 `D:\mce` 换成实际解压目录即可）；`data/` 路径可通过环境变量 `MCE_DATA_DIR` 重定向。
 
 ### 输出结构
 
@@ -93,15 +117,20 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 ## 项目结构
 
 ```
-├── run.py             # 主程序入口（PyWebView 后端 + JsApi 桥接）
-├── webui/             # 前端（index.html + css/ + js/，纯本地无 CDN）
+├── run.py             # PyWebView 模式入口（WebView2，备用）
+├── backend.py         # Electron 模式 Python 后端子进程（stdio JSON-RPC）
+├── electron/          # Electron 界面壳
+│   ├── main.js        #   主进程：无边框窗口 + Python 子进程桥接 + 窗口控制
+│   ├── preload.js     #   桥接层：模拟 pywebview API，前端零改动
+│   └── package.json
+├── webui/             # 前端（index.html + css/ + js/，纯本地无 CDN，两模式共用）
 ├── src/               # 核心模块（加载、合成、导出、缓存、i18n、设置等）
 ├── scripts/           # PyInstaller 打包脚本
 ├── output/            # 输出目录（程序生成）
 └── temp/              # 精灵缓存（程序生成）
 ```
 
-技术栈：[UnityPy](https://github.com/K0lb3/UnityPy)（bundle 解析）、Pillow（图像处理）、[pywebview](https://github.com/r0x0r/pywebview)（现代 GUI，WebView2 渲染）。
+技术栈：[UnityPy](https://github.com/K0lb3/UnityPy)（bundle 解析）、Pillow（图像处理）、[Electron](https://www.electronjs.org/)（无边框 UI 壳，Chromium 渲染 + 原生 Aero Snap）、[pywebview](https://github.com/r0x0r/pywebview)（备用 WebView2 模式）。
 
 ## 致谢与许可证
 
@@ -133,14 +162,24 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 
 ## 打包为 EXE
 
+### PyWebView 独立版
 ```bash
 pip install pyinstaller
-python scripts\build_exe.py                          # 默认 onedir（启动快）
-python scripts\build_exe.py --onefile                # 单文件 exe（适合分发）
-python scripts\build_exe.py --name MyApp --icon icon.ico
+python scripts\build_pywebview.py                          # 默认 onedir（启动快）
+python scripts\build_pywebview.py --onefile                # 单文件 exe（适合分发）
+python scripts\build_pywebview.py --name MyApp --icon icon.ico
 ```
 
 - **版本信息自动注入**（文件版本 / 产品名称 / 产品版本等，降低杀软误报）
 - 可选参数：`--company "名称"`（公司/开发者）、`--product`、`--description`、`--copyright`（默认用脚本顶部 `APP_*` 常量）、`--console false`（无控制台 GUI 模式）
 
-> 图标需为 `.ico` 格式。`--onefile` 每次运行需解压、启动较慢。更多参数见 `python scripts\build_exe.py --help`。
+> 图标需为 `.ico` 格式。`--onefile` 每次运行需解压、启动较慢。更多参数见 `python scripts\build_pywebview.py --help`。
+
+### Electron 应用
+```bash
+python scripts\build_electron_backend.py   # 仅打包 Python 后端子进程 → dist/backend/
+python scripts\build_electron.py            # 一键：后端 + 绿色版 zip + 安装版 Setup.exe
+```
+
+- `build_electron.py` 可选参数：`--backend-only`（只打后端）、`--app-only`（只打应用，需后端已存在）、`--zip-only`（只打绿色版 zip）、`--installer-only`（只打安装版 Setup.exe）、`--no-clean` / `--clean-dist`
+- electron-builder 配置见 `electron/electron-builder.yml`（绿色版 zip + nsis 安装版，需先装 electron 目录的 node_modules）
