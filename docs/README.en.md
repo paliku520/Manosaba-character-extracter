@@ -14,7 +14,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Live Preview** — wheel zoom (cursor-centered), drag pan
 - **Sprite Preview** — one-click preview of all sprites for no-component characters, check to export
 - **Hierarchy Viewer** — component tree, copy button per row
-- **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it
+- **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it; remembers the last used game directory
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
 - **Memory Reclaim** — Releases resources immediately with GC triggers; forced GC before exit
 - **Taskbar Effects** — Electron mode shows progress during loading and flashes the taskbar when done
@@ -76,9 +76,9 @@ After installation, the app reads/writes the following data under its **install 
 | `D:\mce\temp` | Sprite cache (clearable) |
 | `D:\mce\resources\backend\logs` | Runtime logs (one-click cleanup) |
 
-> For the portable (zip) build, the same folders are created under the extraction directory; `data/` can be redirected via the `MCE_DATA_DIR` environment variable.
+> Data (`data`/`output`/`temp`/`logs`) is always stored **preferentially in the program directory** (the install directory or the portable extraction directory); it only falls back to `%APPDATA%\Manosaba Character Extracter` when that directory is not writable (e.g. failed permission grant, antivirus interference, read-only drive).
 >
-> If installed to a **protected directory** (e.g. under `C:\Program Files\`, not writable by normal users), the app automatically falls back to `%APPDATA%\Manosaba Character Extracter` for its data directory to keep running.
+> When installed to the default `C:\Program Files\MCE`, the installer grants normal users write and delete permission on that directory, so data (`data`/`output`/`temp`/`logs`) is still stored directly under the install directory. During uninstallation, if data folders are detected under the install directory (except in silent mode), a dialog warns that all data will be deleted; choosing "No" aborts the uninstall.
 
 ### Output Structure
 
