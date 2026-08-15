@@ -32,19 +32,25 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 ## Usage
 
-### Run
+### Run (Recommended: launcher script)
 
-**Recommended: Electron frameless window** (native Aero Snap / drag / double-click maximize / edge resize)
-```bash
-cd electron
-npm install        # first time only
-npm start          # equivalent to npx electron .
+On Windows, use the `start.bat` launcher in the repo root:
+
+```bat
+start.bat            :: Electron frameless window (default; native Aero Snap / drag / double-click maximize / edge resize)
+start.bat py         :: PyWebView / WebView2 mode (native window)
+start.bat help       :: Show help
 ```
 
-**Alternative: PyWebView / WebView2 mode**
+**Install dependencies once before first run:**
+
 ```bash
-python run.py
+pip install -r requirements.txt        # Python dependencies
+cd electron && npm install             # Electron dependencies
 ```
+
+> Alternatively launch manually: `cd electron && npm start` (Electron mode) or `python run.py` (PyWebView mode)
+
 
 ### Steps
 
@@ -71,6 +77,8 @@ After installation, the app reads/writes the following data under its **install 
 | `D:\mce\resources\backend\logs` | Runtime logs (one-click cleanup) |
 
 > For the portable (zip) build, the same folders are created under the extraction directory; `data/` can be redirected via the `MCE_DATA_DIR` environment variable.
+>
+> If installed to a **protected directory** (e.g. under `C:\Program Files\`, not writable by normal users), the app automatically falls back to `%APPDATA%\Manosaba Character Extracter` for its data directory to keep running.
 
 ### Output Structure
 
@@ -139,7 +147,7 @@ python scripts\build_pywebview.py --onefile                # Single-file exe
 python scripts\build_pywebview.py --name MyApp --icon icon.ico
 ```
 
-- Version info auto-injected (file version / product name, etc., to reduce antivirus false positives); optional `--company/--product/--description/--copyright` (defaults to `APP_*` constants), `--console false`
+- Version info auto-injected (file version / product name, etc., to reduce antivirus false positives); the version is read automatically from `src/version.py`; optional `--company/--product/--description/--copyright` (defaults to `APP_*` constants), `--console false`
 - Icons must be `.ico`; `--onefile` starts slower; see `--help` for more options
 
 ### Electron App
@@ -150,5 +158,6 @@ python scripts\build_electron.py            # One-click: backend + portable zip 
 
 - `build_electron.py` options: `--backend-only` / `--app-only` / `--zip-only` / `--installer-only` / `--no-clean` / `--clean-dist`
 - Optional `--company/--product/--description/--copyright` to pass version info to the backend exe (defaults to `APP_*` constants at the top of the script)
+- Version is read automatically from `src/version.py` (artifacts `MCE-Setup-<version>.exe` / `MCE-<version>-win.zip` and the backend exe version info stay in sync; change the version in one place only)
 - electron-builder config: `electron/electron-builder.yml` (requires electron/node_modules installed)
 - see `--help` for more options

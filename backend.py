@@ -34,10 +34,15 @@ if _DATA_DIR:
     run.BASE_DIR = Path(_DATA_DIR)
     run.MEI_DIR = Path(_DATA_DIR)
 
-if getattr(sys, "frozen", False):
-    BASE_DIR = Path(sys.executable).parent
-else:
-    BASE_DIR = Path(__file__).parent
+# 日志目录：优先跟随 MCE_DATA_DIR（main.js 已探测为可写目录）。
+# 打包安装到 Program Files 等受保护目录时，exe 所在目录（resources/backend）对普通用户不可写，
+# 若日志仍写到 exe 目录会因 mkdir PermissionError 导致后端启动即崩溃（前端表现为 "backend exited"）。
+# 注意 run.BASE_DIR 已在上方重定向，但那是 run 模块的业务目录；本模块日志目录需单独跟随数据目录。
+_LOG_BASE = (
+    Path(_DATA_DIR)
+    if _DATA_DIR
+    else (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent)
+)
 
 
 # stdout 写入锁（emit 后台线程与主线程响应共用，防止 JSON 行撕裂）
@@ -250,7 +255,13 @@ def main():
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     # 日志输出到 stderr：Electron 主进程会转发打印到启动终端；stdout 专用于 JSON 协议
     # color=True：保留 ANSI 颜色高亮（现代终端 Win10+ 默认支持 VT；start.bat 已 chcp 65001 解决代码页）
-    configure(log_file=BASE_DIR / "logs" / f"{ts}.log", level="info", stream=sys.stderr, color=True)
+    try:
+        # 日志文件写入数据目录（_LOG_BASE 已跟随 MCE_DATA_DIR，Program Files 等受保护目录下可正常创建）
+        configure(log_file=_LOG_BASE / "logs" / f"{ts}.log", level="info", stream=sys.stderr, color=True)
+    except Exception:
+        # 兜底：日志目录创建/写入失败不阻断启动（仅输出到 stderr，退出清理同样不因日志崩溃）
+        traceback.print_exc(file=sys.stderr)
+        configure(level="info", stream=sys.stderr, color=True)
 
     # 启动生命周期日志（与 run.py 一致）
     _startup_logs()

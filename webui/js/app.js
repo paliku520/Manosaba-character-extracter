@@ -301,6 +301,10 @@
 
   function switchTab(name) {
     const prev = App._activeTab || null;
+    // 重复点击当前 tab：直接返回，避免删除 data-dir 触发动画切换（fadeIn 重放）导致面板闪烁
+    if (prev === name) return;
+    // 长矛彩蛋锁定期间：只能停留在组件选择界面（允许回到 parts，禁止离开）
+    if (_spearEasterActive && name !== 'parts') return;
     App._activeTab = name;
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
     $$('.tab-panel').forEach((p) => {
@@ -321,15 +325,12 @@
     moveTabIndicator();
   }
 
-  // 主题：底色（dark/light）+ 主题色（accent，default=默认绿）
+  // 主题：底色（dark/light）+ 主题色（accent，default=默认绿）。
+  // settings.json 为唯一权威（后端 get_app_info 读取），不写/不读 localStorage。
   function applyTheme(theme, accent) {
     if (theme) document.documentElement.dataset.theme = theme;
     const acc = accent || 'default';
     document.documentElement.dataset.accent = acc;
-    try {
-      localStorage.setItem('msx-theme', theme || 'dark');
-      localStorage.setItem('msx-accent', acc);
-    } catch (e) { /* ignore */ }
   }
 
   // ═════════════ 侧边栏 ═════════════
@@ -372,6 +373,14 @@
       li.querySelector('.char-avatar').textContent = i + 1;
       li.querySelector('.char-name').textContent = charDisplayName(name);
       li.addEventListener('click', () => onCharClick(name));
+      // 彩蛋：noah 组件选择界面右键 leia → 长矛彩蛋
+      li.addEventListener('contextmenu', (e) => {
+        if (name !== 'leia') return;
+        if (!spearEasterAvailable()) return;
+        e.preventDefault();
+        e.stopPropagation();
+        startSpearEaster();
+      });
       ul.appendChild(li);
     });
   }
@@ -469,6 +478,7 @@
   }
 
   async function onCharClick(name) {
+    if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止切换角色
     if (App.loading) {
       const ok = await confirmDialog(t('dialog.cancel_load_title'), t('dialog.cancel_load_msg'));
       if (!ok) return;
@@ -494,6 +504,7 @@
   }
 
   function clearPartsUI() {
+    spearTeardown();        // 切换角色/清缓存时解除长矛彩蛋状态（防御性）
     teardownPartsEaster();  // 切换角色时移除 nanoka 部件卡彩蛋
     $('#parts-list').innerHTML = '';
     $('#parts-empty').hidden = false;
@@ -879,6 +890,16 @@
   // ── Nanoka 彩蛋（仅简体中文 + 当前角色 nanoka：部件标题卡可点击 → "超级拼装"）──
   let _partsEaster = null;        // { title, enter, leave } 已激活的部件卡彩蛋状态
   let _memeEasterActive = false;  // meme 全屏覆盖层是否显示中（防重复触发）
+  let _spearEasterActive = false; // noah 长矛彩蛋进行中（界面锁定）
+  let _spearPreviewReady = false; // 长矛彩蛋：合成完成前不可点击预览人物结束
+  // noah 长矛彩蛋强制选择的组件（右键 leia 触发；仅取实际存在的部件）
+  const SPEAR_PARTS = [
+    'ArmL02', 'ArmR01', 'Body', 'Cheeks_Normal',
+    'ClippingMask_Effect_Root_01', 'ClippingMask_Effect_Root_02',
+    'ClippingMask_Effect_Root_03', 'ClippingMask_Effect_Root_04',
+    'ClippingMask_Eyes', 'ClippingMask_Facial_01', 'ClippingMask_Facial_02',
+    'Eyes_Fearful_Open', 'Mouth_Normal_Closed', 'Pale01',
+  ];
 
   // 简体中文且当前角色为 nanoka 时，让部件标题卡（角色名 + 部件数）可点击；
   // 悬停时内部文本临时替换为"超级拼装"，离开后恢复原样
@@ -929,7 +950,7 @@
     overlay.id = 'meme-easter-overlay';
     overlay.innerHTML =
       '<div class="meme-easter-img-wrap">' +
-      '  <img class="meme-easter-img" src="assets/assembly_meme_cn/meme.jpg" alt="">' +
+      '  <img class="meme-easter-img" src="assets/EasterEgg/assembly_meme_cn/meme.jpg" alt="">' +
       '</div>';
     document.body.appendChild(overlay);
 
@@ -958,7 +979,7 @@
         }, 500);
       }, 1000);
     };
-    const audio = new Audio('assets/assembly_meme_cn/meme_1.wav');
+    const audio = new Audio('assets/EasterEgg/assembly_meme_cn/meme_1.wav');
     audio.volume = 1;
 
     // 图片淡入时长与音频长度一致：元数据就绪后按 duration 设置过渡时长，再同时开始淡入 + 播放
@@ -975,7 +996,72 @@
     audio.addEventListener('error', finish);
   }
 
+  // ── Noah 长矛彩蛋 ──────────────────────────────────────────
+  // 位于 noah 组件选择界面时，右键侧边栏的 leia → 光标变为长矛、锁定界面并强制选择指定组件；
+  // 点击预览中的人物结束（播放 balloon_pop.ogg + 清空预览 + 取消全选），随后解除锁定。
+
+  // 彩蛋可用条件：noah 组件选择界面（角色已加载、非无组件预览模式）、且未处于彩蛋中
+  function spearEasterAvailable() {
+    return !!App.characterData && App.currentName === 'noah' && !App.previewMode && !_spearEasterActive;
+  }
+
+  // 开始彩蛋：锁定界面 + 强制选择组件 + 生成人物预览
+  function startSpearEaster() {
+    if (!spearEasterAvailable()) return;
+    _spearEasterActive = true;
+    _spearPreviewReady = false;   // 合成完成前不可点击预览人物
+    // 光标变为长矛（body.spear-lock 全局强制，覆盖各元素自带 cursor；热点在矛尖 1,2，64px 光标图）
+    document.body.classList.add('spear-lock');
+    // 锁定在 noah 组件选择界面
+    switchTab('parts');
+    // 强制选择指定组件（仅选择实际存在的部件）
+    App.selected.clear();
+    App.characterData.transform_data.forEach((p) => {
+      if (SPEAR_PARTS.indexOf(p.name) !== -1) App.selected.add(p.name);
+    });
+    Object.keys(App.partEls).forEach((name) => {
+      const el = App.partEls[name];
+      if (el) el.cb.checked = App.selected.has(name);
+    });
+    updateSelUI();
+    // 立即生成人物预览（供用户点击结束彩蛋）
+    if (api() && App.selected.size > 0) {
+      api().composite(Array.from(App.selected), sketchTextArg(), sketchSizeArg(), sketchAlignArg());
+    }
+  }
+
+  // 结束彩蛋：播放音频 + 清空预览 + 取消全选 + 解除锁定
+  function finishSpearEaster() {
+    if (!_spearEasterActive) return;
+    const audio = new Audio('assets/EasterEgg/simple_spear/balloon_pop.ogg');
+    audio.volume = 1;
+    audio.play().catch(() => {});
+    clearPreview();
+    App.selected.clear();
+    Object.keys(App.partEls).forEach((name) => {
+      const el = App.partEls[name];
+      if (el) el.cb.checked = false;
+    });
+    updateSelUI();
+    _spearEasterActive = false;
+    _spearPreviewReady = false;
+    document.body.classList.remove('spear-lock');
+  }
+
+  // 防御性解除（切换角色 / 清缓存等场景）
+  function spearTeardown() {
+    _spearEasterActive = false;
+    _spearPreviewReady = false;
+    document.body.classList.remove('spear-lock');
+  }
+
   function onPartToggle(name, checked) {
+    if (_spearEasterActive) {
+      // 长矛彩蛋锁定期间禁止改选部件：还原复选框视觉状态（原生切换已发生）
+      const el = App.partEls[name];
+      if (el) el.cb.checked = !checked;
+      return;
+    }
     if (checked) App.selected.add(name);
     else App.selected.delete(name);
     console.log(t('log.js_selected', { count: App.selected.size, total: App.characterData.transform_data.length }));
@@ -1113,6 +1199,7 @@
   }
 
   function selectAll(checked) {
+    if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止全选/取消全选
     if (!App.characterData) return;
     App.selected.clear();
     App.characterData.transform_data.forEach((p) => {
@@ -1126,6 +1213,7 @@
 
   // 取消指定分组内所有部件的选择（分组头部的“取消选择”按钮）
   function deselectGroup(groupEl) {
+    if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止取消分组选择
     if (!App.characterData) return;
     let removed = 0;
     groupEl.querySelectorAll('.part-item').forEach((item) => {
@@ -1386,14 +1474,19 @@
     wrap.appendChild(list);
 
     let current = value;
+    // 当前语言下取选项 label 的函数；语言切换后由 refreshLabels 更新，
+    // 保证赋值器（set value）始终用最新语言的标签，而非创建时缓存的 options
+    let labelFor = (v) => {
+      const o = options.find((x) => x.value === v);
+      return o ? o.label : v;
+    };
     const api = {
       el: wrap,
       get value() { return current; },
       set value(v) {
         if (!(v in items)) return;
         current = v;
-        const o = options.find((x) => x.value === v);
-        if (o) label.textContent = o.label;
+        label.textContent = labelFor(v);
         Object.keys(items).forEach((k) => items[k].classList.toggle('selected', k === v));
         if (api.onChange) api.onChange(v);
       },
@@ -1406,12 +1499,12 @@
       closeList() { list.classList.remove('open'); },
       refreshLabels(getLabel) {
         // 语言/主题切换后刷新选项文本（选项集合不变，仅 label 变化）
+        labelFor = getLabel;
         Object.keys(items).forEach((k) => {
           const nm = items[k].querySelector('.cp-name');
           if (nm) nm.textContent = getLabel(k);
         });
-        const o = options.find((x) => x.value === current);
-        if (o) label.textContent = getLabel(o.value);
+        label.textContent = getLabel(current);
       },
     };
     btn.addEventListener('click', (e) => {
@@ -2028,6 +2121,8 @@
       previewZoom = previewMinZoom();
     }
     applyPreviewZoom();
+    // 长矛彩蛋：合成完成才允许点击预览中的人物结束
+    if (_spearEasterActive) _spearPreviewReady = true;
   });
 
   on('save_complete', (r) => {
@@ -2198,7 +2293,7 @@
   let _kiangAudio = null;
   function playKiangSound() {
     if (!_kiangAudio) {
-      _kiangAudio = new Audio('assets/kiang/0201Trial08_Ema022.wav');
+      _kiangAudio = new Audio('assets/EasterEgg/kiang/0201Trial08_Ema022.wav');
       _kiangAudio.volume = 0.8;
     }
     _kiangAudio.currentTime = 0;
@@ -2219,7 +2314,7 @@
     // 第一步：背景图（随机一张）立即显示
     const bgIdx = 1 + Math.floor(Math.random() * 7);
     overlay.style.backgroundImage =
-      'url("assets/execution/bg/' + String(bgIdx).padStart(2, '0') + '.webp")';
+      'url("assets/EasterEgg/execution/bg/' + String(bgIdx).padStart(2, '0') + '.webp")';
     document.body.appendChild(overlay);
 
     // 第二步：等待 1 秒后再加载叠加层与 phone，两者同步纯淡入（不缩放）
@@ -2232,11 +2327,11 @@
       phone.className = 'easter-phone';
       phone.innerHTML =
         '  <button type="button" class="exec-btn" id="exec-btn" aria-label="execution">' +
-        '    <img class="exec-layer exec-base" src="assets/execution/ExecutionButton_Base.png" alt="">' +
+        '    <img class="exec-layer exec-base" src="assets/EasterEgg/execution/ExecutionButton_Base.png" alt="">' +
         '    <div class="exec-fill"></div>' +
-        '    <img class="exec-layer exec-frame" src="assets/execution/ExecutionButton_Frame.png" alt="">' +
-        '    <img class="exec-label" src="assets/execution/ExecutionButton_Label.png" alt="">' +
-        '    <img class="exec-check" src="assets/execution/ExecutionButton_CheckIcon.png" alt="">' +
+        '    <img class="exec-layer exec-frame" src="assets/EasterEgg/execution/ExecutionButton_Frame.png" alt="">' +
+        '    <img class="exec-label" src="assets/EasterEgg/execution/ExecutionButton_Label.png" alt="">' +
+        '    <img class="exec-check" src="assets/EasterEgg/execution/ExecutionButton_CheckIcon.png" alt="">' +
         '  </button>';
       overlay.appendChild(phone);
 
@@ -2245,9 +2340,9 @@
       const check = phone.querySelector('.exec-check');
 
       // 三个音效：心跳（进入即播，循环）/ 长按（按住循环）/ 完成（一次）
-      const sHeart = new Audio('assets/execution/Sfx_Scenario_035 Human heartbeat.wav');
-      const sHold = new Audio('assets/execution/Sfx_System_ExecuteButton_001.wav');
-      const sDone = new Audio('assets/execution/Sfx_System_ExecuteButton_002.wav');
+      const sHeart = new Audio('assets/EasterEgg/execution/Sfx_Scenario_035 Human heartbeat.wav');
+      const sHold = new Audio('assets/EasterEgg/execution/Sfx_System_ExecuteButton_001.wav');
+      const sDone = new Audio('assets/EasterEgg/execution/Sfx_System_ExecuteButton_002.wav');
       sHeart.loop = false; sHeart.volume = .55;  // 心跳只播一次
       sHold.loop = true; sHold.volume = .6;
       sDone.volume = .9;
@@ -2296,7 +2391,7 @@
         // 过渡关闭界面（填满后 1.5 秒才开始淡出）；淡出开始时随机播放一段结束音频（End_1~5）
         setTimeout(() => {
           const endIdx = 1 + Math.floor(Math.random() * 5);
-          const sEnd = new Audio('assets/execution/End_' + endIdx + '.wav');
+          const sEnd = new Audio('assets/EasterEgg/execution/End_' + endIdx + '.wav');
           sEnd.volume = .9;
           sEnd.play().catch(() => {});
           overlay.classList.add('closing');
@@ -2341,6 +2436,7 @@
   }
 
   async function onLoadClick() {
+    if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止加载游戏目录
     const path = await api().select_directory();
     if (path) loadDir(path);
   }
@@ -2395,6 +2491,7 @@
     $('#btn-open-output').addEventListener('click', () => api().open_output());
     $('#btn-settings').addEventListener('click', openSettings);
     $('#btn-clear-cache').addEventListener('click', async () => {
+      if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止清缓存
       switchTab('info');  // 先返回信息页，再清理
       const okc = await confirmDialog(t('left.clear_cache_confirm_title'), t('left.clear_cache_confirm_msg'));
       if (!okc) return;
@@ -2464,6 +2561,21 @@
     }
 
     bindPreviewZoom();
+
+    // 长矛彩蛋：点击预览中的人物结束（播放音频 + 清空预览 + 取消全选 + 解除锁定）
+    const spearPreviewImg = $('#preview-img');
+    if (spearPreviewImg) {
+      spearPreviewImg.addEventListener('click', (e) => {
+        // 需等待合成完成（_spearPreviewReady）后才允许点击结束
+        if (!_spearEasterActive || !_spearPreviewReady) return;
+        e.stopPropagation();
+        finishSpearEaster();
+      });
+    }
+    // 长矛彩蛋锁定期间屏蔽右键菜单（强化"锁定"体验）
+    document.addEventListener('contextmenu', (e) => {
+      if (_spearEasterActive) { e.preventDefault(); e.stopPropagation(); }
+    });
 
     $('#btn-expand').addEventListener('click', () => App.hierarchyNav.expand.forEach((f) => f()));
     $('#btn-collapse').addEventListener('click', () => App.hierarchyNav.collapse.forEach((f) => f()));
@@ -2569,13 +2681,10 @@
       }
       // 剧透提示（首次启动，或未勾选"不再提示"时）
       showSpoilerNotice();
-      // 主题：以 settings.json（后端）为权威，localStorage 仅作旧版兜底
+      // 主题：settings.json（后端 get_app_info）为唯一权威，不接受 localStorage 等其他来源
       let theme = 'dark';
-      try { theme = localStorage.getItem('msx-theme') || theme; } catch (e) { /* ignore */ }
       if (info.theme === 'dark' || info.theme === 'light') theme = info.theme;
-      let accent = 'default';
-      try { accent = localStorage.getItem('msx-accent') || accent; } catch (e) { /* ignore */ }
-      if (info.accent) accent = info.accent;
+      const accent = info.accent || 'default';
       applyTheme(theme, accent);
       setSplashProgress(80);
       bindEvents();

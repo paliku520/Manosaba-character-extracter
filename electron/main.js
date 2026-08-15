@@ -67,10 +67,24 @@ function backendEnv() {
   return env;
 }
 
-// 数据目录：统一放在 exe 所在目录（绿色版/安装版都跟随安装位置，不占 C 盘）。
-// 注：安装到 Program Files 等受保护目录时需管理员权限才能写入；建议自定义安装到可写目录。
+// 数据目录：
+//   - 绿色版 / 自定义可写目录 → 跟随安装位置（exe 所在目录，数据不占 C 盘）
+//   - 受保护目录（如 C:\Program Files\...）→ 普通权限不可写，自动回退到用户可写目录
+//     （%APPDATA%\Manosaba Character Extracter），保证 data/output/temp/logs 可读写。
 function dataDir() {
-  return path.dirname(app.getPath('exe'));
+  if (!app.isPackaged) {
+    return path.join(__dirname, '..');
+  }
+  const exeDir = path.dirname(app.getPath('exe'));
+  // 探测 exe 目录是否可写；不可写则回退到用户目录
+  try {
+    const probe = path.join(exeDir, '.mce-write-test');
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return exeDir;
+  } catch {
+    return path.join(app.getPath('appData'), 'Manosaba Character Extracter');
+  }
 }
 
 /* ── 窗口状态持久化（大小 / 位置 / 最大化） ────────── */
@@ -110,6 +124,29 @@ function saveWindowState() {
     try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
     if (typeof data !== 'object' || data === null) data = {};
     data.window = state;
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  } catch {}
+}
+/* ── 历史加载路径记忆（settings.json last_directory） ── */
+// 与 Python settings.py 共用 data/settings.json，last_directory 为权威数据源（PyWebView 版
+// JsApi.select_directory 的记忆逻辑在 Electron 下被 preload 白名单拦截，故在主进程实现等价功能）：
+// 打开游戏目录对话框时以上次路径为初始位置，用户选择后写回。
+function getLastDirectory() {
+  try {
+    const s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
+    const last = s && s.last_directory;
+    if (typeof last === 'string' && last && fs.existsSync(last)) return last;
+  } catch {}
+  return undefined;
+}
+
+function saveLastDirectory(dir) {
+  try {
+    const file = settingsFilePath();
+    let data = {};
+    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+    if (typeof data !== 'object' || data === null) data = {};
+    data.last_directory = dir;
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch {}
 }
@@ -371,12 +408,18 @@ ipcMain.handle('win:resize', (_e, dir, dx, dy) => {
   return { ok: true };
 });
 
-// 文件夹选择对话框
+// 文件夹选择对话框（游戏目录）：以 settings.json 记忆的上次路径为初始位置，选择后写回（历史加载路径记忆）
 ipcMain.handle('dialog:folder', async () => {
-  const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
-  return r.canceled ? null : r.filePaths[0];
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openDirectory'],
+    defaultPath: getLastDirectory(),
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  saveLastDirectory(r.filePaths[0]);
+  return r.filePaths[0];
 });
 
+// 文件夹选择对话框（输出目录）：不修改 last_directory 记忆（与 PyWebView 版 select_output_dir 语义一致）
 ipcMain.handle('dialog:folderOutput', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return r.canceled ? null : r.filePaths[0];

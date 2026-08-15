@@ -38,7 +38,7 @@ MCE_BANNER = """███╗   ███╗ ██████╗█████
 # ── exe 版本信息（可自行修改）──────────────────────
 # 写入 exe 的详细信息（右键 exe → 属性 → 详细信息），可降低杀软误报。
 # 个人业余开发者无公司时，可将 APP_COMPANY 填为自己的昵称 / GitHub 用户名。
-APP_COMPANY = "paliku520(云野风云)"                                               # 公司/开发者名称
+APP_COMPANY = "paliku520（云野风云）"                                             # 公司/开发者名称（全角括号：npm person 解析器会把 ASCII 圆括号内容当 URL 剥离，全角可保留完整显示）
 APP_PRODUCT_NAME = "Manosaba Character Extracter"                                # 产品名称
 APP_DESCRIPTION = "Manosaba 角色立绘提取与合成工具"                                  # 文件说明
 APP_COPYRIGHT = "Copyright (c) 2026 paliku520. Licensed under GPL-3.0."          # 版权信息

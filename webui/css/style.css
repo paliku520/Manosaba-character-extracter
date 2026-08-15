@@ -53,8 +53,9 @@
   --danger: #f85149;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
-  /* 透明缩略图底色：纯浅灰（比浅色主题的亮灰略暗），深浅主题通用——不用棋盘格以免干扰部件样式 */
-  --thumb-bg: #e2e6ee;
+  /* 无组件精灵预览棋盘格配色（--thumb-checker-*，浅/暗主题各一套）；有组件部件缩略图用固定银灰棋盘格（见 .part-thumb） */
+  --thumb-checker-dark: #3a414b;    /* 棋盘格深格（暗色主题） */
+  --thumb-checker-light: #4f5761;   /* 棋盘格浅格（暗色主题） */
   --radius: 14px;
   --radius-sm: 8px;
   --toast-bg: #1a2330;
@@ -88,6 +89,9 @@ html[data-theme="light"] {
   --toast-close-bg: rgba(0, 0, 0, 0.06);
   --shadow: 0 10px 30px rgba(30, 41, 80, 0.12);
   --shadow-sm: 0 2px 8px rgba(30, 41, 80, 0.08);
+  /* 无组件精灵预览棋盘格配色（浅色主题）：PS 银灰 + 白 */
+  --thumb-checker-dark: #c0c0c0;
+  --thumb-checker-light: #ffffff;
 }
 
 /* 主题色（accent）：默认绿由 :root 定义；以下为各角色主题色（深浅模式通用） */
@@ -597,7 +601,13 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .part-thumb {
   width: 46px; height: 46px; border-radius: 8px; flex-shrink: 0;
-  background: var(--thumb-bg);
+  /* 固定银灰棋盘格（仿 PS 透明棋盘格：白 + 银灰，不随主题变化） */
+  background-color: #c0c0c0;
+  background-image:
+    linear-gradient(45deg, #ffffff 25%, transparent 25%, transparent 75%, #ffffff 75%),
+    linear-gradient(45deg, #ffffff 25%, transparent 25%, transparent 75%, #ffffff 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
   border: 1px solid var(--border);
   display: grid; place-items: center; overflow: hidden;
 }
@@ -1037,7 +1047,13 @@ select.input {
 .sprite-preview-item.selected { border-color: var(--accent); background: var(--accent-soft); }
 .sprite-preview-thumb {
   flex: 1; min-height: 0; width: 100%; border-radius: 8px;
-  background: var(--thumb-bg);
+  /* 无组件精灵预览用棋盘格（浅/暗主题配色由变量控制，格子更密：8px） */
+  background-color: var(--thumb-checker-dark);
+  background-image:
+    linear-gradient(45deg, var(--thumb-checker-light) 25%, transparent 25%, transparent 75%, var(--thumb-checker-light) 75%),
+    linear-gradient(45deg, var(--thumb-checker-light) 25%, transparent 25%, transparent 75%, var(--thumb-checker-light) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
   display: grid; place-items: center; overflow: hidden;
 }
 .sprite-preview-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: auto; }
@@ -1085,7 +1101,7 @@ select.input {
 .easter-phone {
   position: relative; z-index: 1;   /* 在遮罩层之上 */
   width: 280px; height: 462px;   /* phone.png 1024:1688 */
-  background: url('../assets/execution/phone.png') no-repeat center / 100% 100%;
+  background: url('../assets/EasterEgg/execution/phone.png') no-repeat center / 100% 100%;
   position: relative;
   display: flex; align-items: center; justify-content: center;
   transform: rotate(-5deg);      /* 向左偏移 5°（仅淡入，不缩放） */
@@ -1113,11 +1129,11 @@ select.input {
 .exec-fill {
   position: absolute; left: 0; bottom: 0; width: 100%; height: 0%;
   background: #953949;
-  -webkit-mask-image: url('../assets/execution/ExecutionButton_Base.png');
+  -webkit-mask-image: url('../assets/EasterEgg/execution/ExecutionButton_Base.png');
   -webkit-mask-size: 150px 150px;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: bottom center;
-  mask-image: url('../assets/execution/ExecutionButton_Base.png');
+  mask-image: url('../assets/EasterEgg/execution/ExecutionButton_Base.png');
   mask-size: 150px 150px;
   mask-repeat: no-repeat;
   mask-position: bottom center;
@@ -1161,6 +1177,12 @@ select.input {
 }
 .meme-easter-img.show { opacity: 1; transform: scale(1); }
 
+/* 彩蛋：noah 长矛（锁定期间全局强制长矛光标，覆盖各元素自带 cursor 样式） */
+body.spear-lock,
+body.spear-lock * {
+  cursor: url('../assets/EasterEgg/simple_spear/simple_spear_cursor.png') 1 2, auto !important;
+}
+
 /* 启动加载界面（splash） */
 #splash {
   position: fixed; inset: 0; z-index: 2147483001;
@@ -1168,8 +1190,18 @@ select.input {
   background: var(--bg);
 }
 #splash.hide { opacity: 0; pointer-events: none; transition: opacity .6s ease; }
-.splash-inner { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-.splash-logo { width: 72px; height: 72px; border-radius: 18px; box-shadow: var(--shadow); }
+.splash-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+/* 启动 Logo：游戏标题图（横版），仅按宽度缩放，保持原始高宽比；无边框/圆角/阴影 */
+.splash-logo {
+  width: min(440px, 78vw);
+  height: auto;
+}
+.splash-subtitle {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--text);
+}
 .splash-bar {
   width: 220px; height: 6px; border-radius: 3px; overflow: hidden;
   background: color-mix(in srgb, var(--text-faint) 18%, transparent);

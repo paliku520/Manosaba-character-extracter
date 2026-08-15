@@ -22,6 +22,7 @@
 """
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -31,6 +32,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.build_electron_backend import run_pyinstaller as build_backend  # noqa: E402
+from scripts.build_pywebview import APP_COMPANY  # noqa: E402  公司名单一数据源（electron package.json author）
 
 ELECTRON_DIR = PROJECT_ROOT / "electron"
 ELECTRON_BUILDER_CLI = ELECTRON_DIR / "node_modules" / "electron-builder" / "out" / "cli" / "cli.js"
@@ -51,6 +53,66 @@ def clean_dir(path: Path, label: str) -> None:
         print(f"[OK] 已清除 {label}: {path}")
     else:
         print(f"[INFO] {label} 目录不存在，跳过: {path}")
+
+
+def read_src_version() -> str:
+    """从 src/version.py 读取 __version__（版本号单一数据源）"""
+    ns: dict = {}
+    try:
+        with open(PROJECT_ROOT / "src" / "version.py", encoding="utf-8") as f:
+            exec(f.read(), ns)
+    except Exception as e:
+        print(f"[WARN] 读取 src/version.py 失败: {e}")
+        return ""
+    return str(ns.get("__version__", "")).strip()
+
+
+def sync_electron_version(version: str) -> None:
+    """把 src/version.py 的版本同步到 electron/package.json（及 package-lock.json），
+    并把 build_pywebview 的 APP_COMPANY 同步为 package.json 的 author（公司名）。
+
+    electron-builder 生成 MCE.exe 版本信息的来源：
+      - CompanyName    ← package.json author.name（必须为对象形式；缺失时
+                          electron.exe 自带的 "Github Inc." 会残留在版本资源里）
+      - LegalCopyright ← electron-builder 配置 copyright（electron-builder.yml；
+                          未设置时默认生成 "Copyright © 年 产品名"）
+      - FileDescription / ProductName ← productName
+    electron-builder 的产物名（MCE-Setup-${version} / MCE-${version}-win.zip）与安装包
+    版本取自 electron/package.json 的 version 字段；自动同步以保证与 version.py 一致，
+    避免手动改两处导致版本脱节。
+    """
+    if not version:
+        print("[WARN] 未从 src/version.py 读到版本号，跳过 Electron 版本同步")
+        return
+    for name in ("package.json", "package-lock.json"):
+        p = ELECTRON_DIR / name
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            old = data.get("version")
+            if old == version:
+                continue
+            data["version"] = version
+            p.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            print(f"[INFO] 已同步 {name} 版本: {old} -> {version}")
+        except Exception as e:
+            print(f"[WARN] 同步 {name} 版本失败: {e}")
+    # author（公司名）：与 build_pywebview.APP_COMPANY 单一数据源保持一致
+    pj = ELECTRON_DIR / "package.json"
+    try:
+        data = json.loads(pj.read_text(encoding="utf-8"))
+        new_author = {"name": APP_COMPANY}
+        if data.get("author") != new_author:
+            old = data.get("author")
+            data["author"] = new_author
+            pj.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            print(f"[INFO] 已同步 package.json author: {old!r} -> {new_author!r}")
+    except Exception as e:
+        print(f"[WARN] 同步 package.json author 失败: {e}")
 
 
 def run_electron_app(target: str = "") -> bool:
@@ -156,6 +218,10 @@ def main() -> None:
 
     # ── 2. Electron 应用（绿色版 zip + 安装版 Setup.exe）──
     run_app = not args.backend_only
+    if run_app:
+        # 自动适配 src/version.py 的版本号（单一数据源），同步到 electron/package.json
+        # 使 electron-builder 产物名 / 安装包版本与之保持一致
+        sync_electron_version(read_src_version())
     target = "zip" if args.zip_only else ("nsis" if args.installer_only else "")
     if run_app and not run_electron_app(target):
         ok = False

@@ -1,5 +1,7 @@
 appId: com.paliku520.manosaba-extracter
 productName: Manosaba Character Extracter
+# exe/安装器版本信息的 LegalCopyright（与 build_pywebview.py 的 APP_COPYRIGHT 一致，单一数据源）
+copyright: "Copyright (c) 2026 paliku520. Licensed under GPL-3.0."
 # 简写名 MCE：可执行文件（executableName）、绿色版 zip 与安装包（artifactName）
 executableName: MCE   # 主程序 exe 文件名（顶层配置项）
 compression: normal   # 压缩等级（normal 打包快；maximum 更小但耗时数倍）
@@ -34,5 +36,13 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: Manosaba Character Extracter
   artifactName: MCE-Setup-${version}.${ext}
+  # 自定义 NSIS 脚本：安装时让用户选择是否创建桌面快捷方式 / 添加到开始菜单
+  include: nsis/installer.nsh
+  # 安装器支持语言（界面文本随系统语言自动切换；displayLanguageSelector 允许手动选择）
+  installerLanguages:
+    - zh_CN
+    - en_US
+    - ja_JP
+  displayLanguageSelector: true
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/

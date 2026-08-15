@@ -518,6 +518,10 @@ class JsApi:
             if result["success"]:
                 self._bundles = result["bundles"]
                 self._char_has_component = result.get("components", {})
+                # 记忆本次加载的目录（settings.json 为权威）——覆盖按钮/拖拽两种入口。
+                # Electron 模式下 select_directory 由 preload 拦截走原生对话框（不经本进程），
+                # 因此只能在统一的 load_directory 入口保存，才能保证 WebView/Electron 两模式一致。
+                save_settings(last_directory=path)
                 log("info", _("log.load_complete", count=result["count"]))
             else:
                 log("warning", _("log.load_error", errors=result["errors"]))

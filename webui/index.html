@@ -21,19 +21,27 @@
   <!-- ══════════ 启动加载界面 ══════════ -->
   <div id="splash">
     <div class="splash-inner">
-      <img class="splash-logo" src="assets/logo.ico" alt="logo">
+      <img class="splash-logo" id="splash-logo" src="assets/TitleLogo_CN.png" alt="logo">
+      <div class="splash-subtitle" id="splash-subtitle" data-i18n="app.splash_subtitle">立绘提取工具</div>
       <div class="splash-bar"><div class="splash-bar-fill" id="splash-bar-fill"></div></div>
-      <div class="splash-text">正在加载...</div>
+      <div class="splash-text" data-i18n="app.loading">正在加载...</div>
     </div>
   </div>
   <script>
-    // 启动加载文本随语言（splash 元素已存在；无 data-i18n，避免 I18N.applyDom 覆盖导致文本跳动）
+    // 启动加载 Logo / 副标题 / 加载文本随语言（splash 元素已存在）
+    // 副标题与加载文本均带 data-i18n（后端数据加载后由 I18N.applyDom 统一本地化）；
+    // 此处按 lang 参数提前渲染，避免后端就绪前的文字闪动
+    //（与 i18n.py 的 app.splash_subtitle / app.loading 保持一致）
     (function () {
       try {
         var l = new URLSearchParams(location.search).get('lang');
         if (l) {
+          var logo = document.querySelector('#splash-logo');
+          if (logo) logo.src = (l === 'zh_CN') ? 'assets/TitleLogo_CN.png' : 'assets/TitleLogo.png';
+          var sub = document.querySelector('#splash-subtitle');
+          if (sub) sub.textContent = { zh_CN: '立绘提取工具', en_US: 'Sprite Extracter', ja_JP: '立ち絵抽出ツール', mgl_MG: '' }[l] || '';
           var txt = document.querySelector('.splash-text');
-          if (txt) txt.textContent = (l === 'zh_CN') ? '正在加载...' : 'Loading...';
+          if (txt) txt.textContent = { zh_CN: '正在加载...', en_US: 'Loading...', ja_JP: '読み込み中...', mgl_MG: 'Toim...' }[l] || '';
         }
       } catch (e) { /* ignore */ }
     })();

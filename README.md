@@ -32,19 +32,25 @@
 
 ## 使用
 
-### 运行
+### 运行（推荐：启动脚本）
 
-**推荐：Electron 无边框窗口**（原生 Aero Snap / 拖动 / 双击最大化 / 边缘缩放）
-```bash
-cd electron
-npm install        # 首次安装依赖
-npm start          # 启动（等价 npx electron .）
+Windows 下直接使用仓库根目录的 `start.bat` 启动脚本：
+
+```bat
+start.bat            :: Electron 无边框窗口（默认，原生 Aero Snap / 拖动 / 双击最大化 / 边缘缩放）
+start.bat py         :: PyWebView / WebView2 模式（原生窗口）
+start.bat help       :: 显示帮助
 ```
 
-**备选：PyWebView / WebView2 模式**
+**首次运行前需安装依赖**：
+
 ```bash
-python run.py
+pip install -r requirements.txt        # Python 依赖
+cd electron && npm install             # Electron 依赖
 ```
+
+> 也可手动启动：`cd electron && npm start`（Electron 模式）或 `python run.py`（PyWebView 模式）
+
 
 ### 使用步骤
 
@@ -71,6 +77,8 @@ python run.py
 | `D:\mce\resources\backend\logs` | 运行日志（可一键清理） |
 
 > 绿色版解压到任意目录后数据同样生成在解压目录下；`data/` 可用环境变量 `MCE_DATA_DIR` 重定向。
+>
+> 若安装到**受保护目录**（如 `C:\Program Files\` 下，普通权限不可写），程序会自动把数据目录回退到 `%APPDATA%\Manosaba Character Extracter`，保证正常运行。
 
 ### 输出结构
 
@@ -139,7 +147,7 @@ python scripts\build_pywebview.py --onefile                # 单文件 exe
 python scripts\build_pywebview.py --name MyApp --icon icon.ico
 ```
 
-- 自动注入版本信息（文件版本 / 产品名称等，降低杀软误报）；可选 `--company/--product/--description/--copyright`（默认用脚本顶部 `APP_*` 常量）、`--console false`
+- 自动注入版本信息（文件版本 / 产品名称等，降低杀软误报）；版本号自动取自 `src/version.py`；可选 `--company/--product/--description/--copyright`（默认用脚本顶部 `APP_*` 常量）、`--console false`
 - 图标需 `.ico` 格式；`--onefile` 启动较慢；更多参数见 `--help`
 
 ### Electron 应用
@@ -150,5 +158,6 @@ python scripts\build_electron.py            # 一键：后端 + 绿色版 zip + 
 
 - `build_electron.py` 可选参数：`--backend-only` / `--app-only` / `--zip-only` / `--installer-only` / `--no-clean` / `--clean-dist`
 - 可选 `--company/--product/--description/--copyright` 透传给后端 exe 版本信息（默认用脚本顶部 `APP_*` 常量）
+- 版本号自动取自 `src/version.py`（产物名 `MCE-Setup-<版本>.exe` / `MCE-<版本>-win.zip` 与后端 exe 版本信息均自动同步，改版本只改这一处）
 - electron-builder 配置见 `electron/electron-builder.yml`（需先安装 electron 目录的 node_modules）
 - 更多参数见 `--help`

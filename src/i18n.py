@@ -267,6 +267,12 @@ T: Dict[str, Dict[str, str]] = {
         LANG_JA: "キャラクター立ち絵抽出ツール", 
         LANG_MGL: "JIO eXi' Toim", 
     },
+    "app.splash_subtitle": {
+        LANG_CN: "立绘提取工具",
+        LANG_EN: "Sprite Extracter",
+        LANG_JA: "立ち絵抽出ツール",
+        LANG_MGL: "JIO eXi' Toim",
+    },
     "app.title": {
         LANG_CN: "魔法少女的魔女审判 - 角色立绘提取工具", 
         LANG_EN: "Magical Girl Witch Trials - Character Sprite Tool", 
@@ -522,7 +528,7 @@ T: Dict[str, Dict[str, str]] = {
     "dialog.spoiler_msg": {
         LANG_CN: "本工具包含大量剧透内容，强烈建议您完成全周目（三周目完结）后再使用，以免破坏您的沉浸式体验。",
         LANG_EN: "This tool contains major spoilers. It is highly recommended to complete the main story before using it, so as not to ruin your immersive experience.",
-        LANG_JA: "本ツールには大量のネタバレが含まれています。没入体験を損なわないよう、全周回（三周目クリア）を終えてから使用することを強くお勧めします。",
+        LANG_JA: "このツールには重大なネタバレが含まれています。没入感を損なわないためにも、メインストーリーをクリアしてから使用することを強くお勧めします。",
         LANG_MGL: "Toim has Alte sinruits. Finish Manosaba first for gDie.",
     },
     "dialog.spoiler_continue": {

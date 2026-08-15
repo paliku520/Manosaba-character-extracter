@@ -14,6 +14,8 @@
     // 开发模式（普通浏览器打开、无后端）时的兜底文案
     fallback: {
       'app.subtitle': 'Extracter',
+      'app.splash_subtitle': '立绘提取工具',
+      'app.loading': '正在加载...',
       'app.status.ready': '就绪',
       'left.load_button': '加载游戏目录',
       'left.open_output': '打开输出目录',
