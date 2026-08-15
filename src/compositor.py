@@ -17,8 +17,10 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple, cast
 
 import UnityPy
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
+from src.blend_modes import blend_over
+from src.generate_mask_mapping import build_mask_mapping_from_env
 from src.logtools import log
 from src.i18n import _
 
@@ -312,6 +314,18 @@ def extract_character_data(
             if node:
                 hierarchy.append(node)
 
+    # ---- 生成 mask_mapping（材质 → 混合方式 + stencil 遮罩分组）----
+    # ClippingMask_* 部件是"被裁剪"的叠加层；Body/Arms/Eyes 等 #Mask_RefN 部件定义裁剪区域
+    mask_mapping = build_mask_mapping_from_env(
+        env,
+        {
+            "character_name": character_name,
+            "transform_data": transform_data,
+        },
+    )
+    with open(save_dir / "mask_mapping.json", "w", encoding="utf-8") as f:
+        json.dump(mask_mapping, f, indent=2, ensure_ascii=False)
+
     # ---- 保存 JSON 调试数据到角色根目录（与 sprites/ 同级）----
     with open(save_dir / "character_data.json", "w", encoding="utf-8") as f:
         json.dump({
@@ -337,6 +351,7 @@ def extract_character_data(
         "sprite_mapping": sprite_mapping,
         "transform_data": transform_data,
         "hierarchy": hierarchy,
+        "mask_mapping": mask_mapping,
     }
 
 
@@ -360,6 +375,7 @@ class SpriteCompositor:
         sketchbook_text: Optional[str] = None,
         sketch_font_size: int = 56,
         sketch_align: str = "center",
+        mask_mapping: Optional[Dict] = None,
     ) -> Optional[Image.Image]:
         """
         合成角色图像。
@@ -373,6 +389,11 @@ class SpriteCompositor:
                              提供后隐藏默认笔迹（Option_Arms*）并在其位置绘制自定义文字
             sketch_font_size: 素描本文字字号（像素），默认 56
             sketch_align: 素描本文字对齐方式（left/center/right），默认 center
+            mask_mapping:  角色的遮罩映射（extract_character_data 生成）。
+                           普通部件（role=mask）定义各 stencil_ref 裁剪区域；
+                           ClippingMask_*（role=masked）是"被裁剪"的叠加层，
+                           先裁剪到区域再按 blend_mode（normal/multiply/overlay/softlight）混合。
+                           为 None 时保持旧行为（全部普通 alpha 合成）。
 
         Returns:
             PIL Image (RGBA)，失败返回 None
@@ -414,6 +435,17 @@ class SpriteCompositor:
         cx = canvas_size[0] // 2
         cy = canvas_size[1] // 2
 
+        # ── 遮罩映射：普通部件(role=mask)定义裁剪区域，ClippingMask(role=masked)被裁剪 ──
+        part_info = None
+        region_masks = None
+        if mask_mapping:
+            part_info = {}
+            for sec in ("mask_mapping", "clipping_masks"):
+                for n, info in (mask_mapping.get(sec) or {}).items():
+                    part_info[n] = info
+            # 由 role=mask 的普通部件（Body/Arms/Eyes）构建各 stencil_ref 的 alpha 区域图
+            region_masks = self._build_region_masks(sorted_parts, part_info, canvas_size, cx, cy)
+
         total = len(sorted_parts)
         for i, part in enumerate(sorted_parts):
             try:
@@ -436,8 +468,22 @@ class SpriteCompositor:
                     place_x = px - sx // 2
                     place_y = py - sy // 2
 
-                    # alpha_composite 实例方法支持 dest 且原地合成，避免创建全画布临时图（内存峰值↓）
-                    composite.alpha_composite(img, dest=(place_x, place_y))
+                    # ClippingMask（role=masked）先裁剪到对应 stencil_ref 区域，再按混合方式合成。
+                    # 区域源部件（Body/Arms/Eyes）未被选中时区域为空 → 该叠加层按游戏语义不可见。
+                    info = part_info.get(part["name"]) if part_info else None
+                    blend_mode = (info or {}).get("blend_mode", "normal")
+                    if (
+                        info
+                        and info.get("role") == "masked"
+                        and info.get("stencil_ref") is not None
+                    ):
+                        region = (region_masks or {}).get(info["stencil_ref"])
+                        if region is None:
+                            region = Image.new("L", canvas_size, 0)
+                        img = self._clip_to_region(img, region, place_x, place_y)
+
+                    # 按混合方式合成（normal 退化为 alpha_composite 原地合成，避免全画布临时图）
+                    blend_over(composite, img, place_x, place_y, blend_mode)
                 finally:
                     img.close()  # 用后立即释放图片对象
             except Exception as e:
@@ -456,6 +502,76 @@ class SpriteCompositor:
                                    font_size=sketch_font_size, align=sketch_align)
 
         return composite
+
+    # ── 遮罩裁剪（ClippingMask 为被裁剪的叠加层）────────────
+
+    def _build_region_masks(
+        self,
+        parts: List[Dict],
+        part_info: Dict,
+        canvas_size: Tuple[int, int],
+        cx: int,
+        cy: int,
+    ) -> Dict[int, Image.Image]:
+        """由 role=mask 的普通部件（Body/Arms/Eyes 等，定义裁剪区域）构建各 stencil_ref 的 alpha 区域图。
+
+        Returns:
+            {stencil_ref: L 图像}，区域为多个区域源部件 alpha 的并集（ImageChops.lighter）
+        """
+        masks: Dict[int, Image.Image] = {}
+        for part in parts:
+            info = part_info.get(part["name"])
+            if not info or info.get("role") != "mask" or info.get("stencil_ref") is None:
+                continue
+            ref = info["stencil_ref"]
+            try:
+                img = Image.open(part["sprite_path"]).convert("RGBA")
+                try:
+                    a = img.getchannel("A")
+                    px = int(part["position"]["x"] * self.scale + cx)
+                    py = int(-part["position"]["y"] * self.scale + cy)
+                    sx, sy = img.size
+                    x = px - sx // 2
+                    y = py - sy // 2
+                    if ref not in masks:
+                        masks[ref] = Image.new("L", canvas_size, 0)
+                    tmp = Image.new("L", canvas_size, 0)
+                    tmp.paste(a, (x, y))
+                    masks[ref] = ImageChops.lighter(masks[ref], tmp)  # 区域取并集
+                finally:
+                    img.close()
+            except Exception as e:
+                log("warning", f"[composite] 构建裁剪区域失败 {part['name']}: {e}")
+        return masks
+
+    def _clip_to_region(
+        self,
+        img: Image.Image,
+        region: Image.Image,
+        place_x: int,
+        place_y: int,
+    ) -> Image.Image:
+        """将部件 alpha 与区域图取交集（裁剪），超出画布范围自动处理。
+
+        ClippingMask（role=masked）通过本方法被裁剪到其 stencil_ref 区域。
+        """
+        sx, sy = img.size
+        a = img.getchannel("A")
+        W, H = region.size
+        l = max(place_x, 0)
+        t = max(place_y, 0)
+        r = min(place_x + sx, W)
+        b = min(place_y + sy, H)
+        if l >= r or t >= b:
+            img.putalpha(Image.new("L", (sx, sy), 0))
+            return img
+        reg_crop = region.crop((l, t, r, b))
+        part_crop = a.crop((l - place_x, t - place_y, r - place_x, b - place_y))
+        out = ImageChops.multiply(part_crop, reg_crop)
+        a2 = Image.new("L", (sx, sy), 0)
+        a2.paste(out, (l - place_x, t - place_y))
+        img.putalpha(a2)
+        return img
 
     # ── 自定义素描本文字绘制 ──────────────────────────────
 

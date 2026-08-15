@@ -285,6 +285,14 @@
   <!-- 通知容器 -->
   <div id="toast-root"></div>
 
+  <!-- 拖拽导入遮罩（把游戏目录文件夹拖入窗口即可加载） -->
+  <div id="drop-overlay" hidden>
+    <div class="drop-overlay-inner">
+      <svg viewBox="0 0 24 24" width="42" height="42"><path d="M12 16V4m0 0 4 4m-4-4L8 8M4 20h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      <span id="drop-overlay-text"></span>
+    </div>
+  </div>
+
   <!-- 无边框窗口边缘/角落缩放手柄 -->
   <div id="resize-handles">
     <div class="rh rh-n" data-dir="t"></div>

@@ -50,6 +50,8 @@
       if (lang) this.current = lang;
       if (langNames) this.langNames = langNames;
       if (data) this.data = data;
+      // 同步 document 语言标记（供 CSS 按语言切换字体等，如日语用 TsukushiMincho）
+      if (this.current) document.documentElement.lang = this.current;
       this.applyDom();
     },
 

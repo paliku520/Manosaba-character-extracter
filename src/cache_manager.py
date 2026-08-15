@@ -64,6 +64,17 @@ def load_extracted_data(cache_dir: Path, character_name: str) -> Optional[Dict]:
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # 旧缓存可能没有 mask_mapping：尝试读取同目录的 mask_mapping.json（独立生成的文件）
+        if "mask_mapping" not in data:
+            mm_path = save_dir / "mask_mapping.json"
+            if mm_path.exists():
+                try:
+                    data["mask_mapping"] = json.loads(mm_path.read_text(encoding="utf-8"))
+                except Exception:
+                    data["mask_mapping"] = None
+            else:
+                data["mask_mapping"] = None
+
         # 验证所有精灵文件都存在
         for part in data.get("transform_data", []):
             sprite_path = Path(part["sprite_path"])

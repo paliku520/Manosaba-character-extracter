@@ -8,16 +8,19 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 ## Features
 
 - **Auto Detection** — Detect component data: preview/export directly when absent, or export/composite when present
-- **Character Compositing** — Composite full illustrations by part position & depth, with categories, thumbnails, and live preview
+- **Character Compositing** — Composite full illustrations by part position, depth & clipping masks, with categories/thumbnails and Multiply / Overlay / Softlight blend modes to reproduce the original look
+- **Anan Sketchbook** — Custom text on anan's sketchbook parts (font size / alignment / auto wrap)
 - **Part Management** — search, natural sorting, collapsible groups, select all, click to copy name
 - **Live Preview** — wheel zoom (cursor-centered), drag pan
 - **Sprite Preview** — one-click preview of all sprites for no-component characters, check to export
 - **Hierarchy Viewer** — component tree, copy button per row
+- **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
 - **Memory Reclaim** — Releases resources immediately with GC triggers; forced GC before exit
+- **Taskbar Effects** — Electron mode shows progress during loading and flashes the taskbar when done
 - **Debug Mode** — Monitor memory/CPU/window resolution (current run only)
 - **Log Files** — Console logs also written to `logs/`, one-click cleanup
-- **Multi-language / Theme** — Simplified Chinese / English / fiXmArge; dark/light theme persisted
+- **Multi-language / Theme** — Simplified Chinese / English / 日本語 / Magical Girl Language; dark/light theme + character accent colors persisted
 - **Total Exports / About / Auto Update Check / Disclaimer** (third-party unofficial tool)
 
 ## Requirements
@@ -52,7 +55,7 @@ python run.py
 
 ### Settings
 
-Configure: **Output Directory** (remembered automatically), **Language**, **Theme**, **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Spoiler Notice**, **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 
@@ -75,35 +78,10 @@ After installation, the app reads/writes the following data under its **install 
 output/
 ├── <name>/            # No components: sprites flat here
 └── <name>/            # With components: sprites/ (sprites) + composite/ (composite images)
+    ├── character_data.json  # part / hierarchy data
+    └── mask_mapping.json    # mask & blend mode mapping
 temp/                  # Sprite cache (clearable, speeds up re-loading)
 ```
-
-## Known Issues
-
-### Illustration Compositing Layer Order / Mask Handling Incomplete
-
-**Problem Description**
-The current version cannot fully reproduce the original game's illustration layer effects; some parts (eyes, hair, face masks) may differ from the in-game display.
-
-**Specific Symptoms**
-- Some layer stacking orders are inconsistent with the original game
-- ClippingMask layers are rendered as normal sprites instead of invisible clipping regions
-
-**Comparison**
-
-![Compositing Comparison](./images/comparison.png)
-
-**Root Cause Analysis (may be inaccurate)**
-- The game's illustrations use Unity's `SpriteRenderer` + `ClippingMask` for layer clipping; the current compositor only stacks by `sorting_order`, without implementing:
-
-1. **Clipping Mask**: `ClippingMask`-type sprites clip the display region of target layers
-2. **Mask Scope**: Each mask only affects specific parts (e.g., `ClippingMask_Eyes` only affects the eye area), not globally
-3. **Transparent Masks**: Masks have a `color.a < 1.0` transparency property
-
-**Workarounds**
-1. Export all sprites directly and edit manually with Photoshop or similar
-2. Use the [Manosaba mod](http://manosabamoddoc.fuyumi.xyz/) by [雪莉苹果汁](https://space.bilibili.com/3546949672241842) to edit within the game (the tool provides component structure info)
-3. Wait for future fixes
 
 ## Project Structure
 
@@ -171,5 +149,6 @@ python scripts\build_electron.py            # One-click: backend + portable zip 
 ```
 
 - `build_electron.py` options: `--backend-only` / `--app-only` / `--zip-only` / `--installer-only` / `--no-clean` / `--clean-dist`
+- Optional `--company/--product/--description/--copyright` to pass version info to the backend exe (defaults to `APP_*` constants at the top of the script)
 - electron-builder config: `electron/electron-builder.yml` (requires electron/node_modules installed)
 - see `--help` for more options

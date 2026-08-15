@@ -402,6 +402,72 @@
     api().load_directory(path);
   }
 
+  // ── 拖拽导入：把游戏目录文件夹拖入窗口即可加载 ──
+  function setupDragDrop() {
+    const overlay = $('#drop-overlay');
+    const overlayText = $('#drop-overlay-text');
+    let depth = 0;  // dragenter/dragleave 成对计数，避免子元素进出误隐藏
+    const hasFiles = (e) => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
+    const show = () => {
+      if (overlay) {
+        if (overlayText) overlayText.textContent = t('left.drop_overlay');
+        overlay.hidden = false;
+      }
+    };
+    const hide = () => { if (overlay) overlay.hidden = true; };
+
+    window.addEventListener('dragenter', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth++;
+      show();
+    });
+    window.addEventListener('dragover', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();  // 阻止浏览器打开文件
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    });
+    window.addEventListener('dragleave', (e) => {
+      if (!hasFiles(e)) return;
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) hide();
+    });
+    window.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      depth = 0;
+      hide();
+      handleDrop(e);
+    });
+  }
+
+  function handleDrop(e) {
+    const item = e.dataTransfer.items && e.dataTransfer.items[0];
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    // 只接受文件夹
+    let isDir = false;
+    if (item && item.webkitGetAsEntry) {
+      const entry = item.webkitGetAsEntry();
+      isDir = !!(entry && entry.isDirectory);
+    }
+    if (!isDir) {
+      toast(t('left.drop_not_folder'), 'warning');
+      return;
+    }
+    // 获取绝对路径：Electron 用 webUtils.getPathForFile，旧版 Electron 回退 file.path
+    let path = null;
+    if (window.__electron && window.__electron.getPathForFile) {
+      try { path = window.__electron.getPathForFile(file); } catch (err) { path = null; }
+    }
+    if (!path && typeof file.path === 'string') path = file.path;
+    if (!path) {
+      toast(t('left.drop_unsupported'), 'warning');
+      return;
+    }
+    loadDir(path);
+  }
+
   async function onCharClick(name) {
     if (App.loading) {
       const ok = await confirmDialog(t('dialog.cancel_load_title'), t('dialog.cancel_load_msg'));
@@ -428,6 +494,7 @@
   }
 
   function clearPartsUI() {
+    teardownPartsEaster();  // 切换角色时移除 nanoka 部件卡彩蛋
     $('#parts-list').innerHTML = '';
     $('#parts-empty').hidden = false;
     $('#parts-name').textContent = '—';
@@ -724,7 +791,7 @@
     App.partEls = {};
     const list = $('#parts-list');
     list.innerHTML = '';
-    $('#parts-name').textContent = data.name;
+    $('#parts-name').textContent = charDisplayName(data.name);
     $('#parts-count').textContent = data.count + ' ' + t('parts.total');
     $('#parts-empty').hidden = true;
 
@@ -806,6 +873,106 @@
       el.thumb.innerHTML = '';
       el.thumb.appendChild(img);
     });
+    setupPartsEaster();  // 简体中文 + nanoka 时，部件标题卡变为可点击彩蛋入口
+  }
+
+  // ── Nanoka 彩蛋（仅简体中文 + 当前角色 nanoka：部件标题卡可点击 → "超级拼装"）──
+  let _partsEaster = null;        // { title, enter, leave } 已激活的部件卡彩蛋状态
+  let _memeEasterActive = false;  // meme 全屏覆盖层是否显示中（防重复触发）
+
+  // 简体中文且当前角色为 nanoka 时，让部件标题卡（角色名 + 部件数）可点击；
+  // 悬停时内部文本临时替换为"超级拼装"，离开后恢复原样
+  function setupPartsEaster() {
+    const active = !!App.info && App.info.current_lang === 'zh_CN' && App.currentName === 'nanoka';
+    if (!active) { teardownPartsEaster(); return; }
+    if (_partsEaster) return;  // 已激活
+    const countEl = $('#parts-count');
+    if (!countEl) return;
+    const enter = () => {
+      if (!_partsEaster) return;
+      _partsEaster.origCount = countEl.textContent;
+      countEl.textContent = '超级拼装';
+    };
+    const leave = () => {
+      if (!_partsEaster) return;
+      if (_partsEaster.origCount !== undefined) countEl.textContent = _partsEaster.origCount;
+    };
+    _partsEaster = { countEl, enter, leave, origCount: undefined };
+    countEl.classList.add('parts-easter');   // 仅带颜色的数量卡成为彩蛋入口
+    countEl.addEventListener('mouseenter', enter);
+    countEl.addEventListener('mouseleave', leave);
+    countEl.addEventListener('click', showMemeEaster);
+  }
+
+  // 移除部件卡彩蛋（切换角色 / 语言非简体中文时恢复普通状态）
+  function teardownPartsEaster() {
+    if (!_partsEaster) return;
+    const st = _partsEaster;
+    _partsEaster = null;
+    st.countEl.classList.remove('parts-easter');
+    st.countEl.removeEventListener('mouseenter', st.enter);
+    st.countEl.removeEventListener('mouseleave', st.leave);
+    st.countEl.removeEventListener('click', showMemeEaster);
+    if (st.origCount !== undefined) st.countEl.textContent = st.origCount;
+  }
+
+  // 彩蛋：点击部件标题卡 → 播放 meme 音频并淡入 meme 图片；
+  // 音频结束后 1 秒淡出移除；期间用户无法强制退出（无关闭按钮 / 屏蔽 Esc / 拦截点击）
+  function showMemeEaster() {
+    if (_memeEasterActive) return;
+    _memeEasterActive = true;
+    const old = $('#meme-easter-overlay');
+    if (old) old.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'meme-easter-overlay';
+    overlay.id = 'meme-easter-overlay';
+    overlay.innerHTML =
+      '<div class="meme-easter-img-wrap">' +
+      '  <img class="meme-easter-img" src="assets/assembly_meme_cn/meme.jpg" alt="">' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    const img = overlay.querySelector('.meme-easter-img');
+
+    // 用户不能强制退出：屏蔽 Esc / 点击 / 滚轮 / 右键，全部拦截
+    const blockKeys = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); }
+    };
+    document.addEventListener('keydown', blockKeys, true);
+    overlay.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    overlay.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
+    overlay.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    // 播放音频；结束后 1 秒淡出并移除（播放出错也按同样流程收尾）
+    let closed = false;
+    const finish = () => {
+      if (closed) return;
+      closed = true;
+      setTimeout(() => {
+        overlay.classList.add('closing');
+        setTimeout(() => {
+          if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+          _memeEasterActive = false;
+          document.removeEventListener('keydown', blockKeys, true);
+        }, 500);
+      }, 1000);
+    };
+    const audio = new Audio('assets/assembly_meme_cn/meme_1.wav');
+    audio.volume = 1;
+
+    // 图片淡入时长与音频长度一致：元数据就绪后按 duration 设置过渡时长，再同时开始淡入 + 播放
+    const beginShow = () => {
+      const d = audio.duration;
+      if (d > 0) img.style.transitionDuration = d + 's';
+      requestAnimationFrame(() => requestAnimationFrame(() => img.classList.add('show')));
+      audio.play().catch(finish);
+    };
+    if (audio.readyState >= 1) beginShow();
+    else audio.addEventListener('loadedmetadata', beginShow, { once: true });
+
+    audio.addEventListener('ended', finish);
+    audio.addEventListener('error', finish);
   }
 
   function onPartToggle(name, checked) {
@@ -1306,6 +1473,12 @@
     });
     settingsLangDropdown = langDropdown;
     langRow.appendChild(langDropdown.el);
+    // 语言下拉提示：AI 翻译仅供参考（随语言切换自动刷新）
+    const langNote = document.createElement('div');
+    langNote.className = 'form-note';
+    langNote.setAttribute('data-i18n', 'settings.lang_ai_note');
+    langNote.textContent = t('settings.lang_ai_note');
+    langRow.appendChild(langNote);
 
     const themeRow = document.createElement('div');
     themeRow.className = 'form-row';
@@ -1537,8 +1710,9 @@
   // 语言切换后刷新部件页头部（角色名 + 计数）
   function refreshPartsHeader() {
     if (!App.characterData) return;
-    $('#parts-name').textContent = App.characterData.name;
+    $('#parts-name').textContent = charDisplayName(App.characterData.name);
     $('#parts-count').textContent = App.characterData.count + ' ' + t('parts.total');
+    setupPartsEaster();  // 语言切换后按当前语言/角色刷新部件卡彩蛋状态
   }
 
   // ═════════════ 对话框（模式选择 / 导出确认 / 打开目录） ═════════════
@@ -2042,83 +2216,107 @@
     const overlay = document.createElement('div');
     overlay.className = 'easter-overlay';
     overlay.id = 'easter-overlay';
-    overlay.innerHTML =
-      '<div class="easter-phone">' +
-      '  <button type="button" class="exec-btn" id="exec-btn" aria-label="execution">' +
-      '    <img class="exec-layer exec-base" src="assets/execution/ExecutionButton_Base.png" alt="">' +
-      '    <div class="exec-fill"></div>' +
-      '    <img class="exec-layer exec-frame" src="assets/execution/ExecutionButton_Frame.png" alt="">' +
-      '    <img class="exec-label" src="assets/execution/ExecutionButton_Label.png" alt="">' +
-      '    <img class="exec-check" src="assets/execution/ExecutionButton_CheckIcon.png" alt="">' +
-      '  </button>' +
-      '</div>';
+    // 第一步：背景图（随机一张）立即显示
+    const bgIdx = 1 + Math.floor(Math.random() * 7);
+    overlay.style.backgroundImage =
+      'url("assets/execution/bg/' + String(bgIdx).padStart(2, '0') + '.webp")';
     document.body.appendChild(overlay);
 
-    const eb = overlay.querySelector('#exec-btn');
-    const fill = overlay.querySelector('.exec-fill');
-    const check = overlay.querySelector('.exec-check');
+    // 第二步：等待 1 秒后再加载叠加层与 phone，两者同步纯淡入（不缩放）
+    setTimeout(() => {
+      const scrim = document.createElement('div');
+      scrim.className = 'easter-scrim';
+      overlay.appendChild(scrim);
 
-    // 三个音效：心跳（进入即播，循环）/ 长按（按住循环）/ 完成（一次）
-    const sHeart = new Audio('assets/execution/Sfx_Scenario_035 Human heartbeat.wav');
-    const sHold = new Audio('assets/execution/Sfx_System_ExecuteButton_001.wav');
-    const sDone = new Audio('assets/execution/Sfx_System_ExecuteButton_002.wav');
-    sHeart.loop = false; sHeart.volume = .55;  // 心跳只播一次
-    sHold.loop = true; sHold.volume = .6;
-    sDone.volume = .9;
-    sHeart.play().catch(() => {});
+      const phone = document.createElement('div');
+      phone.className = 'easter-phone';
+      phone.innerHTML =
+        '  <button type="button" class="exec-btn" id="exec-btn" aria-label="execution">' +
+        '    <img class="exec-layer exec-base" src="assets/execution/ExecutionButton_Base.png" alt="">' +
+        '    <div class="exec-fill"></div>' +
+        '    <img class="exec-layer exec-frame" src="assets/execution/ExecutionButton_Frame.png" alt="">' +
+        '    <img class="exec-label" src="assets/execution/ExecutionButton_Label.png" alt="">' +
+        '    <img class="exec-check" src="assets/execution/ExecutionButton_CheckIcon.png" alt="">' +
+        '  </button>';
+      overlay.appendChild(phone);
 
-    let progress = 0, holding = false, completed = false, raf = null, lastTs = 0;
+      const eb = phone.querySelector('#exec-btn');
+      const fill = phone.querySelector('.exec-fill');
+      const check = phone.querySelector('.exec-check');
 
-    function tick(ts) {
-      if (!lastTs) lastTs = ts;
-      const dt = Math.min((ts - lastTs) / 1000, .1);
-      lastTs = ts;
-      if (holding) {
-        progress = Math.min(100, progress + EASTER_FILL_RATE * dt);
-        if (progress >= 100) { complete(); return; }
-      } else {
-        // 未按住 → 进度倒退
-        progress = Math.max(0, progress - EASTER_DRAIN_RATE * dt);
+      // 三个音效：心跳（进入即播，循环）/ 长按（按住循环）/ 完成（一次）
+      const sHeart = new Audio('assets/execution/Sfx_Scenario_035 Human heartbeat.wav');
+      const sHold = new Audio('assets/execution/Sfx_System_ExecuteButton_001.wav');
+      const sDone = new Audio('assets/execution/Sfx_System_ExecuteButton_002.wav');
+      sHeart.loop = false; sHeart.volume = .55;  // 心跳只播一次
+      sHold.loop = true; sHold.volume = .6;
+      sDone.volume = .9;
+
+      let progress = 0, holding = false, completed = false, raf = null, lastTs = 0;
+
+      function tick(ts) {
+        if (!lastTs) lastTs = ts;
+        const dt = Math.min((ts - lastTs) / 1000, .1);
+        lastTs = ts;
+        if (holding) {
+          progress = Math.min(100, progress + EASTER_FILL_RATE * dt);
+          if (progress >= 100) { complete(); return; }
+        } else {
+          // 未按住 → 进度倒退
+          progress = Math.max(0, progress - EASTER_DRAIN_RATE * dt);
+        }
+        fill.style.height = progress + '%';
+        raf = requestAnimationFrame(tick);
       }
-      fill.style.height = progress + '%';
-      raf = requestAnimationFrame(tick);
-    }
-    function startHold(e) {
-      if (completed) return;
-      e.preventDefault();
-      holding = true; lastTs = 0;
-      if (!raf) raf = requestAnimationFrame(tick);
-      sHold.currentTime = 0;
-      sHold.play().catch(() => {});
-    }
-    function stopHold() {
-      holding = false;
-      sHold.pause(); sHold.currentTime = 0;
-    }
-    function complete() {
-      completed = true; holding = false;
-      if (raf) { cancelAnimationFrame(raf); raf = null; }
-      eb.disabled = true;   // 禁止再次长按
-      // 强制立即恢复未长按大小（覆盖仍可能生效的 :active 缩放）
-      eb.style.transition = 'none';
-      eb.style.transform = 'rotate(0deg)';
-      sHold.pause(); sHold.currentTime = 0;
-      sHeart.pause(); sHeart.currentTime = 0;
-      fill.style.height = '100%';
-      sDone.currentTime = 0;
-      sDone.play().catch(() => {});
-      check.classList.add('show');
-      // 过渡关闭界面（填满后 1.5 秒才开始淡出）
-      setTimeout(() => {
-        overlay.classList.add('closing');
-        setTimeout(() => overlay.remove(), 500);
-      }, 1500);
-    }
+      function startHold(e) {
+        if (completed) return;
+        e.preventDefault();
+        holding = true; lastTs = 0;
+        if (!raf) raf = requestAnimationFrame(tick);
+        sHold.currentTime = 0;
+        sHold.play().catch(() => {});
+      }
+      function stopHold() {
+        holding = false;
+        sHold.pause(); sHold.currentTime = 0;
+      }
+      function complete() {
+        completed = true; holding = false;
+        if (raf) { cancelAnimationFrame(raf); raf = null; }
+        eb.disabled = true;   // 禁止再次长按
+        // 强制立即恢复未长按大小（覆盖仍可能生效的 :active 缩放）
+        eb.style.transition = 'none';
+        eb.style.transform = 'rotate(0deg)';
+        sHold.pause(); sHold.currentTime = 0;
+        sHeart.pause(); sHeart.currentTime = 0;
+        fill.style.height = '100%';
+        sDone.currentTime = 0;
+        sDone.play().catch(() => {});
+        check.classList.add('show');
+        // 过渡关闭界面（填满后 1.5 秒才开始淡出）；淡出开始时随机播放一段结束音频（End_1~5）
+        setTimeout(() => {
+          const endIdx = 1 + Math.floor(Math.random() * 5);
+          const sEnd = new Audio('assets/execution/End_' + endIdx + '.wav');
+          sEnd.volume = .9;
+          sEnd.play().catch(() => {});
+          overlay.classList.add('closing');
+          setTimeout(() => overlay.remove(), 500);
+        }, 1500);
+      }
 
-    eb.addEventListener('pointerdown', startHold);
-    eb.addEventListener('pointerleave', stopHold);
-    eb.addEventListener('pointercancel', stopHold);
-    window.addEventListener('pointerup', stopHold);
+      // 叠加层与 phone 同步淡入（双 rAF 确保过渡生效），同时播放心跳
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        scrim.classList.add('show');
+        phone.classList.add('show');
+        sHeart.play().catch(() => {});
+      }));
+
+      eb.addEventListener('pointerdown', startHold);
+      // 还原游戏内 bug：按住不松开时，即使光标移出按钮，长按进度也不断
+      // （不监听 pointerleave 打断；pointercancel 仍处理系统手势/触控取消）
+      eb.addEventListener('pointercancel', stopHold);
+      window.addEventListener('pointerup', stopHold);
+    }, 1000);
     // 进入彩蛋后不能直接退出：仅完成执行后过渡关闭（不提供点击遮罩关闭）
   }
 
@@ -2193,6 +2391,7 @@
     });
     document.addEventListener('mouseup', () => { resizeState = null; });
     $('#btn-load').addEventListener('click', onLoadClick);
+    setupDragDrop();  // 拖拽导入：把游戏目录文件夹拖入窗口即可加载
     $('#btn-open-output').addEventListener('click', () => api().open_output());
     $('#btn-settings').addEventListener('click', openSettings);
     $('#btn-clear-cache').addEventListener('click', async () => {

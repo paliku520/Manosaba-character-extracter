@@ -26,9 +26,14 @@
   src: url("../assets/fonts/YouaiRoundCN-Medium.ttf") format("truetype");
   font-weight: 500; font-style: normal; font-display: swap;
 }
+@font-face {
+  font-family: "Tsukushi Mincho";
+  src: url("../assets/fonts/TsukushiMincho.otf") format("opentype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
 
 :root {
-  /* 主题变量（深色）— 参考「窝-home-team」风格 */
+  /* 主题变量（深色） */
   --bg: #0b0f14;
   --bg-sidebar: #0e131a;
   --bg-panel: #151c26;
@@ -48,6 +53,8 @@
   --danger: #f85149;
   --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
   --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
+  /* 透明缩略图底色：纯浅灰（比浅色主题的亮灰略暗），深浅主题通用——不用棋盘格以免干扰部件样式 */
+  --thumb-bg: #e2e6ee;
   --radius: 14px;
   --radius-sm: 8px;
   --toast-bg: #1a2330;
@@ -55,6 +62,11 @@
   --sidebar-w: 250px;
   --font: "有爱圆体 CN Extended", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
   --mono: "JetBrains Mono", "Cascadia Code", "Consolas", "Courier New", monospace;
+}
+
+/* 日语界面：主要字体用筑紫明朝（TsukushiMincho），有爱圆体降为次要 */
+html[lang^="ja"] {
+  --font: "Tsukushi Mincho", "有爱圆体 CN Extended", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
 }
 
 html[data-theme="light"] {
@@ -109,6 +121,7 @@ body {
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
   user-select: none;
 }
 
@@ -132,6 +145,7 @@ body {
   display: flex; align-items: center;
   background: var(--bg-sidebar);
   border-bottom: 1px solid var(--border);
+  -webkit-user-select: none;
   user-select: none;
   -webkit-app-region: drag;   /* 整个标题栏可拖（双击=最大化/还原，Aero Snap） */
 }
@@ -217,6 +231,15 @@ body {
 }
 
 .sidebar-actions { display: flex; flex-direction: column; gap: 8px; }
+/* 侧边栏按钮：固定用有爱圆体（日语界面主字体 TsukushiMincho 时也回退 YouaiRound）；文本单行、长文案省略，图标不被压缩 */
+.sidebar-actions .btn {
+  min-width: 0; white-space: nowrap;
+  font-family: "有爱圆体 CN Extended", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+}
+.sidebar-actions .btn svg { flex-shrink: 0; }
+.sidebar-actions .btn span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
 
 .sidebar-section { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
 .sidebar-section-title {
@@ -525,7 +548,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   padding: 9px 14px; background: var(--bg-elev);
   border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600;
   color: var(--text-dim); text-transform: capitalize;
-  cursor: pointer; user-select: none;
+  cursor: pointer; -webkit-user-select: none; user-select: none;
   transition: background .12s ease;
 }
 .part-group-header:hover { background: var(--bg-hover); }
@@ -538,7 +561,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  cursor: pointer; user-select: none;
+  cursor: pointer; -webkit-user-select: none; user-select: none;
   transition: color .12s ease, background .12s ease;
 }
 .part-group-header .part-deselect:hover { color: var(--danger); background: rgba(248, 81, 73, 0.1); }
@@ -574,13 +597,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .part-thumb {
   width: 46px; height: 46px; border-radius: 8px; flex-shrink: 0;
-  background-image:
-    linear-gradient(45deg, var(--bg-elev) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--bg-elev) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--bg-elev) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--bg-elev) 75%);
-  background-size: 12px 12px;
-  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background: var(--thumb-bg);
   border: 1px solid var(--border);
   display: grid; place-items: center; overflow: hidden;
 }
@@ -701,7 +718,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .preview-empty { color: var(--text-faint); font-size: 13px; }
 #preview-img {
   max-width: 100%; max-height: 100%; object-fit: contain;
-  cursor: grab; user-select: none; -webkit-user-drag: none;
+  cursor: grab; -webkit-user-select: none; user-select: none; -webkit-user-drag: none;
 }
 .preview-zoom {
   display: flex; align-items: center; gap: 10px;
@@ -777,11 +794,28 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .tree-sprite { color: var(--success); }
 
+/* ═══════════ 拖拽导入遮罩 ═══════════ */
+#drop-overlay {
+  position: fixed; inset: 8px; z-index: 9999;
+  display: grid; place-items: center;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  border: 2px dashed var(--accent); border-radius: 14px;
+  pointer-events: none;   /* 只做提示，不拦截事件 */
+}
+#drop-overlay[hidden] { display: none; }
+#drop-overlay .drop-overlay-inner {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  color: var(--accent); font-size: 18px; font-weight: 600;
+  -webkit-user-select: none; user-select: none;
+}
+
 /* ═══════════ 模态框 ═══════════ */
 #modal-root { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
 .modal-backdrop {
   position: absolute; inset: 0; background: rgba(0,0,0,.55);
-  backdrop-filter: blur(3px); display: grid; place-items: center;
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); display: grid; place-items: center;
   animation: fadeIn .16s ease; pointer-events: auto;
 }
 .modal {
@@ -826,6 +860,10 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   border-radius: var(--radius-sm); color: var(--text); font-size: 13px; outline: none;
 }
 .form-row input[type="text"]:focus { border-color: var(--accent); }
+.form-note {
+  font-size: 11px; color: var(--text-faint); line-height: 1.6;
+  margin-top: 2px;
+}
 .field-row { display: flex; gap: 6px; }
 .field-row input { flex: 1; min-width: 0; }
 select.input {
@@ -993,19 +1031,13 @@ select.input {
   display: flex; flex-direction: column; gap: 6px;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 8px; cursor: pointer;
-  transition: border-color .12s, background .12s; user-select: none;
+  transition: border-color .12s, background .12s; -webkit-user-select: none; user-select: none;
 }
 .sprite-preview-item:hover { background: var(--bg-hover); border-color: var(--border-strong); }
 .sprite-preview-item.selected { border-color: var(--accent); background: var(--accent-soft); }
 .sprite-preview-thumb {
   flex: 1; min-height: 0; width: 100%; border-radius: 8px;
-  background-image:
-    linear-gradient(45deg, var(--bg-elev) 25%, transparent 25%),
-    linear-gradient(-45deg, var(--bg-elev) 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, var(--bg-elev) 75%),
-    linear-gradient(-45deg, transparent 75%, var(--bg-elev) 75%);
-  background-size: 12px 12px;
-  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background: var(--thumb-bg);
   display: grid; place-items: center; overflow: hidden;
 }
 .sprite-preview-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: auto; }
@@ -1034,20 +1066,35 @@ select.input {
 .easter-overlay {
   position: fixed; inset: 0; z-index: 200;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, .85);   /* 黑色叠加层（phone 及内部元素不遮罩） */
+  /* execution 背景图（JS 随机设置 background-image）；压暗交给独立遮罩层 .easter-scrim */
+  background-size: cover;
+  background-position: center;
   animation: fadeIn .2s ease;
   transition: opacity .45s ease;
 }
 .easter-overlay.closing { opacity: 0; }
+/* 背景图黑色遮罩（旧 overlay 背景色已移除，改用独立层）；与 phone 同步淡入 */
+.easter-scrim {
+  position: absolute; inset: 0;
+  background: rgba(0, 0, 0, .5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .7s ease;
+}
+.easter-scrim.show { opacity: 1; }
 .easter-phone {
+  position: relative; z-index: 1;   /* 在遮罩层之上 */
   width: 280px; height: 462px;   /* phone.png 1024:1688 */
   background: url('../assets/execution/phone.png') no-repeat center / 100% 100%;
   position: relative;
   display: flex; align-items: center; justify-content: center;
-  transform: rotate(-5deg);      /* 向左偏移 5° */
+  transform: rotate(-5deg);      /* 向左偏移 5°（仅淡入，不缩放） */
+  opacity: 0;
+  transition: opacity .7s ease;
   border-radius: 16px; overflow: hidden;
   box-shadow: var(--shadow);
 }
+.easter-phone.show { opacity: 1; }
 .exec-btn {
   position: relative; width: 150px; height: 150px;
   background: none; border: none; padding: 0; cursor: pointer;
@@ -1085,6 +1132,34 @@ select.input {
   display: none;
 }
 .exec-check.show { display: block; }
+
+/* 彩蛋：Nanoka 部件数量卡（仅带颜色的数量卡可点，保持原样式与宽度，悬停时内部文本变为"超级拼装"） */
+.pill.parts-easter { cursor: pointer; }
+
+/* 彩蛋：meme 全屏覆盖层（音频播放期间显示图片，结束后自动淡出；不可手动关闭） */
+.meme-easter-overlay {
+  position: fixed; inset: 0; z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .88);
+  animation: fadeIn .2s ease;
+  transition: opacity .5s ease;
+  cursor: default;
+  -webkit-user-select: none; user-select: none;
+}
+.meme-easter-overlay.closing { opacity: 0; }
+.meme-easter-img-wrap {
+  max-width: 92vw; max-height: 92vh;
+  display: flex; align-items: center; justify-content: center;
+}
+.meme-easter-img {
+  max-width: 92vw; max-height: 92vh;
+  object-fit: contain;
+  opacity: 0; transform: scale(.96);
+  transition: opacity .45s ease, transform .45s ease;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
+}
+.meme-easter-img.show { opacity: 1; transform: scale(1); }
 
 /* 启动加载界面（splash） */
 #splash {

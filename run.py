@@ -57,6 +57,7 @@ from src.worker_client import (
 from src.i18n import (
     LANG_CN,
     LANG_EN,
+    LANG_JA,
     LANGUAGE_CODES,
     T,
     _,
@@ -110,6 +111,8 @@ def _detect_system_language() -> str:
             lang_lower = sys_lang.lower()
             if lang_lower.startswith("zh") or "chinese" in lang_lower:
                 return LANG_CN
+            if lang_lower.startswith("ja") or "japanese" in lang_lower:
+                return LANG_JA
     except Exception:
         pass
     return LANG_EN
@@ -866,6 +869,7 @@ class JsApi:
                     sketchbook_text=sketch_text or None,
                     sketch_font_size=int(sketch_size or 56),
                     sketch_align=(sketch_align or "center"),
+                    mask_mapping=self._character_data.get("mask_mapping"),
                 )
             except Exception as e:
                 log("error", _("log.composite_failed", e=e))

@@ -9,7 +9,7 @@
  * 注意：contextIsolation:false，直接写入 window（前端可能重建 __pywebview.events 对象）。
  */
 
-const { ipcRenderer } = require('electron');
+const { ipcRenderer, webUtils } = require('electron');
 
 window.__pywebview = window.__pywebview || {};
 window.__pywebview.events = window.__pywebview.events || {};
@@ -48,6 +48,8 @@ window.pywebview = { api };
 // Electron 专属能力（调试日志控制台、任务栏进度/闪烁）
 window.__electron = {
   openLogConsole: () => ipcRenderer.invoke('win:openLogConsole'),
+  // 拖拽导入：将拖入的 File 解析为磁盘绝对路径（Electron 29+ 标准 API）
+  getPathForFile: (file) => webUtils.getPathForFile(file),
   // 任务栏（Windows 原生）：读条期间显示进度，读条完成后黄色闪烁
   taskbar: {
     progress: (value) => ipcRenderer.invoke('taskbar:progress', value),
