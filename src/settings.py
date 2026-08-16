@@ -90,8 +90,16 @@ def load_settings() -> Dict[str, Any]:
         if CONFIG_FILE.exists():
             data = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
+                # 确保 data/ 目录保持隐藏（Electron 等可能已先建目录但未设隐藏属性）
+                _hide_config_dir()
                 return data
             raise ValueError("settings.json root is not a dict")
+        # 首次启动（data/ 不存在）：先创建目录并附带一个空的 settings.json，
+        # 否则关闭时窗口大小/最大化等持久化写入会因父目录缺失而静默失败
+        CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        CONFIG_FILE.write_text(json.dumps({}, indent=2, ensure_ascii=False), encoding="utf-8")
+        _hide_config_dir()
+        log("info", "Initialized empty settings.json")
     except Exception as e:
         log("warning", f"Failed to load settings: {e}")
         _repair_config()

@@ -12,7 +12,7 @@
 const { app, BrowserWindow, ipcMain, dialog, screen, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const readline = require('readline');
 
 // 禁用 Electron 开发模式的 CSP 安全警告（本应用仅加载本地文件，无远程内容；打包后本就不显示）
@@ -125,6 +125,39 @@ function saveWindowState() {
     if (typeof data !== 'object' || data === null) data = {};
     data.window = state;
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
+  } catch {}
+}
+
+// 启动时确保 data/ 目录与 settings.json 存在且合法（每次启动调用一次）：
+// 首次启动若 data/ 不存在，saveWindowState/saveLastDirectory 的 writeFileSync
+// 会因父目录缺失而静默失败（窗口大小/最大化等状态无法持久化）。
+// 缺失 → 创建目录并附带空配置；损坏 → 备份原文件后重建为空配置。
+function ensureSettingsFile() {
+  try {
+    const file = settingsFilePath();
+    const dir = path.dirname(file);
+    fs.mkdirSync(dir, { recursive: true });
+    // Windows 上给 data/ 目录设置隐藏属性（与 Python settings._hide_config_dir 一致），
+    // 否则首次启动由本进程新建的配置目录在资源管理器中不会自动隐藏
+    if (process.platform === 'win32') {
+      try {
+        const attribExe = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'attrib.exe');
+        spawnSync(attribExe, ['+h', dir], { stdio: 'ignore' });
+      } catch {}
+    }
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(file, '{}\n', 'utf8');
+      return;
+    }
+    let data = null;
+    try {
+      data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {}
+    if (typeof data !== 'object' || data === null) {
+      const bak = file + '.bak';
+      if (!fs.existsSync(bak)) fs.renameSync(file, bak);
+      fs.writeFileSync(file, '{}\n', 'utf8');
+    }
   } catch {}
 }
 /* ── 历史加载路径记忆（settings.json last_directory） ── */
@@ -487,6 +520,7 @@ function stopBackendAndQuit() {
 app.whenReady().then(() => {
   // 移除默认应用菜单（日志控制台等窗口不显示 File/Edit/View/Window/Help 菜单栏）
   Menu.setApplicationMenu(null);
+  ensureSettingsFile();   // 首次启动/损坏时先确保 data/settings.json 存在且合法（否则窗口状态无法持久化）
   startPython();
   createWindow();
 });
