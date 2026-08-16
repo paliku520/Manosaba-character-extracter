@@ -127,6 +127,31 @@ function saveWindowState() {
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch {}
 }
+
+// 启动时确保 data/ 目录与 settings.json 存在且合法（每次启动调用一次）：
+// 首次启动若 data/ 不存在，saveWindowState/saveLastDirectory 的 writeFileSync
+// 会因父目录缺失而静默失败（窗口大小/最大化等状态无法持久化）。
+// 缺失 → 创建目录并附带空配置；损坏 → 备份原文件后重建为空配置。
+function ensureSettingsFile() {
+  try {
+    const file = settingsFilePath();
+    const dir = path.dirname(file);
+    fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(file)) {
+      fs.writeFileSync(file, '{}\n', 'utf8');
+      return;
+    }
+    let data = null;
+    try {
+      data = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {}
+    if (typeof data !== 'object' || data === null) {
+      const bak = file + '.bak';
+      if (!fs.existsSync(bak)) fs.renameSync(file, bak);
+      fs.writeFileSync(file, '{}\n', 'utf8');
+    }
+  } catch {}
+}
 /* ── 历史加载路径记忆（settings.json last_directory） ── */
 // 与 Python settings.py 共用 data/settings.json，last_directory 为权威数据源（PyWebView 版
 // JsApi.select_directory 的记忆逻辑在 Electron 下被 preload 白名单拦截，故在主进程实现等价功能）：
@@ -487,6 +512,7 @@ function stopBackendAndQuit() {
 app.whenReady().then(() => {
   // 移除默认应用菜单（日志控制台等窗口不显示 File/Edit/View/Window/Help 菜单栏）
   Menu.setApplicationMenu(null);
+  ensureSettingsFile();   // 首次启动/损坏时先确保 data/settings.json 存在且合法（否则窗口状态无法持久化）
   startPython();
   createWindow();
 });
