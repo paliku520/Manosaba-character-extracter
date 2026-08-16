@@ -383,6 +383,9 @@
       });
       ul.appendChild(li);
     });
+    // 重新渲染后重新应用搜索过滤：点击角色等操作会重建列表，需保持搜索框当前的过滤状态
+    const searchInput = $('#char-search');
+    if (searchInput && searchInput.value) filterCharList(searchInput.value);
   }
 
   // 刷新所有显示角色名的地方（侧边栏 / 部件页 / 预览页），切换中文名或语言时调用
@@ -2576,6 +2579,15 @@
     document.addEventListener('contextmenu', (e) => {
       if (_spearEasterActive) { e.preventDefault(); e.stopPropagation(); }
     });
+    // 长矛彩蛋锁定期间全局拦截点击：除标题栏窗口控件（最小化/最大化/关闭）
+    // 与合成完成后预览中的人物（点击结束彩蛋）外，一律禁止（捕获阶段拦截，先于元素自身处理器）
+    document.addEventListener('click', (e) => {
+      if (!_spearEasterActive) return;
+      if (e.target.closest('#tb-min, #tb-max, #tb-close')) return;
+      if (_spearPreviewReady && e.target.closest('#preview-img')) return;
+      e.preventDefault();
+      e.stopPropagation();
+    }, true);
 
     $('#btn-expand').addEventListener('click', () => App.hierarchyNav.expand.forEach((f) => f()));
     $('#btn-collapse').addEventListener('click', () => App.hierarchyNav.collapse.forEach((f) => f()));

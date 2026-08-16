@@ -521,6 +521,7 @@ app.whenReady().then(() => {
   // 移除默认应用菜单（日志控制台等窗口不显示 File/Edit/View/Window/Help 菜单栏）
   Menu.setApplicationMenu(null);
   ensureSettingsFile();   // 首次启动/损坏时先确保 data/settings.json 存在且合法（否则窗口状态无法持久化）
+  ensureSettingsFile();   // 首次启动/损坏时先确保 data/settings.json 存在且合法（否则窗口状态无法持久化）
   startPython();
   createWindow();
 });
