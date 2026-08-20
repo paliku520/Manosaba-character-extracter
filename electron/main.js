@@ -94,10 +94,18 @@ function settingsFilePath() {
   return path.join(dataRoot, 'data', 'settings.json');
 }
 
+// 当前生效作品 mode（新版结构 global.mode；其他两款游戏 为占位，暂不实际应用）
+function activeMode(s) {
+  const g = (s && typeof s === 'object' && s.global) || {};
+  const m = g.mode;
+  return (m === 'manosaba' || m === 'village' || m === 'labyrinth') ? m : 'manosaba';
+}
+
 function readWindowState() {
   try {
     const s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
-    const w = s && s.window;
+    const g = (s && s.global) || {};
+    const w = g.window || (s && s.window);   // 新版 global.window；兼容旧版顶层 window
     if (w && typeof w === 'object') {
       return {
         width: Math.max(960, Number(w.width) || 1280),
@@ -123,7 +131,8 @@ function saveWindowState() {
     let data = {};
     try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
     if (typeof data !== 'object' || data === null) data = {};
-    data.window = state;
+    if (typeof data.global !== 'object' || data.global === null) data.global = {};
+    data.global.window = state;   // 新版嵌套结构：window 存于 global
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch {}
 }
@@ -167,7 +176,9 @@ function ensureSettingsFile() {
 function getLastDirectory() {
   try {
     const s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
-    const last = s && s.last_directory;
+    const mode = activeMode(s);
+    const last = (s && s.game && s.game[mode] && s.game[mode].last_directory) ||
+                 (s && s.last_directory);   // 新版 game.<mode>.last_directory；兼容旧版顶层
     if (typeof last === 'string' && last && fs.existsSync(last)) return last;
   } catch {}
   return undefined;
@@ -179,7 +190,11 @@ function saveLastDirectory(dir) {
     let data = {};
     try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
     if (typeof data !== 'object' || data === null) data = {};
-    data.last_directory = dir;
+    if (typeof data.global !== 'object' || data.global === null) data.global = {};
+    const mode = activeMode(data);
+    if (typeof data.game !== 'object' || data.game === null) data.game = {};
+    if (typeof data.game[mode] !== 'object' || data.game[mode] === null) data.game[mode] = {};
+    data.game[mode].last_directory = dir;   // 新版 game.<mode>.last_directory
     fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
   } catch {}
 }
@@ -352,9 +367,13 @@ function launchQueryOptions() {
     const dataRoot = app.isPackaged ? dataDir() : path.join(__dirname, '..');
     const s = JSON.parse(fs.readFileSync(path.join(dataRoot, 'data', 'settings.json'), 'utf8'));
     const q = {};
-    if (s.theme) q.theme = s.theme;
-    if (s.accent) q.accent = s.accent;
-    if (s.lang) q.lang = s.lang;
+    const g = (s && s.global) || {};
+    const mode = activeMode(s);
+    const game = (s && s.game && s.game[mode]) || {};
+    // 新版嵌套结构取值；兼容旧版顶层扁平字段
+    if (g.theme || (s && s.theme)) q.theme = g.theme || s.theme;
+    if (game.accent || (s && s.accent)) q.accent = game.accent || s.accent;
+    if (g.lang || (s && s.lang)) q.lang = g.lang || s.lang;
     return { query: q };
   } catch {
     return {};
