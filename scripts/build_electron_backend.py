@@ -65,6 +65,8 @@ def run_pyinstaller(
         "--collect-all", "UnityPy",      # 收集 UnityPy 所有子模块和数据
         "--collect-all", "fmod_toolkit", # 收集 fmod_toolkit DLL（UnityPy 依赖）
         "--collect-all", "archspec",     # 收集 archspec JSON 数据文件
+        # 打包翻译文件 i18n/（后端从 _MEIPASS 读取）
+        "--add-data", f"{PROJECT_ROOT / 'i18n'};i18n",
         # 排除 pywebview / pythonnet（Electron 模式不需要）
         "--exclude-module", "webview",
         "--exclude-module", "clr",

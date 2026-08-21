@@ -1,0 +1,89 @@
+# 魔裁专有（manosaba 中文）
+# 角色名 / 剧情术语 / 角色主题色 / 含游戏名文案等专有名词，仅 manosaba 使用
+
+about:
+  app_name: "魔法少女的魔女审判立绘提取工具"
+  description: "从《魔法少女的魔女审判》游戏文件中提取并合成角色立绘的桌面工具。"
+  license_note: "本工具提取的内容来源于游戏【魔法少女的魔女审判】(Manosaba)\n© 2024 Re,AER LLC. / Acacia — 原游戏所有权利归其所有。"
+  thanks_text: "感谢所有【共犯】的支持与反馈"
+
+app:
+  title: "魔法少女的魔女审判 - 角色立绘提取工具"
+
+dialog:
+  spoiler_msg: "本工具包含大量剧透内容，强烈建议您完成全周目（三周目完结）后再使用，以免破坏您的沉浸式体验。"
+
+console:
+  exit_msg: "程序已退出。\n\n提示：控制台延迟关闭是正常现象（WebView2 清理子进程通常需 1-3 秒），请等待其自动消失。后台线程为 daemon 模式，不影响退出。\n\n警告：直接关闭控制台可能中断任务或引发异常。\n\n感谢使用【魔法少女的魔女审判立绘提取工具】！"
+  startup_msg: "欢迎使用【魔法少女的魔女审判立绘提取工具】！\n本控制台用于显示运行日志。\n\n提示：请不要轻易关闭本控制台，否则程序会立即退出。\n如需退出程序，请点击主窗口右上角的关闭按钮。"
+  startup_msg_electron: "欢迎使用【魔法少女的魔女审判立绘提取工具】！\n本窗口为日志控制台，仅用于显示运行日志。\n\n提示：关闭此窗口不会退出程序。\n如需退出程序，请点击主窗口右上角的关闭按钮。"
+  title: "魔法少女的魔女审判 - 角色立绘提取工具 - 控制台"
+
+info:
+  guide_step1: "点击【加载游戏目录】→ 选择您的游戏安装文件夹（如 .../manosaba_game）"
+  welcome_lead: "本工具帮助您从《魔法少女的魔女审判》游戏文件中快速提取并合成角色立绘。"
+  welcome_title: "欢迎使用 魔法少女的魔女审判立绘提取工具 v{version}"
+
+# Anan 素描本特殊拼凑（角色专有功能）
+parts:
+  sketch_label: "素描本文字"
+  sketch_placeholder: "输入显示在素描本上的文字…"
+  sketch_size: "字号"
+  sketch_apply: "应用"
+  sketch_edit: "编辑文字"
+  sketch_align: "对齐"
+  align_left: "左"
+  align_center: "中"
+  align_right: "右"
+
+char:
+  alisa: "紫藤亚里沙"
+  anan: "夏目安安"
+  coco: "泽渡可可"
+  creaturealisa: "亚里沙（魔女化）"
+  creatureanan: "安安（魔女化）"
+  creaturecoco: "可可（魔女化）"
+  creatureema: "艾玛（魔女化）"
+  creaturehanna: "汉娜（魔女化）"
+  creaturehiro: "希罗（魔女化）"
+  creatureleia: "蕾雅（魔女化）"
+  creaturemargo: "玛格（魔女化）"
+  creaturemeruru: "梅露露（魔女化）"
+  creaturemiria: "米莉亚（魔女化）"
+  creaturenanoka: "奈叶香（魔女化）"
+  creaturenoah: "诺亚（魔女化）"
+  creaturesherry: "雪莉（魔女化）"
+  ema: "樱羽艾玛"
+  hanna: "远野汉娜"
+  hiro: "二阶堂希罗"
+  jailer: "看守（黑部穗乃香）"
+  jailerb: "希罗（残骸）"
+  jailerc: "流浪的残骸"
+  leia: "莲见蕾雅"
+  margo: "宝生玛格"
+  meruru: "冰上梅露露"
+  miria: "佐伯米莉亚"
+  nanoka: "黑部奈叶香"
+  noah: "城崎诺亚"
+  sherry: "橘雪莉"
+  warden: "典狱长"
+  yuki: "月代雪"
+
+# 角色主题色（覆盖 common 的 settings 下的 accent_*）
+settings:
+  accent_alisa: "紫藤亚里沙（红）"
+  accent_anan: "夏目安安（紫）"
+  accent_coco: "泽渡可可（橙）"
+  accent_ema: "樱羽艾玛（粉）"
+  accent_hanna: "远野汉娜（黄绿）"
+  accent_hiro: "二阶堂希罗（红）"
+  accent_jailer: "看守（银灰）"
+  accent_leia: "莲见蕾雅（琥珀）"
+  accent_margo: "宝生玛格（紫）"
+  accent_meruru: "冰上梅露露（粉）"
+  accent_miria: "佐伯米莉亚（黄）"
+  accent_nanoka: "黑部奈叶香（灰）"
+  accent_noah: "城崎诺亚（青）"
+  accent_sherry: "橘雪莉（蓝）"
+  accent_warden: "典狱长（雾紫）"
+  accent_yuki: "月代雪（淡蓝）"

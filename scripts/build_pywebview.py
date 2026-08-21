@@ -173,6 +173,14 @@ def run_pyinstaller(
     else:
         print(f"[WARN] 前端资源目录不存在: {webui_dir}，跳过")
 
+    # 打包翻译文件 i18n/（PyInstaller 冻结时从 _MEIPASS 读取）
+    i18n_dir = PROJECT_ROOT / "i18n"
+    if i18n_dir.exists():
+        args.extend(["--add-data", f"{i18n_dir};i18n"])
+        print(f"[INFO] 打包翻译文件: {i18n_dir}")
+    else:
+        print(f"[WARN] 翻译文件目录不存在: {i18n_dir}，跳过")
+
     PyInstaller.__main__.run(args)
 
     print("=" * 60)

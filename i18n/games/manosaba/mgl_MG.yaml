@@ -1,0 +1,89 @@
+# 魔裁専有 fiXmArge（manosaba 魔女語）
+# 角色名 / 主题色 等专有名词的魔女语翻译（fiXmArge 为 manosaba 独有语种）
+# char.* 与 settings.accent_* 的魔女语与英文一致（专有名词不翻译）
+
+about:
+  app_name: "Manosaba - eXi' Toim"
+  description: "Toim to eXi' and gDie JIO MEif from Manosaba."
+  license_note: "Toim eXi' MEif from \"Mahou Shoujo no Majo Saiban\" (Manosaba)\n© 2024 Re,AER LLC. / Acacia — Alte oF Taven"
+  thanks_text: "gDie to Alte KyOhan for support and feedback"
+
+app:
+  title: "Manosaba - eXi' Toim"
+
+dialog:
+  spoiler_msg: "Toim has Alte sinruits. Finish Manosaba first for gDie."
+
+console:
+  exit_msg: "Program exited.\n\nNote: Console closing delay is normal (WebView2 cleanup usually takes 1-3 seconds). Please wait for it to disappear automatically.\n\nWARNING: Closing this console directly may interrupt tasks or cause exceptions.\n\nThank you for using the Manosaba Sprite Tool!"
+  startup_msg: "Welcome to the Manosaba Sprite Tool!\nThis console shows runtime logs.\n\nTip: Do not close this console casually, or the program will exit immediately.\nTo quit, click the close button on the top-right of the main window."
+  startup_msg_electron: "Welcome to the Manosaba Sprite Tool!\nThis window is the log console, used to show runtime logs.\n\nTip: Closing this window will not exit the program.\nTo quit, click the close button on the top-right of the main window."
+  title: "Manosaba - eXi' Toim - console"
+
+info:
+  guide_step1: "Alte 'Loadeh Coa Tain' → Alte game Ge-mon (e.g. .../manosaba_game)"
+  welcome_lead: "Toim helps Alte eXi' and gDie JIO MEif from Manosaba."
+  welcome_title: "gDie to Manosaba - eXi' Toim v{version}"
+
+# Anan FuWana special compositing (character-specific)
+parts:
+  sketch_label: "hA-k oF FuWana"
+  sketch_placeholder: "Coword iN FuWana…"
+  sketch_size: "Sha-Rui"
+  sketch_apply: "gDie"
+  sketch_edit: "KeI·tion Coword"
+  sketch_align: "rEcanRey"
+  align_left: "mu·Yon"
+  align_center: "Alte"
+  align_right: "Taven"
+
+char:
+  alisa: "Shito Alisa"
+  anan: "Natsume An-An"
+  coco: "Sawatari Coco"
+  creaturealisa: "alisa(creature)"
+  creatureanan: "anan(creature)"
+  creaturecoco: "coco(creature)"
+  creatureema: "ema(creature)"
+  creaturehanna: "hanna(creature)"
+  creaturehiro: "hiro(creature)"
+  creatureleia: "leia(creature)"
+  creaturemargo: "margo(creature)"
+  creaturemeruru: "meruru(creature)"
+  creaturemiria: "miria(creature)"
+  creaturenanoka: "nanoka(creature)"
+  creaturenoah: "noah(creature)"
+  creaturesherry: "sherry(creature)"
+  ema: "Sakuraba Ema"
+  hanna: "Tono Hanna"
+  hiro: "Nikaido Hiro"
+  jailer: "jailer(Kurobe Honoka)"
+  jailerb: "jailerb(Hiro)"
+  jailerc: "jailerc"
+  leia: "Hasumi Leia"
+  margo: "Houshou Margo"
+  meruru: "Hikami Meruru"
+  miria: "Saeki Miria"
+  nanoka: "Kurobe Nanoka"
+  noah: "Jogasaki Noah"
+  sherry: "Tachibana Sherry"
+  warden: "warden"
+  yuki: "Tsukishiro Yuki"
+
+settings:
+  accent_alisa: "Alisa (Red)"
+  accent_anan: "Anan (Violet)"
+  accent_coco: "Coco (Orange)"
+  accent_ema: "Ema (Pink)"
+  accent_hanna: "Hanna (Lime)"
+  accent_hiro: "Hiro (Red)"
+  accent_jailer: "Jailer (Silver)"
+  accent_leia: "Leia (Amber)"
+  accent_margo: "Margo (Violet)"
+  accent_meruru: "Meruru (Pink)"
+  accent_miria: "Miria (Yellow)"
+  accent_nanoka: "Nanoka (Gray)"
+  accent_noah: "Noah (Cyan)"
+  accent_sherry: "Sherry (Blue)"
+  accent_warden: "Warden (Mist)"
+  accent_yuki: "Yuki (Ice)"

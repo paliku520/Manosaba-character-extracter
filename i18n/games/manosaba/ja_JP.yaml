@@ -1,0 +1,89 @@
+# 魔裁専有（manosaba 日本語）
+# キャラクター名 / ストーリー用語 / キャラ別テーマカラー / ゲーム名入り文案 等、manosaba のみ
+
+about:
+  app_name: "魔法少女ノ魔女裁判 立ち絵抽出ツール"
+  description: "『魔法少女ノ魔女裁判』のゲームファイルからキャラクターの立ち絵を抽出・合成するデスクトップツール。"
+  license_note: "本ツールが抽出する内容はゲーム『魔法少女ノ魔女裁判』(Manosaba) に由来します\n© 2024 Re,AER LLC. / Acacia — 原作のすべての権利は原作者に帰属します。"
+  thanks_text: "すべての【共犯者】の皆様のご支援とフィードバックに感謝します"
+
+app:
+  title: "魔法少女ノ魔女裁判 - キャラクター立ち絵抽出ツール"
+
+dialog:
+  spoiler_msg: "このツールには重大なネタバレが含まれています。没入感を損なわないためにも、メインストーリーをクリアしてから使用することを強くお勧めします。"
+
+console:
+  exit_msg: "プログラムを終了しました。\n\nヒント：コンソールの終了遅延は正常です（WebView2 が子プロセスをクリーンアップするのに通常 1〜3 秒かかります）。自動的に消えるまでお待ちください。バックグラウンドスレッドはデーモンモードのため、終了には影響しません。\n\n警告：コンソールを直接閉じると、タスクが中断されたり例外が発生する可能性があります。\n\n【魔法少女ノ魔女裁判 立ち絵抽出ツール】をご利用いただきありがとうございます！"
+  startup_msg: "【魔法少女ノ魔女裁判 立ち絵抽出ツール】へようこそ！\nこのコンソールは実行ログを表示します。\n\nヒント：このコンソールを軽率に閉じないでください。閉じるとプログラムは即座に終了します。\nプログラムを終了するには、メインウィンドウ右上の閉じるボタンをクリックしてください。"
+  startup_msg_electron: "【魔法少女ノ魔女裁判 立ち絵抽出ツール】へようこそ！\nこのウィンドウはログコンソールで、実行ログの表示専用です。\n\nヒント：このウィンドウを閉じてもプログラムは終了しません。\nプログラムを終了するには、メインウィンドウ右上の閉じるボタンをクリックしてください。"
+  title: "魔法少女ノ魔女裁判 - キャラクター立ち絵抽出ツール - コンソール"
+
+info:
+  guide_step1: "【ゲームディレクトリを読み込む】をクリック → ゲームのインストールフォルダを選択（例: .../manosaba_game）"
+  welcome_lead: "本ツールは『魔法少女ノ魔女裁判』のゲームファイルからキャラクターの立ち絵を素早く抽出・合成するのに役立ちます。"
+  welcome_title: "魔法少女ノ魔女裁判 立ち絵抽出ツール v{version} へようこそ"
+
+# アンアンのスケッチブック特殊合成（キャラ専用機能）
+parts:
+  sketch_label: "スケッチブックの文字"
+  sketch_placeholder: "スケッチブックに表示する文字を入力…"
+  sketch_size: "文字サイズ"
+  sketch_apply: "適用"
+  sketch_edit: "文字を編集"
+  sketch_align: "配置"
+  align_left: "左"
+  align_center: "中央"
+  align_right: "右"
+
+char:
+  alisa: "紫藤アリサ"
+  anan: "夏目アンアン"
+  coco: "沢渡ココ"
+  creaturealisa: "アリサ（魔女化）"
+  creatureanan: "アンアン（魔女化）"
+  creaturecoco: "ココ（魔女化）"
+  creatureema: "エマ（魔女化）"
+  creaturehanna: "ハンナ（魔女化）"
+  creaturehiro: "ヒロ（魔女化）"
+  creatureleia: "レイア（魔女化）"
+  creaturemargo: "マーゴ（魔女化）"
+  creaturemeruru: "メルル（魔女化）"
+  creaturemiria: "ミリア（魔女化）"
+  creaturenanoka: "ナノカ（魔女化）"
+  creaturenoah: "ノア（魔女化）"
+  creaturesherry: "シェリー（魔女化）"
+  ema: "桜羽エマ"
+  hanna: "遠野ハンナ"
+  hiro: "二階堂ヒロ"
+  jailer: "看守(黒部ホノカ)"
+  jailerb: "ヒロ（なれはて）"
+  jailerc: "野良のなれはく"
+  leia: "蓮見レイア"
+  margo: "宝生マーゴ"
+  meruru: "氷上メルル"
+  miria: "佐伯ミリア"
+  nanoka: "黒部ナノカ"
+  noah: "城ケ崎ノア"
+  sherry: "橘シェリー"
+  warden: "ゴクチョー"
+  yuki: "月代ユキ"
+
+# キャラ別テーマカラー（common の settings.accent_* を上書き）
+settings:
+  accent_alisa: "紫藤アリサ（赤）"
+  accent_anan: "夏目アンアン（紫）"
+  accent_coco: "沢渡ココ（オレンジ）"
+  accent_ema: "桜羽エマ（ピンク）"
+  accent_hanna: "遠野ハンナ（黄緑）"
+  accent_hiro: "二階堂ヒロ（赤）"
+  accent_jailer: "看守（シルバー）"
+  accent_leia: "蓮見レイア（琥珀）"
+  accent_margo: "宝生マーゴ（紫）"
+  accent_meruru: "氷上メルル（ピンク）"
+  accent_miria: "佐伯ミリア（黄）"
+  accent_nanoka: "黒部ナノカ（グレー）"
+  accent_noah: "城ケ崎ノア（シアン）"
+  accent_sherry: "橘シェリー（ブルー）"
+  accent_warden: "ゴクチョー（霧紫）"
+  accent_yuki: "月代ユキ（水色）"
