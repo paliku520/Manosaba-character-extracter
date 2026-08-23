@@ -41,13 +41,13 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 |---|---|---|
 | OS | Windows 10 1809 (64-bit) | Windows 10 / 11 (64-bit) |
 | CPU | Dual-core 1.6 GHz (x64) | Quad-core or better |
-| RAM | 4 GB | 8 GB or more |
+| RAM | 1 GB | 2 GB or more |
 | GPU | DirectX 11 / WebGL capable (integrated OK) | Dedicated GPU, 1 GB+ VRAM |
-| Storage | ~1 GB free space | 2 GB or more |
+| Storage | ~500 MB free space | 1 GB or more |
 
 > - The packaged build (portable / installer) already bundles the Python backend and Electron runtime, so **no Python / Node.js installation is required** — runs out of the box.
 > - Compositing creates large canvases (up to 2000×4000); on low-RAM or iGPU machines, enable **Disable Hardware Acceleration** and **Disable UI Animations** for smoother performance.
-> - On low-end devices, lower the **Preview Quality** (10–100%) to reduce load; export still keeps original quality by default.
+> - On low-end devices, lower the **Preview Quality** (25–100%) to reduce load; export still keeps original quality by default.
 
 ## Usage
 
