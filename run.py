@@ -23,7 +23,7 @@ import threading
 import webbrowser
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import webview
@@ -66,7 +66,22 @@ from src.i18n import (
 )
 from src.logtools import clear_logs, configure, flush_logs, log, log_raw
 from src.resource_monitor import ResourceMonitor
-from src.settings import ACCENT_NAMES, get_accent, get_export_count, get_lang, get_last_directory, get_no_spoiler, get_output_dir, get_show_original_name, get_theme, save_settings
+from src.settings import (
+    ACCENT_NAMES,
+    get_accent,
+    get_disable_animations,
+    get_disable_hardware_accel,
+    get_export_count,
+    get_export_original_quality,
+    get_lang,
+    get_last_directory,
+    get_no_spoiler,
+    get_output_dir,
+    get_preview_quality,
+    get_show_original_name,
+    get_theme,
+    save_settings,
+)
 from src.updater import check_for_update
 from src.version import __version__
 
@@ -132,6 +147,27 @@ def _pil_to_data_url(img: Image.Image, max_side: int = 0) -> str:
     out.save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode("ascii")
     return f"data:image/png;base64,{b64}"
+
+
+def _downscale_for_preview(img: Image.Image, max_side: int = 0) -> Image.Image:
+    """按预览画质的最大边长等比降采样图像（返回新图像；max_side<=0 或无需缩放时返回原图）"""
+    if max_side and max(img.size) > max_side:
+        out = img.copy()
+        out.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+        return out
+    return img
+
+
+def _pil_preview(img: Image.Image, max_side: int = 0) -> Tuple[str, List[int]]:
+    """生成预览 data URL 并返回 (data_url, 实际尺寸)；按 max_side 等比缩放。
+
+    返回的实际尺寸供前端“图像大小卡片”动态显示（随预览画质变化）。
+    """
+    out = _downscale_for_preview(img, max_side)
+    buf = io.BytesIO()
+    out.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{b64}", list(out.size)
 
 
 def _sprite_thumb_data_url(path: Path, size=(96, 96)) -> Optional[str]:
@@ -215,6 +251,10 @@ class JsApi:
         self._export_count = get_export_count()  # 累计导出次数（每次成功导出 +1，跨会话持久化）
         self._show_original_name = get_show_original_name()  # 是否显示原始文件名（默认显示本地化角色名，settings.json）
         self._no_spoiler = get_no_spoiler()  # 是否不再提示剧透警告（settings.json）
+        self._preview_quality = get_preview_quality()  # 预览画质（缩放 % 10~100）
+        self._disable_hardware_accel = get_disable_hardware_accel()  # 是否禁用硬件加速（UI 渲染）
+        self._export_original_quality = get_export_original_quality()  # 导出原始画质（关闭时导出与预览一致）
+        self._disable_animations = get_disable_animations()  # 是否禁用界面动画（低配 GPU 提速）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
@@ -223,6 +263,8 @@ class JsApi:
         self._char_gen = 0                      # 角色加载代号：递增以中断旧加载
         self._char_busy = False                 # 是否正在加载角色/导出（读条中禁止切换）
         self._work_lock = threading.Lock()      # 提取类任务互斥锁：避免并发写 temp/（旧任务取消清理与新任务写入竞争）
+        self._composite_lock = threading.Lock()  # 合成串行锁：共享画布/精灵缓存同一时刻仅一个 worker 使用
+        self._composite_gen = 0                  # 合成代号：新请求递增，旧请求被取代（防抖/最新优先）
         self._char_has_component: Dict[str, bool] = {}  # 加载目录时缓存的角色组件状态（避免点击时重复解析 bundle）
 
     # ── 事件推送 ──────────────────────────────────────────
@@ -293,6 +335,10 @@ class JsApi:
             "export_count": self._export_count,
             "show_original_name": self._show_original_name,
             "no_spoiler": self._no_spoiler,
+            "preview_quality": self._preview_quality,
+            "disable_hardware_accel": self._disable_hardware_accel,
+            "export_original_quality": self._export_original_quality,
+            "disable_animations": self._disable_animations,
             "debug": self._debug_monitor,
         }
 
@@ -342,6 +388,48 @@ class JsApi:
         self._no_spoiler = bool(enable)
         save_settings(no_spoiler_notice=self._no_spoiler)
         return {"no_spoiler": self._no_spoiler}
+
+    def set_preview_quality(self, quality: int) -> dict:
+        """保存预览合成画质（缩放百分比 10~100）到 settings.json，供下次启动恢复。
+
+        预览以降低分辨率合成以减轻低配机负载；导出始终按原始画质重新合成，不受影响。
+        """
+        q = max(10, min(100, int(quality or 100)))
+        self._preview_quality = q
+        save_settings(preview_quality=q)
+        log("info", _("log.preview_quality_set", q=q))
+        return {"preview_quality": q}
+
+    def set_disable_hardware_accel(self, enable: bool) -> dict:
+        """保存是否禁用硬件加速（UI 渲染）到 settings.json（重启 Electron 生效）"""
+        self._disable_hardware_accel = bool(enable)
+        save_settings(disable_hardware_accel=self._disable_hardware_accel)
+        log("info", _("log.hw_accel_on") if self._disable_hardware_accel else _("log.hw_accel_off"))
+        return {"disable_hardware_accel": self._disable_hardware_accel}
+
+    def set_export_original_quality(self, enable: bool) -> dict:
+        """保存是否导出原始画质图像到 settings.json（关闭时导出与预览画质一致）"""
+        self._export_original_quality = bool(enable)
+        save_settings(export_original_quality=self._export_original_quality)
+        log("info", _("log.export_original_on") if self._export_original_quality else _("log.export_original_off"))
+        return {"export_original_quality": self._export_original_quality}
+
+    def set_disable_animations(self, enable: bool) -> dict:
+        """保存是否禁用界面动画（纯前端行为，立即生效，无需重启）"""
+        self._disable_animations = bool(enable)
+        save_settings(disable_animations=self._disable_animations)
+        log("info", _("log.animations_off") if self._disable_animations else _("log.animations_on"))
+        return {"disable_animations": self._disable_animations}
+
+    def _preview_max_side(self) -> int:
+        """预览 data URL 的最大边长（随预览画质缩放；100% → 1600px）"""
+        q = max(10, min(100, self._preview_quality))
+        return max(200, int(1600 * q / 100))
+
+    def _preview_thumb_side(self) -> int:
+        """无组件预览缩略图的最大边长（随预览画质缩放；100% → 768px）"""
+        q = max(10, min(100, self._preview_quality))
+        return max(128, int(768 * q / 100))
 
     def set_debug(self, enable: bool) -> dict:
         """开启/关闭调试模式（仅本次运行有效，不持久化）。
@@ -544,6 +632,8 @@ class JsApi:
         self._character_data = None
         self._composite_image = None
         self._preview_sprites = None
+        # 清理合成器缓存的精灵解码图/可复用画布（切换角色后旧精灵路径不再需要）
+        self._compositor.clear_cache()
         # 切换角色时清理 preview 临时预览目录
         preview_dir = self._temp_dir / "preview"
         if preview_dir.exists():
@@ -640,17 +730,22 @@ class JsApi:
         return True
 
     def get_preview_thumbnails(self):
-        """为当前预览精灵生成完整预览图 data URL（事件: progress / preview_thumbs_ready）"""
+        """流式生成无组件预览缩略图（事件: progress / preview_thumb 逐张 / preview_thumbs_ready）
+
+        每生成一张立即推送 preview_thumb，前端增量填充网格（避免一次生成全部再渲染导致卡顿）。
+        缩略图分辨率随预览画质设置（_preview_thumb_side）。
+        """
         def worker():
             sprites = self._preview_sprites or []
             total = len(sprites)
-            result = {}
+            max_side = self._preview_thumb_side()
             for i, s in enumerate(sprites):
-                self._emit("progress", {"current": i, "total": total, "phase": "preview_thumbs"})
-                url = _sprite_full_data_url(Path(s["file_path"]), max_side=768)
+                self._emit("progress", {"current": i + 1, "total": total, "phase": "preview_thumbs"})
+                url = _sprite_full_data_url(Path(s["file_path"]), max_side=max_side)
                 if url:
-                    result[s["name"]] = url
-            self._emit("preview_thumbs_ready", result)
+                    # 流式：逐张推送，前端立即显示该张
+                    self._emit("preview_thumb", {"name": s["name"], "data_url": url})
+            self._emit("preview_thumbs_ready", {"count": total})
         self._run_async(worker)
         return True
 
@@ -832,11 +927,16 @@ class JsApi:
                 "color": p.get("color", {"r": 1, "g": 1, "b": 1, "a": 1}),
                 "category": p.get("category", "other"),
             })
+        # ClippingMask 部件（role=masked 的叠加层）来自 mask_mapping 权威数据，供前端“快速勾选”使用
+        clipping_parts = sorted(
+            (data.get("mask_mapping") or {}).get("clipping_masks", {}).keys()
+        )
         return {
             "name": data.get("character_name", ""),
             "count": len(transform),
             "transform_data": transform,
             "hierarchy": data.get("hierarchy", []),
+            "clipping_mask_parts": clipping_parts,
         }
 
     def get_thumbnails(self):
@@ -862,32 +962,48 @@ class JsApi:
             if not self._character_data:
                 self._emit("composite_done", {"ok": False, "error": "no_data"})
                 return
+            # 防抖/最新优先：每个新请求递增代号，旧请求（含等待锁期间）被取代后直接丢弃，
+            # 避免快速选择精灵时并发写共享画布/精灵缓存导致合成错乱。
+            gen = self._composite_gen + 1
+            self._composite_gen = gen
+
             def cb(cur, total):
+                if gen != self._composite_gen:
+                    return  # 已被更新的请求取代，不再上报进度
                 self._emit("progress", {"current": cur, "total": total, "phase": "composite"})
+
             self._emit("status", {"text": _("app.status.compositing")})
-            try:
-                img = self._compositor.composite(
-                    self._character_data["transform_data"],
-                    selected_names=selected_names,
-                    progress_callback=cb,
-                    sketchbook_text=sketch_text or None,
-                    sketch_font_size=int(sketch_size or 56),
-                    sketch_align=(sketch_align or "center"),
-                    mask_mapping=self._character_data.get("mask_mapping"),
-                )
-            except Exception as e:
-                log("error", _("log.composite_failed", e=e))
-                self._emit("composite_done", {"ok": False, "error": str(e)})
-                return
+            # 合成串行化：共享画布/精灵缓存同一时刻仅一个 worker 使用（防止并发写污染）
+            with self._composite_lock:
+                if gen != self._composite_gen:
+                    return  # 等待锁期间已被更新的请求取代，丢弃
+                try:
+                    img = self._compositor.composite(
+                        self._character_data["transform_data"],
+                        selected_names=selected_names,
+                        progress_callback=cb,
+                        sketchbook_text=sketch_text or None,
+                        sketch_font_size=int(sketch_size or 56),
+                        sketch_align=(sketch_align or "center"),
+                        mask_mapping=self._character_data.get("mask_mapping"),
+                    )
+                except Exception as e:
+                    log("error", _("log.composite_failed", e=e))
+                    self._emit("composite_done", {"ok": False, "error": str(e)})
+                    return
+            if gen != self._composite_gen:
+                return  # 合成期间被更新的请求取代，丢弃结果（不覆盖最新预览）
             if img is None:
                 self._emit("composite_done", {"ok": False, "error": "empty"})
                 return
             self._composite_image = img
             log("info", _("log.composite_done", size=f"{img.width}x{img.height}"))
+            data_url, pv_size = _pil_preview(img, max_side=self._preview_max_side())
             self._emit("composite_done", {
                 "ok": True,
-                "data_url": _pil_to_data_url(img, max_side=1600),
-                "size": list(img.size),
+                "data_url": data_url,
+                "size": pv_size,              # 实际显示的预览尺寸（随预览画质变化）
+                "full_size": list(img.size),  # 完整合成尺寸（导出用，原画质）
             })
         self._run_async(worker)
         return True
@@ -900,7 +1016,11 @@ class JsApi:
                 return
             char_name = (self._character_data or {}).get("character_name", "composite")
             try:
-                path = save_composite(self._composite_image, self._output_dir, char_name)
+                out_img = self._composite_image
+                # 关闭“导出原始画质”时：导出与预览画质一致（按预览缩放比例降采样）
+                if not self._export_original_quality:
+                    out_img = _downscale_for_preview(self._composite_image, self._preview_max_side())
+                path = save_composite(out_img, self._output_dir, char_name)
             except Exception as e:
                 self._emit("save_complete", {"ok": False, "error": str(e)})
                 return
@@ -1171,89 +1291,8 @@ class JsApi:
 # ===================================================================
 # 入口
 # ===================================================================
-
-def main():
-    global LOG_FILE
-    # 日志文件：logs/ 目录，文件名含程序启动时间（每次启动一个新文件）
-    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    LOG_FILE = BASE_DIR / "logs" / f"{ts}.log"
-    configure(log_file=LOG_FILE, level="info")
-
-    # 语言：优先使用设置中保存的语言，否则按系统自动检测
-    saved_lang = get_lang()
-    if saved_lang and saved_lang in LANGUAGE_CODES:
-        set_lang(saved_lang)
-        log("info", _("log.lang_from_settings", code=saved_lang))
-    else:
-        detected_lang = _detect_system_language()
-        set_lang(detected_lang)
-        log("info", _("log.lang_detected", code=detected_lang))
-
-    # 程序启动日志（置于语言加载完成后，确保文案跟随当前语言）
-    log("info", _("log.app_started", version=__version__))
-    # 启动时记录免责声明（第三方非官方工具提示）
-    log("info", _("app.disclaimer"))
-
-    set_console_title()
-
-    # 启动提示走日志队列（与日志串行写流，避免并发写导致换行粘连）
-    log_raw("")
-    log_raw("=" * 48)
-    log_raw(_("console.startup_msg"))
-    log_raw("=" * 48)
-    log_raw("")
-    flush_logs()
-
-    api = JsApi()
-    window = webview.create_window(
-        title=f"{_('app.title')} v{__version__}",
-        url=_get_webui_url(),
-        js_api=api,
-        width=1280,
-        height=860,
-        min_size=(960, 640),
-        background_color="#0f1115",
-        text_select=True,
-        frameless=False,   # 原生窗口（无边框体验请使用 Electron 模式；PyWebView 作为备用回退）
-    )
-    assert window is not None  # pywebview 的 create_window 始终返回 Window 实例
-    api._window = window
-    api._base_title = f"{_('app.title')} v{__version__}"  # 供调试模式标题栏附加资源占用信息
-    webview.start(icon=_find_icon(), debug=_DEBUG)
-
-    # 结束时记录免责声明（第三方非官方工具提示）
-    log("info", _("app.disclaimer"))
-
-    # 主窗口已关闭，进入退出流程：记录退出日志（此时 WebView2 等后台子进程可能仍在清理，故措辞为“正在退出”而非“已关闭”；若直接关闭控制台则进程立即终止，此段不会执行）
-    log("info", _("log.app_exited"))
-
-    # 退出前清理 preview 临时预览目录
-    try:
-        preview_dir = BASE_DIR / "temp" / "preview"
-        if preview_dir.exists():
-            shutil.rmtree(preview_dir, ignore_errors=True)
-            log("info", _("log.preview_cleaned", path=str(preview_dir)))
-    except Exception:
-        pass
-
-    # 退出前强制回收（释放 UnityPy / WebView2 等大对象），并输出资源检测日志
-    try:
-        import gc
-        collected = gc.collect()
-        from src.resource_monitor import process_memory_mb
-        mem = round(process_memory_mb(), 1)
-        log("info", _("log.gc_before_exit", mem=mem, count=collected))
-    except Exception:
-        log("info", _("log.gc_before_exit", mem=0, count=0))
-
-    # 控制台输出退出提示（走日志队列，与日志串行；退出前 flush 保证写出）
-    log_raw("")
-    log_raw("=" * 48)
-    log_raw(_("console.exit_msg"))
-    log_raw("=" * 48)
-    log_raw("")
-    flush_logs()
-
-
-if __name__ == "__main__":
-    main()
+# 说明：PyWebView 启动入口已移除（2026-08-23）。
+# 本模块现作为 Electron 后端（backend.py）的业务逻辑复用（JsApi / 工具函数），
+# 不再提供 `python run.py` 启动窗口的能力。启动请使用 start.bat（Electron 模式）
+# 或打包后的 MCE.exe。
+# ===================================================================

@@ -13,8 +13,10 @@
 - **智能检测** — 自动识别组件数据：无组件可预览/直接导出，有组件可导出或拼接
 - **角色立绘拼接** — 按部件位置、深度与剪切蒙版合成完整立绘，支持分类、缩略图，Multiply / Overlay / Softlight 混合模式还原原作效果
 - **Anan 素描本** — 选中 anan 素描本部件时可自定义文字（字号 / 对齐 / 自动换行）
-- **部件管理** — 搜索、自然排序、分组折叠、一键全选、点击复制名称
+- **部件管理** — 搜索、自然排序、分组折叠、一键全选、快速勾选 ClippingMask 部件、点击复制名称
 - **实时预览** — 滚轮缩放（以鼠标为中心）、拖动平移
+- **预览画质 / 导出原画** — 预览以低分辨率合成减轻负载；导出默认保持原始画质，可切换为与预览一致
+- **低配 GPU 优化** — 可禁用硬件加速（软件渲染）与界面动画，提升低端设备流畅度
 - **精灵预览** — 无组件角色一键预览全部精灵，勾选导出
 - **层级结构** — 组件树查看，每行带复制按钮
 - **拖拽导入** — 将游戏目录或 bundle 文件拖入窗口即可加载，自动记忆上次使用的游戏目录
@@ -33,6 +35,20 @@
 
 > 目前主要针对 **Windows** 充分测试，Linux/macOS 兼容性未知。
 
+## 最低配置要求
+
+| 项目 | 最低要求 | 推荐 |
+|---|---|---|
+| 操作系统 | Windows 10 1809（64 位） | Windows 10 / 11（64 位） |
+| CPU | 双核 1.6 GHz（x64） | 四核及以上 |
+| 内存 | 4 GB | 8 GB 及以上 |
+| 显卡 | 支持 DirectX 11 / WebGL（核显可） | 独立显卡，显存 1 GB+ |
+| 硬盘 | 约 1 GB 可用空间 | 2 GB 及以上 |
+
+> - 打包版（绿色版 / 安装版）已内置 Python 后端与 Electron 运行时，**无需**安装 Python / Node.js，开箱即用。
+> - 合成角色立绘时会创建较大图像画布（最高 2000×4000），内存偏小或核显设备建议开启 **禁用硬件加速** 与 **禁用界面动画** 以提升流畅度。
+> - 低端设备可降低 **预览画质**（10~100%）减轻负载；导出仍默认保持原始画质。
+
 ## 使用
 
 ### 运行（推荐：启动脚本）
@@ -41,7 +57,6 @@ Windows 下直接使用仓库根目录的 `start.bat` 启动脚本：
 
 ```bat
 start.bat            :: Electron 无边框窗口（默认，原生 Aero Snap / 拖动 / 双击最大化 / 边缘缩放）
-start.bat py         :: PyWebView / WebView2 模式（原生窗口）
 start.bat help       :: 显示帮助
 ```
 
@@ -52,7 +67,7 @@ pip install -r requirements.txt        # Python 依赖
 cd electron && npm install             # Electron 依赖
 ```
 
-> 也可手动启动：`cd electron && npm start`（Electron 模式）或 `python run.py`（PyWebView 模式）
+> 也可手动启动：`cd electron && npm start`
 
 
 ### 使用步骤
@@ -64,7 +79,7 @@ cd electron && npm install             # Electron 依赖
 
 ### 设置
 
-可配置：**输出目录**（自动记忆）、**语言**、**主题与主题色**、**显示原始文件名**、**防剧透警告**、**调试模式**、**检查更新**、**清理**（`temp/` 缓存、`output/` 目录或 `logs/` 日志）。
+可配置：**输出目录**（自动记忆）、**语言**、**主题与主题色**、**显示原始文件名**、**防剧透警告**、**预览画质**（10~100%，降低预览合成分辨率以减轻负载）、**导出原始画质**（关闭后导出与预览一致）、**禁用硬件加速**（软件渲染，需重启生效）、**禁用界面动画**（低配提速，立即生效）、**调试模式**、**检查更新**、**清理**（`temp/` 缓存、`output/` 目录或 `logs/` 日志）。
 
 > 设置保存在程序目录 `data/settings.json`（已设隐藏属性）。
 
@@ -97,7 +112,7 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 ## 项目结构
 
 ```
-├── run.py             # PyWebView 模式入口（WebView2，备用）
+├── run.py             # JsApi 桥接与核心逻辑（合成/预览/设置；被 backend.py 复用）
 ├── backend.py         # Electron 模式 Python 后端子进程（stdio JSON-RPC）
 ├── electron/          # Electron 界面壳
 │   ├── main.js        #   主进程：无边框窗口 + Python 子进程桥接 + 窗口控制
@@ -110,7 +125,7 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 └── temp/              # 精灵缓存（程序生成）
 ```
 
-技术栈：[UnityPy](https://github.com/K0lb3/UnityPy)（bundle 解析）、Pillow（图像处理）、[Electron](https://www.electronjs.org/)（无边框 UI 壳，Chromium 渲染 + 原生 Aero Snap）、[pywebview](https://github.com/r0x0r/pywebview)（备用 WebView2 模式）。
+技术栈：[UnityPy](https://github.com/K0lb3/UnityPy)（bundle 解析）、Pillow（图像处理）、[Electron](https://www.electronjs.org/)（无边框 UI 壳，Chromium 渲染 + 原生 Aero Snap）。
 
 ## 致谢与许可证
 

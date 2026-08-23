@@ -162,11 +162,11 @@
     el.dataset.timer = timer;
   }
 
-  function showModal({ title, titleKey, body, footer }) {
+  function showModal({ title, titleKey, body, footer, className }) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     const modal = document.createElement('div');
-    modal.className = 'modal';
+    modal.className = 'modal' + (className ? ' ' + className : '');
 
     const head = document.createElement('div');
     head.className = 'modal-header';
@@ -331,6 +331,11 @@
     if (theme) document.documentElement.dataset.theme = theme;
     const acc = accent || 'default';
     document.documentElement.dataset.accent = acc;
+  }
+
+  // 禁用/启用界面动画（低配 GPU 提速；纯前端 CSS，立即生效）
+  function applyAnimations(disable) {
+    document.body.classList.toggle('no-anim', !!disable);
   }
 
   // ═════════════ 侧边栏 ═════════════
@@ -1232,6 +1237,32 @@
     }
   }
 
+  // 排除项：HairClippingMask* 需用户自行勾选（不纳入快速勾选）
+  function isExcludedClipMask(name) {
+    return typeof name === 'string' && name.indexOf('HairClippingMask') === 0;
+  }
+
+  // 快速勾选 ClippingMask 部件：用后端 mask_mapping 权威的 masked 列表（clipping_mask_parts），
+  // 不清除现有选择（仅追加）；HairClippingMask* 排除在外，由用户自行勾选。
+  function selectClipMaskParts() {
+    if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止勾选
+    if (!App.characterData) return;
+    const list = App.characterData.clipping_mask_parts || [];
+    let n = 0;
+    list.forEach((name) => {
+      if (isExcludedClipMask(name)) return;   // HairClippingMask 留给用户手动勾选
+      App.selected.add(name);
+      const el = App.partEls[name];
+      if (el) el.cb.checked = true;
+      n++;
+    });
+    if (n === 0) return;
+    console.log(t('log.js_selected', { count: App.selected.size, total: App.characterData.transform_data.length }));
+    updateSelUI();
+    if (App.autoUpdate) schedulePreview();
+    toast(t('parts.clip_selected', { count: n }), 'success');
+  }
+
   function schedulePreview() {
     clearTimeout(App.previewTimer);
     App.previewTimer = setTimeout(() => {
@@ -1246,6 +1277,8 @@
       toast(t('parts.no_selection_hint'), 'warning');
       return;
     }
+    // 手动“生成合成图像”：取消待执行的自动更新防抖，立即按最新选择合成（恢复正常）
+    clearTimeout(App.previewTimer);
     console.log(t('log.js_composite_start', { count: App.selected.size }));
     api().composite(Array.from(App.selected), sketchTextArg(), sketchSizeArg(), sketchAlignArg());
   }
@@ -1407,6 +1440,9 @@
     wrap.appendChild(list);
 
     let current = value;
+    // 打开时让下拉以视口为准 fixed 定位，避免被 .sn-panels 等带 overflow 的父级裁剪
+    const onScroll = () => api.positionList();
+    const onResize = () => api.positionList();
     const api = {
       el: wrap,
       get value() { return current; },
@@ -1421,12 +1457,41 @@
         if (api.onChange) api.onChange(v);
       },
       onChange: null,
+      positionList() {
+        const rect = btn.getBoundingClientRect();
+        const gap = 4;
+        const listH = list.offsetHeight || 0;
+        const spaceBelow = window.innerHeight - rect.bottom - gap;
+        let top = rect.bottom + gap;
+        if (spaceBelow < listH && rect.top - gap > spaceBelow) {
+          top = Math.max(gap, rect.top - listH - gap); // 底部空间不足时向上展开
+        }
+        list.style.position = 'fixed';
+        list.style.left = rect.left + 'px';
+        list.style.top = top + 'px';
+        list.style.right = 'auto';
+        list.style.width = rect.width + 'px';
+        list.style.maxHeight = Math.min(220, window.innerHeight - 2 * gap) + 'px';
+      },
       openList() {
         if (activeColorPicker && activeColorPicker !== api) activeColorPicker.closeList();
         activeColorPicker = api;
+        document.body.appendChild(list);   // portal 到 body，脱离所有 overflow/transform 裁剪
+        list.style.zIndex = '1000';        // 高于 modal-root(100)/toast(200)/彩蛋(300)，避免被弹窗盖住
+        api.positionList();
+        // 强制 reflow：先渲染隐藏初始态，加 .open 才有过渡起始帧（否则同帧移动+改态无动画）
+        void list.offsetWidth;
         list.classList.add('open');
+        // 面板滚动 / 窗口尺寸变化时保持下拉与按钮对齐（capture 捕获内部滚动）
+        document.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', onResize);
       },
-      closeList() { list.classList.remove('open'); },
+      closeList() {
+        list.classList.remove('open');
+        if (list.parentNode !== wrap) wrap.appendChild(list);  // 移回原位
+        document.removeEventListener('scroll', onScroll, true);
+        window.removeEventListener('resize', onResize);
+      },
     };
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1483,6 +1548,9 @@
       const o = options.find((x) => x.value === v);
       return o ? o.label : v;
     };
+    // 打开时让下拉以视口为准 fixed 定位，避免被 .sn-panels 等带 overflow 的父级裁剪
+    const onScroll = () => api.positionList();
+    const onResize = () => api.positionList();
     const api = {
       el: wrap,
       get value() { return current; },
@@ -1494,12 +1562,41 @@
         if (api.onChange) api.onChange(v);
       },
       onChange: null,
+      positionList() {
+        const rect = btn.getBoundingClientRect();
+        const gap = 4;
+        const listH = list.offsetHeight || 0;
+        const spaceBelow = window.innerHeight - rect.bottom - gap;
+        let top = rect.bottom + gap;
+        if (spaceBelow < listH && rect.top - gap > spaceBelow) {
+          top = Math.max(gap, rect.top - listH - gap); // 底部空间不足时向上展开
+        }
+        list.style.position = 'fixed';
+        list.style.left = rect.left + 'px';
+        list.style.top = top + 'px';
+        list.style.right = 'auto';
+        list.style.width = rect.width + 'px';
+        list.style.maxHeight = Math.min(220, window.innerHeight - 2 * gap) + 'px';
+      },
       openList() {
         if (activeColorPicker && activeColorPicker !== api) activeColorPicker.closeList();
         activeColorPicker = api;
+        document.body.appendChild(list);   // portal 到 body，脱离所有 overflow/transform 裁剪
+        list.style.zIndex = '1000';        // 高于 modal-root(100)/toast(200)/彩蛋(300)，避免被弹窗盖住
+        api.positionList();
+        // 强制 reflow：先渲染隐藏初始态，加 .open 才有过渡起始帧（否则同帧移动+改态无动画）
+        void list.offsetWidth;
         list.classList.add('open');
+        // 面板滚动 / 窗口尺寸变化时保持下拉与按钮对齐（capture 捕获内部滚动）
+        document.addEventListener('scroll', onScroll, true);
+        window.addEventListener('resize', onResize);
       },
-      closeList() { list.classList.remove('open'); },
+      closeList() {
+        list.classList.remove('open');
+        if (list.parentNode !== wrap) wrap.appendChild(list);  // 移回原位
+        document.removeEventListener('scroll', onScroll, true);
+        window.removeEventListener('resize', onResize);
+      },
       refreshLabels(getLabel) {
         // 语言/主题切换后刷新选项文本（选项集合不变，仅 label 变化）
         labelFor = getLabel;
@@ -1637,6 +1734,54 @@
     debugSwitch.appendChild(debugText);
     debugRow.appendChild(debugSwitch);
 
+    // 禁用硬件加速（UI 渲染，需重启生效）
+    const hwRow = document.createElement('div');
+    hwRow.className = 'form-row';
+    hwRow.id = 'hw-accel-row';
+    const hwSwitch = document.createElement('label');
+    hwSwitch.className = 'switch';
+    const hwCb = document.createElement('input');
+    hwCb.type = 'checkbox';
+    hwCb.id = 'set-hw-accel';
+    const hwSlider = document.createElement('span');
+    hwSlider.className = 'slider';
+    const hwText = document.createElement('span');
+    hwText.setAttribute('data-i18n', 'settings.hw_accel_label');
+    hwText.textContent = t('settings.hw_accel_label');
+    hwSwitch.appendChild(hwCb);
+    hwSwitch.appendChild(hwSlider);
+    hwSwitch.appendChild(hwText);
+    hwRow.appendChild(hwSwitch);
+    const hwNote = document.createElement('div');
+    hwNote.className = 'form-note';
+    hwNote.setAttribute('data-i18n', 'settings.hw_accel_hint');
+    hwNote.textContent = t('settings.hw_accel_hint');
+    hwRow.appendChild(hwNote);
+
+    // 禁用界面动画（低配 GPU 提速；纯前端 CSS，立即生效，无需重启）
+    const animRow = document.createElement('div');
+    animRow.className = 'form-row';
+    animRow.id = 'anim-row';
+    const animSwitch = document.createElement('label');
+    animSwitch.className = 'switch';
+    const animCb = document.createElement('input');
+    animCb.type = 'checkbox';
+    animCb.id = 'set-anim';
+    const animSlider = document.createElement('span');
+    animSlider.className = 'slider';
+    const animText = document.createElement('span');
+    animText.setAttribute('data-i18n', 'settings.disable_animations_label');
+    animText.textContent = t('settings.disable_animations_label');
+    animSwitch.appendChild(animCb);
+    animSwitch.appendChild(animSlider);
+    animSwitch.appendChild(animText);
+    animRow.appendChild(animSwitch);
+    const animNote = document.createElement('div');
+    animNote.className = 'form-note';
+    animNote.setAttribute('data-i18n', 'settings.disable_animations_hint');
+    animNote.textContent = t('settings.disable_animations_hint');
+    animRow.appendChild(animNote);
+
     const actionRow = document.createElement('div');
     actionRow.className = 'form-row';
     actionRow.style.flexDirection = 'row';
@@ -1655,23 +1800,56 @@
     secAppearance.appendChild(themeRow);
     secAppearance.appendChild(accentRow);
     secAppearance.appendChild(langRow);
-    // 显示：显示原始文件名 / 调试模式
+    // 显示：显示原始文件名 / 调试模式 / 禁用硬件加速 / 禁用界面动画
     secDisplay.appendChild(nameRow);
     secDisplay.appendChild(debugRow);
+    secDisplay.appendChild(hwRow);
+    secDisplay.appendChild(animRow);
     // 数据：输出目录 / 维护操作
     secData.appendChild(outRow);
     secData.appendChild(actionRow);
 
-    body.appendChild(secAppearance);
-    body.appendChild(secDisplay);
-    body.appendChild(secData);
+    // 设置分区用 notebook（页签）划分：外观 / 显示 / 数据，竖版排版（一次只显示一个分区）
+    const notebook = document.createElement('div');
+    notebook.className = 'settings-notebook';
+    const snTabs = document.createElement('div');
+    snTabs.className = 'sn-tabs';
+    const snPanels = document.createElement('div');
+    snPanels.className = 'sn-panels';
+
+    const sections = [
+      { title: 'settings.section_appearance', el: secAppearance },
+      { title: 'settings.section_display', el: secDisplay },
+      { title: 'settings.section_data', el: secData },
+    ];
+    function setSnTab(idx) {
+      snTabs.querySelectorAll('.sn-tab').forEach((b, i) => b.classList.toggle('active', i === idx));
+      snPanels.querySelectorAll('.sn-panel').forEach((p, i) => p.classList.toggle('active', i === idx));
+    }
+    sections.forEach((s, i) => {
+      const tb = document.createElement('button');
+      tb.type = 'button';
+      tb.className = 'sn-tab' + (i === 0 ? ' active' : '');
+      tb.setAttribute('data-i18n', s.title);
+      tb.textContent = t(s.title);
+      tb.addEventListener('click', () => setSnTab(i));
+      snTabs.appendChild(tb);
+      const panel = document.createElement('div');
+      panel.className = 'sn-panel' + (i === 0 ? ' active' : '');
+      panel.appendChild(s.el);
+      snPanels.appendChild(panel);
+    });
+    notebook.appendChild(snTabs);
+    notebook.appendChild(snPanels);
+    body.appendChild(notebook);
 
     const footer = document.createElement('div');
     const closeBtn = btn('', 'btn sm', null);
     closeBtn.setAttribute('data-i18n', 'dialog.close');
     closeBtn.textContent = t('dialog.close');
     footer.appendChild(closeBtn);
-    const { close } = showModal({ titleKey: 'settings.title', body, footer });
+    // settings-modal：固定高度 + 页签常驻（内容在分区面板内滚动）
+    const { close } = showModal({ titleKey: 'settings.title', body, footer, className: 'settings-modal' });
     closeBtn.addEventListener('click', close);
 
     themeDropdown.onChange = (v) => {
@@ -1708,6 +1886,32 @@
       if (App.debugMode && window.__electron && window.__electron.openLogConsole) {
         window.__electron.openLogConsole();
       }
+    });
+
+    // 禁用硬件加速（需重启生效）：改动后弹窗询问是否立即重启
+    hwCb.checked = !!App.info.disable_hardware_accel;
+    hwCb.addEventListener('change', async () => {
+      if (!api()) return;
+      const r = await api().set_disable_hardware_accel(hwCb.checked);
+      App.info.disable_hardware_accel = !!r.disable_hardware_accel;
+      const yes = await confirmDialog(
+        t('settings.hw_accel_restart_title'),
+        t('settings.hw_accel_restart_msg'),
+        t('settings.hw_accel_restart_now'),
+        t('settings.hw_accel_restart_later')
+      );
+      if (yes && window.__electron && window.__electron.restart) {
+        window.__electron.restart();
+      }
+    });
+
+    // 禁用界面动画（立即生效，无需重启）
+    animCb.checked = !!App.info.disable_animations;
+    animCb.addEventListener('change', async () => {
+      if (!api()) return;
+      const r = await api().set_disable_animations(animCb.checked);
+      App.info.disable_animations = !!r.disable_animations;
+      applyAnimations(!!r.disable_animations);
     });
 
     outField.querySelector('#set-browse').addEventListener('click', async () => {
@@ -1957,14 +2161,46 @@
     else showProgress(p);
   });
 
-  // 调试模式：资源占用信息同步到标题栏
-  on('res_monitor', (p) => {
+  // ═════════════ 调试资源监视（内存/CPU + FPS；GPU 无法实时监视，故不在此显示）══
+  App._res = { mem: 0, cpu: 0, fps: 0, win: '' };
+
+  function _updateResTitle() {
     const el = $('#tb-res');
     if (!el) return;
-    const win = (p && p.width) ? t('log.resource_win', { width: p.width, height: p.height }) : '';
-    el.textContent = t('log.resource_title', { mem: p.mem_mb, cpu: p.cpu, win: win }).replace(/^\s*\|\s*/, '');
+    if (!App.debugMode) { el.hidden = true; return; }
+    const r = App._res;
+    const parts = [];
+    parts.push(t('log.resource_mem', { mem: r.mem }));
+    parts.push(t('log.resource_cpu', { cpu: r.cpu }));
+    if (r.fps > 0) parts.push(t('log.resource_fps', { fps: r.fps }));
+    if (r.win) parts.push(r.win);
+    el.textContent = parts.join(' | ');
     el.hidden = false;
+  }
+
+  // 调试模式：后端内存/CPU/窗口占用 → 标题栏
+  on('res_monitor', (p) => {
+    App._res.mem = p.mem_mb;
+    App._res.cpu = p.cpu;
+    App._res.win = (p && p.width) ? t('log.resource_win', { width: p.width, height: p.height }) : '';
+    _updateResTitle();
   });
+
+  // FPS：前端 requestAnimationFrame 实时帧率（轻量，始终运行；非调试时隐藏显示）
+  let _fpsAccum = 0, _fpsLast = performance.now();
+  (function _fpsLoop() {
+    _fpsAccum++;
+    const now = performance.now();
+    if (now - _fpsLast >= 1000) {
+      App._res.fps = Math.round((_fpsAccum * 1000) / (now - _fpsLast));
+      _fpsAccum = 0;
+      _fpsLast = now;
+      _updateResTitle();
+    }
+    requestAnimationFrame(_fpsLoop);
+  })();
+
+  // GPU 无法实时监视显存占用，故不加入资源监视；GPU 型号仅在启动系统信息中显示（见 _loadSysInfo）
 
   on('load_complete', (r) => {
     clearProgress();
@@ -2004,10 +2240,47 @@
     toast(t('dialog.analyze_error_msg', { name: r.name, msg: r.message }), 'error');
   });
 
+  // 构建预览画质下拉（与设置同款 createDropdown）；onApply 在切换后回调
+  function _buildPreviewQualityDropdown(slot, onApply) {
+    if (!slot) return null;
+    const dd = createDropdown({
+      options: [100, 75, 50, 25].map((v) => ({ value: String(v), label: v + '%' })),
+      value: String(App.info.preview_quality != null ? App.info.preview_quality : 100),
+    });
+    slot.appendChild(dd.el);
+    dd.onChange = async (v) => {
+      if (!api()) return;
+      const r = await api().set_preview_quality(parseInt(v, 10) || 100);
+      App.info.preview_quality = r.preview_quality;
+      if (onApply) onApply(r.preview_quality);
+    };
+    return dd;
+  }
+
+  // 流式：填充某个精灵缩略图（不重建整网格），并把尺寸标签实时更新为实际显示尺寸
+  function _setPreviewThumb(name, url) {
+    App.previewThumbs[name] = url;
+    const item = document.querySelector('#preview-grid .sprite-preview-item[data-name="' + CSS.escape(name) + '"]');
+    const thumb = item && item.querySelector('.sprite-preview-thumb');
+    if (thumb && !thumb.querySelector('img')) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = name;
+      img.onload = () => {
+        if (item && img.naturalWidth) {
+          const sizeEl = item.querySelector('.sprite-preview-size');
+          if (sizeEl) sizeEl.textContent = img.naturalWidth + '×' + img.naturalHeight;
+        }
+      };
+      thumb.appendChild(img);
+    }
+  }
+
   on('preview_ready', (d) => {
     clearProgress();
     console.log(t('log.preview_ready', { name: d.name, count: d.count }));
     App.previewData = d.sprites || [];
+    App.previewThumbs = {};
     setStatus(t('app.status.extract_done', { name: d.name, count: d.count }));
     toast(t('app.status.extract_done', { name: d.name, count: d.count }), 'success');
     // 加载完成后再进入预览视图：隐藏组件选中板块，预览占满，再切到部件 tab
@@ -2018,20 +2291,24 @@
     $('#preview-count').textContent = '';
     $('#sprite-preview-empty').hidden = true;
     switchTab('parts');
-    // 生成缩略图期间在组件选择页面内显示加载进度条（后端逐张发 progress）
+    // 流式加载：先渲染占位网格，缩略图随后逐张填充
+    renderPreviewGrid();
     showSpritePreviewProgress({ current: 0, total: 1 });
     api().get_preview_thumbnails();
   });
 
+  // 流式：每收到一张立即填充对应格子
+  on('preview_thumb', (t) => {
+    if (t && t.name && t.data_url) _setPreviewThumb(t.name, t.data_url);
+  });
+
   on('preview_thumbs_ready', (map) => {
     clearProgress();
-    App.previewThumbs = map || {};
     hideSpritePreviewProgress();
-    // 缩略图生成完成：恢复状态栏、提示加载完毕并渲染网格
+    // 缩略图已流式填充完成；恢复状态栏、提示加载完毕（无需整网格重建，保留已加载图）
     const pn = $('#preview-name');
     setStatus(t('app.status.extract_done', { name: pn ? pn.textContent : '', count: App.previewData.length }), false);
     toast(t('log.preview_ready', { name: pn ? pn.textContent : '', count: App.previewData.length }), 'success');
-    renderPreviewGrid();
   });
 
   on('export_complete', (r) => {
@@ -2277,6 +2554,10 @@
       '  <div class="about-link">' + _aI('bug') + '<span class="about-link-label">' + t('about.links_issues') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter/issues" title="' + t('about.dev_click') + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
       '</div>' +
       '<div class="about-section">' +
+      '  <h3>' + _aI('code') + t('about.sys_title') + '</h3>' +
+      '  <div class="about-sys" id="about-sys">' + t('about.sys_loading') + '</div>' +
+      '</div>' +
+      '<div class="about-section">' +
       '  <h3>' + _aI('heart') + t('about.thanks_title') + '</h3>' +
       '  <p class="about-thanks" id="about-thanks-easter">' + t('about.thanks_text') + '</p>' +
       '</div>' +
@@ -2290,6 +2571,50 @@
     // 彩蛋入口：点击 logo 播放 kiang 音频
     const logoBox = el.querySelector('.about-icon');
     if (logoBox) logoBox.addEventListener('click', playKiangSound);
+    // 系统信息（CPU/内存/GPU/显存/OS）
+    _renderSysInfo();
+  }
+
+  // ═════════════ 系统信息（每次启动检查 CPU/GPU/内存配置）══════════════
+  function _renderSysInfo() {
+    const el = $('#about-sys');
+    if (!el) return;
+    const s = App.sysInfo;
+    if (!s) { el.textContent = t('about.sys_loading'); return; }
+    const rows = [];
+    rows.push(t('about.sys_cpu', { model: s.cpuModel, cores: s.cpuCores, speed: s.cpuSpeedGHz }));
+    rows.push(t('about.sys_mem', { mem: s.totalMemGB }));
+    if (s.gpuName && !/unknown/i.test(s.gpuName)) {
+      rows.push(s.gpuVramGB
+        ? t('about.sys_gpu', { name: s.gpuName, vram: s.gpuVramGB })
+        : t('about.sys_gpu_name', { name: s.gpuName }));
+    }
+    rows.push(t('about.sys_os', { os: s.osType + ' ' + s.osRelease, arch: s.osArch }));
+    el.innerHTML = rows.map((x) => '<div class="about-sys-row">' + x + '</div>').join('');
+  }
+
+  function _loadSysInfo() {
+    if (!window.__electron || !window.__electron.sysInfo) return;
+    window.__electron.sysInfo().then((s) => {
+      if (!s) return;
+      App.sysInfo = s;
+      // 若关于页已渲染则刷新
+      if ($('#about-sys')) _renderSysInfo();
+      // 输出到日志控制台（经 console 钩子转发为 [JS] 来源）；GPU 仅显示可识别的型号
+      try {
+        const lines = [
+          t('about.sys_cpu', { model: s.cpuModel, cores: s.cpuCores, speed: s.cpuSpeedGHz }),
+          t('about.sys_mem', { mem: s.totalMemGB }),
+        ];
+        if (s.gpuName && !/unknown/i.test(s.gpuName)) {
+          lines.push(s.gpuVramGB
+            ? t('about.sys_gpu', { name: s.gpuName, vram: s.gpuVramGB })
+            : t('about.sys_gpu_name', { name: s.gpuName }));
+        }
+        lines.push(t('about.sys_os', { os: s.osType + ' ' + s.osRelease, arch: s.osArch }));
+        console.log(t('log.sysinfo') + '\n' + lines.join('\n'));
+      } catch (e) { /* ignore */ }
+    }).catch(() => {});
   }
 
   // 彩蛋：点击关于页 logo 播放 kiang 目录音频（每次点击从头重播）
@@ -2508,6 +2833,9 @@
     $('#btn-select-all').addEventListener('click', () => selectAll(true));
     $('#btn-deselect-all').addEventListener('click', () => selectAll(false));
 
+    // 快速勾选所有 ClippingMask 部件（被裁剪进角色区域的叠加层，正确合成光影所必需）
+    $('#btn-select-clip').addEventListener('click', selectClipMaskParts);
+
     // 无组件预览模式
     $('#btn-prev-select-all').addEventListener('click', () => {
       App.previewSel = new Set(App.previewData.map((s) => s.name));
@@ -2532,6 +2860,30 @@
       App.autoUpdate = e.target.checked;
       if (App.autoUpdate && App.selected.size > 0) schedulePreview();
     });
+
+    // 预览画质（部件选择页，复用设置同款自定义下拉）：合成预览用
+    _buildPreviewQualityDropdown($('#preview-quality-slot'), () => {
+      if (App.characterData && App.selected.size > 0) doComposite();
+    });
+    // 无组件精灵预览也跟随预览画质（切换后按新画质流式重新生成缩略图）
+    _buildPreviewQualityDropdown($('#preview-quality-slot-nc'), () => {
+      if (!App.previewMode) return;
+      App.previewThumbs = {};
+      renderPreviewGrid();
+      showSpritePreviewProgress({ current: 0, total: 1 });
+      api().get_preview_thumbnails();
+    });
+
+    // 导出原始画质开关（预览窗口，悬停提示）：持久化（默认开启）
+    const exportCb = $('#set-export-original');
+    if (exportCb) {
+      exportCb.checked = App.info.export_original_quality !== false;
+      exportCb.addEventListener('change', async () => {
+        if (!api()) return;
+        const r = await api().set_export_original_quality(exportCb.checked);
+        App.info.export_original_quality = !!r.export_original_quality;
+      });
+    }
 
     // Anan 素描本自定义文字：“编辑文字”按钮 → 模态编辑（确定后即刷新预览）
     const btnSketchEdit = $('#btn-sketch-edit');
@@ -2698,6 +3050,7 @@
       if (info.theme === 'dark' || info.theme === 'light') theme = info.theme;
       const accent = info.accent || 'default';
       applyTheme(theme, accent);
+      applyAnimations(!!info.disable_animations);   // 禁用界面动画（低配 GPU 提速）
       setSplashProgress(80);
       bindEvents();
       initTabIndicator();   // tab 指示条（active 下划线滑动动画）
@@ -2705,6 +3058,7 @@
       renderInfoPage();
       renderAboutPage();
       initAboutBg();
+      _loadSysInfo();       // 启动时检查 CPU/GPU/内存配置（关于页展示）
       App.exportCount = (typeof info.export_count === 'number') ? info.export_count : 0;
       App.showOriginalName = !!info.show_original_name;
       App.debugMode = !!info.debug;

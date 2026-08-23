@@ -365,6 +365,50 @@ class SpriteCompositor:
     def __init__(self, scale: float = 100.0):
         self.scale = scale
         self.canvas_size = (2000, 4000)
+        # ── 可复用对象（低配机/低显存优化：避免频繁重建大画布与重复解码精灵）──
+        self._canvas: Optional[Image.Image] = None          # 复用的合成画布（同尺寸时原地清空重填）
+        self._scratch_region: Optional[Image.Image] = None  # 复用的区域遮罩临时缓冲（全画布 L）
+        self._sprite_cache: Dict[str, Image.Image] = {}     # 已解码精灵缓存（按绝对路径）
+
+    def clear_cache(self) -> None:
+        """清空精灵解码缓存与可复用画布（切换角色时调用，释放内存）"""
+        for img in self._sprite_cache.values():
+            try:
+                img.close()
+            except Exception:
+                pass
+        self._sprite_cache.clear()
+        for attr in ("_canvas", "_scratch_region"):
+            obj = getattr(self, attr)
+            if obj is not None:
+                try:
+                    obj.close()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
+    def _load_sprite(self, path: str) -> Image.Image:
+        """加载并缓存部件的解码 RGBA 图像（按绝对路径缓存，重复合成时避免重复解码 PNG）"""
+        img = self._sprite_cache.get(path)
+        if img is None:
+            img = Image.open(path).convert("RGBA")
+            self._sprite_cache[path] = img
+        return img
+
+    @staticmethod
+    def _apply_color(sprite: Image.Image, cr: float, cg: float, cb: float, ca: float) -> Image.Image:
+        """按 SpriteRenderer.m_Color 生成着色副本（不修改缓存源精灵）"""
+        r, g, b, a = sprite.split()
+        r = r.point(lambda v: int(v * cr))
+        g = g.point(lambda v: int(v * cg))
+        b = b.point(lambda v: int(v * cb))
+        a = a.point(lambda v: int(v * ca))
+        return Image.merge("RGBA", (r, g, b, a))
+
+    @staticmethod
+    def _clear_canvas(canvas: Image.Image) -> None:
+        """原地清空 RGBA 画布为全透明（复用缓冲，避免每次 Image.new 重建大画布）"""
+        canvas.paste((0, 0, 0, 0), (0, 0, canvas.width, canvas.height))
 
     def composite(
         self,
@@ -429,9 +473,13 @@ class SpriteCompositor:
                     sketch_anchor = (float(ref["position"]["x"]), float(ref["position"]["y"]))
                     sorted_parts = [p for p in sorted_parts if not p["name"].startswith("Option_Arms")]
 
-        # 计算画布大小
+        # 计算画布大小；复用同尺寸画布（原地清空），避免每次合成重建 2000x4000 大画布
         canvas_size = self._calc_canvas_size(sorted_parts)
-        composite = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        if self._canvas is None or self._canvas.size != canvas_size:
+            self._canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
+        else:
+            self._clear_canvas(self._canvas)
+        composite = self._canvas
         cx = canvas_size[0] // 2
         cy = canvas_size[1] // 2
 
@@ -449,18 +497,17 @@ class SpriteCompositor:
         total = len(sorted_parts)
         for i, part in enumerate(sorted_parts):
             try:
-                img = Image.open(part["sprite_path"]).convert("RGBA")
+                # 复用已解码精灵缓存（避免每次合成重复从磁盘解码 PNG）
+                sprite = self._load_sprite(part["sprite_path"])
+                img = sprite
+                owned = False  # img 是否为临时新建对象（需在 finally 中 close）
                 try:
                     # 应用 SpriteRenderer.m_Color（RGBA，默认白色全不透明）
                     c = part.get("color", {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0})
                     cr, cg, cb, ca = c["r"], c["g"], c["b"], c["a"]
                     if (cr, cg, cb, ca) != (1.0, 1.0, 1.0, 1.0):
-                        r, g, b, a = img.split()
-                        r = r.point(lambda v: int(v * cr))
-                        g = g.point(lambda v: int(v * cg))
-                        b = b.point(lambda v: int(v * cb))
-                        a = a.point(lambda v: int(v * ca))
-                        img = Image.merge("RGBA", (r, g, b, a))
+                        img = self._apply_color(sprite, cr, cg, cb, ca)
+                        owned = True
 
                     px = int(part["position"]["x"] * self.scale + cx)
                     py = int(part["position"]["y"] * -self.scale + cy)
@@ -479,13 +526,20 @@ class SpriteCompositor:
                     ):
                         region = (region_masks or {}).get(info["stencil_ref"])
                         if region is None:
-                            region = Image.new("L", canvas_size, 0)
+                            # 复用空白缓冲（原地清空），避免为每个裁剪层分配全画布临时图
+                            region = self._scratch_region
+                            if region is None or region.size != canvas_size:
+                                region = Image.new("L", canvas_size, 0)
+                                self._scratch_region = region
+                            region.paste(0, (0, 0, canvas_size[0], canvas_size[1]))
                         img = self._clip_to_region(img, region, place_x, place_y)
+                        owned = True  # _clip_to_region 返回副本，需关闭
 
                     # 按混合方式合成（normal 退化为 alpha_composite 原地合成，避免全画布临时图）
                     blend_over(composite, img, place_x, place_y, blend_mode)
                 finally:
-                    img.close()  # 用后立即释放图片对象
+                    if owned:
+                        img.close()  # 仅关闭临时副本，不关闭缓存的源精灵
             except Exception as e:
                 log("error", _("log.composite_failed_part", name=part['name'], e=e))
 
@@ -519,27 +573,30 @@ class SpriteCompositor:
             {stencil_ref: L 图像}，区域为多个区域源部件 alpha 的并集（ImageChops.lighter）
         """
         masks: Dict[int, Image.Image] = {}
+        # 复用单个临时缓冲，避免为每个区域源部件分配全画布临时图（低配机减少内存抖动）
+        scratch = self._scratch_region
+        if scratch is None or scratch.size != canvas_size:
+            scratch = Image.new("L", canvas_size, 0)
+            self._scratch_region = scratch
+        w, h = canvas_size
         for part in parts:
             info = part_info.get(part["name"])
             if not info or info.get("role") != "mask" or info.get("stencil_ref") is None:
                 continue
             ref = info["stencil_ref"]
             try:
-                img = Image.open(part["sprite_path"]).convert("RGBA")
-                try:
-                    a = img.getchannel("A")
-                    px = int(part["position"]["x"] * self.scale + cx)
-                    py = int(-part["position"]["y"] * self.scale + cy)
-                    sx, sy = img.size
-                    x = px - sx // 2
-                    y = py - sy // 2
-                    if ref not in masks:
-                        masks[ref] = Image.new("L", canvas_size, 0)
-                    tmp = Image.new("L", canvas_size, 0)
-                    tmp.paste(a, (x, y))
-                    masks[ref] = ImageChops.lighter(masks[ref], tmp)  # 区域取并集
-                finally:
-                    img.close()
+                sprite = self._load_sprite(part["sprite_path"])
+                a = sprite.getchannel("A")
+                px = int(part["position"]["x"] * self.scale + cx)
+                py = int(-part["position"]["y"] * self.scale + cy)
+                sx, sy = sprite.size
+                x = px - sx // 2
+                y = py - sy // 2
+                if ref not in masks:
+                    masks[ref] = Image.new("L", canvas_size, 0)
+                scratch.paste(0, (0, 0, w, h))  # 清空复用缓冲
+                scratch.paste(a, (x, y))
+                masks[ref] = ImageChops.lighter(masks[ref], scratch)  # 区域取并集
             except Exception as e:
                 log("warning", f"[composite] 构建裁剪区域失败 {part['name']}: {e}")
         return masks
@@ -554,7 +611,9 @@ class SpriteCompositor:
         """将部件 alpha 与区域图取交集（裁剪），超出画布范围自动处理。
 
         ClippingMask（role=masked）通过本方法被裁剪到其 stencil_ref 区域。
+        始终返回副本（不修改缓存的源精灵）。
         """
+        img = img.copy()  # 复制一份，避免 putalpha 修改缓存中的源精灵
         sx, sy = img.size
         a = img.getchannel("A")
         W, H = region.size

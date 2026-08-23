@@ -4,26 +4,15 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
-rem Usage: start.bat [electron|py|help]
+rem Usage: start.bat [help]
 
 set MODE=%~1
 if "%MODE%"=="" set MODE=electron
 if /i "%MODE%"=="-h" set MODE=help
 if /i "%MODE%"=="/?" set MODE=help
 if /i "%MODE%"=="help" goto :help
-if /i "%MODE%"=="py" set MODE=pywebview
-if /i "%MODE%"=="python" set MODE=pywebview
-if /i "%MODE%"=="pywebview" goto :pywebview
 if /i "%MODE%"=="electron" goto :electron
 goto :help
-
-:pywebview
-echo.
-echo  [MCE] Starting PyWebView mode...
-echo  [MCE] Note: keep this window open, closing it quits the app.
-echo.
-python run.py
-goto :end
 
 :electron
 echo.
@@ -51,10 +40,9 @@ goto :end
 
 :help
 echo.
-echo  MCE launcher
+echo  MCE launcher (Electron)
 echo  ===========================
 echo    start.bat           Electron mode (default, frameless + Aero Snap)
-echo    start.bat py        PyWebView mode (native window)
 echo    start.bat help      Show this help
 echo.
 goto :end

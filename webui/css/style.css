@@ -511,6 +511,9 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .about-open.bili:hover { background: rgba(251, 114, 153, .18); border-color: #fb7299; color: #fb7299; }
 .about-open.gh { background: rgba(88, 166, 255, .1); border-color: rgba(88, 166, 255, .35); }
 .about-open.gh:hover { background: rgba(88, 166, 255, .18); border-color: var(--accent-2); color: var(--accent-2); }
+/* 系统信息（启动检查 CPU/GPU/内存） */
+.about-sys { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--text-dim); }
+.about-sys-row { line-height: 1.6; word-break: break-all; }
 .about-thanks { font-size: 13px; color: var(--text); line-height: 1.7; }
 .about-note {
   max-width: 720px; margin: 18px auto 0;
@@ -533,6 +536,13 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .parts-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .parts-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .parts-toolbar-actions { display: flex; gap: 6px; }
+.clip-hint {
+  flex: 1 1 100%; display: flex; align-items: center; gap: 7px;
+  font-size: 11px; line-height: 1.5; color: var(--text-dim);
+  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: var(--radius); padding: 6px 10px;
+}
+.clip-hint svg { color: var(--accent); flex-shrink: 0; }
 .parts-search-wrap { position: relative; flex: 1 1 100%; display: flex; align-items: center; margin-top: 2px; }
 .parts-search-wrap svg { position: absolute; left: 10px; color: var(--text-faint); pointer-events: none; }
 .parts-search-wrap .search { width: 100%; padding-left: 32px; }
@@ -652,7 +662,14 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .selected-empty { color: var(--text-faint); font-size: 12px; text-align: center; padding: 16px; }
 
 .preview-panel { flex: 1; }
-.preview-toolbar { display: flex; gap: 6px; padding: 10px 14px; flex-wrap: wrap; }
+.preview-toolbar { display: flex; gap: 6px; padding: 10px 14px; flex-wrap: wrap; align-items: center; }
+
+/* 预览画质（部件选择页工具栏）：标签 + 自定义下拉（createDropdown，与设置同款） */
+.pq-wrap { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.pq-label { font-size: 12px; color: var(--text-dim, #8b949e); white-space: nowrap; }
+/* 预览窗口工具栏：导出原始画质开关 */
+.pq-switch { margin-left: 2px; }
+.pq-switch > span:last-child { font-size: 12px; color: var(--text-dim); }
 
 /* Anan 素描本自定义文字输入（选中 Arms01/Arms02 时显示；紧凑布局减少预览占用） */
 .sketch-input-wrap {
@@ -859,6 +876,26 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 /* 设置表单（分区） */
 .settings-section { margin-bottom: 18px; }
 .settings-section + .settings-section { padding-top: 14px; border-top: 1px solid var(--border); }
+/* 设置分区用 notebook（页签）划分，竖版排版（一次只显示一个分区） */
+.settings-notebook { display: flex; flex-direction: column; }
+.sn-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 14px; flex-shrink: 0; }
+.sn-tab {
+  padding: 7px 12px; font-size: 12px; color: var(--text-dim);
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.sn-tab:hover { color: var(--text); }
+.sn-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.sn-panel { display: none; }
+.sn-panel.active { display: block; }
+
+/* 设置窗口：固定高度；页签常驻顶部，分区内容在面板内滚动 */
+.modal.settings-modal { height: 560px; max-height: calc(100vh - 48px); }
+.modal.settings-modal .modal-body {
+  display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+}
+.modal.settings-modal .settings-notebook { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.modal.settings-modal .sn-panels { flex: 1; min-height: 0; overflow-y: auto; padding-right: 4px; }
 .settings-section-title {
   font-size: 11px; font-weight: 700; letter-spacing: .8px;
   color: var(--text-faint); text-transform: uppercase; margin-bottom: 10px;
@@ -1056,7 +1093,7 @@ select.input {
   background-position: 0 0, 8px 8px;
   display: grid; place-items: center; overflow: hidden;
 }
-.sprite-preview-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; image-rendering: auto; }
+.sprite-preview-thumb img { width: 100%; height: 100%; object-fit: contain; image-rendering: auto; }
 .sprite-preview-meta { flex-shrink: 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .sprite-preview-name {
   font-size: 13px; font-family: var(--mono); color: var(--text);
@@ -1213,3 +1250,40 @@ body.spear-lock * {
   transition: width .3s ease;
 }
 .splash-text { font-size: 13px; color: var(--text-dim); }
+
+/* 禁用界面动画（低配 GPU 提速）：去除淡入/过渡/位移动画，元素状态瞬间切换 */
+/* 注意：隐藏型元素（如未打开的下拉/彩蛋图）依赖自身 opacity/visibility 状态，勿用 visibility 覆盖 */
+body.no-anim *,
+body.no-anim *::before,
+body.no-anim *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+/* 例外：以下功能性/展示动画禁用动画后仍保留。
+   因 `revert` 在部分环境下不可靠，这里显式写回各元素的原始动画值，
+   用更高特异性（body.no-anim .xxx）覆盖上面的 `body.no-anim *` 禁用规则。
+   - 右下角 Toast 消息通知（滑入/滑出 + 关闭 + 进度条）
+   - 彩蛋：meme 全屏覆盖层 + execution 覆盖层（淡入淡出/按钮交互）
+   - 关于页背景轮播（.about-bg-layer 的 opacity 过渡） */
+body.no-anim .toast {
+  transition:
+    bottom .4s cubic-bezier(.22,1,.36,1),
+    transform .45s cubic-bezier(.22,1,.36,1),
+    opacity .45s ease !important;
+}
+body.no-anim .toast-close { transition: background .2s ease, color .2s ease !important; }
+body.no-anim .toast-progress { animation: toastProgress 3.5s linear forwards !important; }
+body.no-anim .meme-easter-overlay {
+  animation: fadeIn .2s ease !important;
+  transition: opacity .5s ease !important;
+}
+body.no-anim .meme-easter-img { transition: opacity .45s ease, transform .45s ease !important; }
+body.no-anim .easter-overlay {
+  animation: fadeIn .2s ease !important;
+  transition: opacity .45s ease !important;
+}
+body.no-anim .easter-scrim { transition: opacity .7s ease !important; }
+body.no-anim .easter-phone { transition: opacity .7s ease !important; }
+body.no-anim .exec-btn { transition: transform .15s ease, filter .15s ease !important; }
+body.no-anim .about-bg-layer { transition: opacity .6s ease !important; }

@@ -169,6 +169,10 @@
               <button id="btn-prev-export-sel" class="btn sm primary" data-i18n="preview.export_selected">导出选中</button>
               <button id="btn-prev-export-all" class="btn sm" data-i18n="preview.export_all">导出全部</button>
             </div>
+            <span class="pq-wrap">
+              <span class="pq-label" data-i18n="parts.preview_quality_label">预览画质</span>
+              <span id="preview-quality-slot-nc"></span>
+            </span>
           </div>
           <!-- 缩略图加载进度条（组件选择页面内） -->
           <div id="sprite-preview-progress" class="sprite-preview-progress" hidden>
@@ -191,6 +195,11 @@
               <div class="parts-toolbar-actions">
                 <button id="btn-select-all" class="btn sm" data-i18n="parts.select_all">全选</button>
                 <button id="btn-deselect-all" class="btn sm" data-i18n="parts.deselect_all">取消全选</button>
+                <button id="btn-select-clip" class="btn sm" data-i18n="parts.select_clip">快速勾选ClippingMask部件</button>
+              </div>
+              <div class="clip-hint">
+                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v5M12 7.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <span data-i18n="parts.clip_importance">ClippingMask 部件是被裁剪进角色区域的叠加层（光效/轮廓等），勾选后才能正确合成；缺失时相关光影效果将不显示。</span>
               </div>
               <div class="parts-search-wrap">
                 <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -226,6 +235,15 @@
                 <button id="btn-composite" class="btn sm primary" data-i18n="parts.composite_btn">生成合成图像</button>
                 <button id="btn-save" class="btn sm" data-i18n="parts.save_composite">保存合成图</button>
                 <button id="btn-clear-preview" class="btn sm ghost" data-i18n="parts.clear_preview">清空预览</button>
+                <label class="switch pq-switch" data-i18n-title="settings.export_original_hint" title="关闭后导出的图像与预览画质一致（体积更小、更省资源）。">
+                  <input type="checkbox" id="set-export-original" checked>
+                  <span class="slider"></span>
+                  <span data-i18n="settings.export_original_label">导出原始画质</span>
+                </label>
+                <span class="pq-wrap">
+                  <span class="pq-label" data-i18n="parts.preview_quality_label">预览画质</span>
+                  <span id="preview-quality-slot"></span>
+                </span>
               </div>
               <div id="sketch-input-wrap" class="sketch-input-wrap" hidden>
                 <button type="button" id="btn-sketch-edit" class="btn sm sketch-edit-btn">

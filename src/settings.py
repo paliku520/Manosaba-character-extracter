@@ -119,6 +119,10 @@ def _default_settings() -> Dict[str, Any]:
             "mode": DEFAULT_MODE,
             "config_version": CONFIG_VERSION,
             "theme": "dark",
+            "preview_quality": 100,             # 预览合成画质（缩放百分比 10~100）
+            "disable_hardware_accel": False,    # 禁用硬件加速（UI 渲染）
+            "export_original_quality": True,    # 导出原始画质图像（关闭时导出与预览画质一致）
+            "disable_animations": False,        # 禁用界面动画（淡入/过渡，低配 GPU 提速）
         },
         "game": {m: dict(_DEFAULT_GAME_SECTION) for m in GAME_MODES},
     }
@@ -250,6 +254,10 @@ def save_settings(
     export_count: Optional[int] = None,
     show_original_name: Optional[bool] = None,
     no_spoiler_notice: Optional[bool] = None,
+    preview_quality: Optional[int] = None,
+    disable_hardware_accel: Optional[bool] = None,
+    export_original_quality: Optional[bool] = None,
+    disable_animations: Optional[bool] = None,
     mode: Optional[str] = None,
 ) -> None:
     """保存设置到新版嵌套配置（只更新传入的字段，保留其余已有字段）
@@ -271,6 +279,14 @@ def save_settings(
         g["show_original_name"] = bool(show_original_name)
     if no_spoiler_notice is not None:
         g["no_spoiler_notice"] = bool(no_spoiler_notice)
+    if preview_quality is not None:
+        g["preview_quality"] = max(10, min(100, int(preview_quality)))
+    if disable_hardware_accel is not None:
+        g["disable_hardware_accel"] = bool(disable_hardware_accel)
+    if export_original_quality is not None:
+        g["export_original_quality"] = bool(export_original_quality)
+    if disable_animations is not None:
+        g["disable_animations"] = bool(disable_animations)
 
     section = _game_section(data, _mode_from(data))
     if output_dir is not None:
@@ -386,6 +402,52 @@ def get_no_spoiler(default: bool = False) -> bool:
     """返回是否已勾选“不再提示”剧透警告（global.no_spoiler_notice）；未设置时返回 default"""
     settings = load_settings()
     raw = _global_section(settings).get("no_spoiler_notice")
+    if isinstance(raw, bool):
+        return raw
+    return default
+
+
+def get_preview_quality(default: int = 100) -> int:
+    """返回预览合成画质（global.preview_quality，缩放百分比 10~100）；未设置时返回 default"""
+    settings = load_settings()
+    raw = _global_section(settings).get("preview_quality")
+    if isinstance(raw, bool):
+        return default
+    if isinstance(raw, int):
+        return max(10, min(100, raw))
+    if isinstance(raw, str) and raw.isdigit():
+        return max(10, min(100, int(raw)))
+    return default
+
+
+def get_disable_hardware_accel(default: bool = False) -> bool:
+    """返回是否禁用硬件加速（global.disable_hardware_accel，UI 渲染）；未设置时返回 default"""
+    settings = load_settings()
+    raw = _global_section(settings).get("disable_hardware_accel")
+    if isinstance(raw, bool):
+        return raw
+    return default
+
+
+def get_export_original_quality(default: bool = True) -> bool:
+    """返回是否导出原始画质图像（global.export_original_quality）。
+
+    关闭时导出图像与预览画质一致（按预览缩放比例降采样）。未设置时返回 default。
+    """
+    settings = load_settings()
+    raw = _global_section(settings).get("export_original_quality")
+    if isinstance(raw, bool):
+        return raw
+    return default
+
+
+def get_disable_animations(default: bool = False) -> bool:
+    """返回是否禁用界面动画（global.disable_animations，低配 GPU 提速）。
+
+    关闭动画为纯前端行为（CSS 过渡/淡入），无需重启即生效。未设置时返回 default。
+    """
+    settings = load_settings()
+    raw = _global_section(settings).get("disable_animations")
     if isinstance(raw, bool):
         return raw
     return default

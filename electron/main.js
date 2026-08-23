@@ -12,6 +12,7 @@
 const { app, BrowserWindow, ipcMain, dialog, screen, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { spawn, spawnSync } = require('child_process');
 const readline = require('readline');
 
@@ -31,6 +32,25 @@ console.log('\n' + MCE_BANNER);
 
 // 应用用户模型 ID（任务栏分组/通知归属；打包后进程名与图标由 electron-builder 提供）
 app.setAppUserModelId('com.paliku520.manosaba-extracter');
+
+// 消除低配/受限环境下 Chromium 磁盘/GPU 缓存创建失败（Unable to create cache /
+// Gpu Cache Creation failed / 拒绝访问）的报错与卡顿：
+//   - disable-gpu-shader-disk-cache：不持久化 GPU 着色器缓存（避免写缓存失败）
+//   - disk-cache-size=0：禁用 HTTP 磁盘缓存（本应用仅加载本地文件，无需磁盘缓存）
+// 必须在 app ready 之前调用。
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+app.commandLine.appendSwitch('disk-cache-size', '0');
+
+// 禁用硬件加速（UI 渲染）：读 settings.json 的 global.disable_hardware_accel。
+// 必须在 app ready / 创建窗口前调用，否则不生效（改动需重启 Electron）。
+// settingsFilePath()/dataDir() 为函数声明（已提升），此处可安全调用。
+try {
+  const __s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
+  const __g = (__s && typeof __s === 'object' && __s.global) || {};
+  if (__g.disable_hardware_accel === true) {
+    app.disableHardwareAcceleration();
+  }
+} catch {}
 
 let win = null;
 let py = null;
@@ -405,6 +425,58 @@ ipcMain.handle('win:quit', () => {
 ipcMain.handle('win:openLogConsole', () => {
   openLogConsole();
   return { ok: true };
+});
+
+// 重启应用（禁用硬件加速等需重启生效时使用）：先停后端再 relaunch
+ipcMain.handle('win:restart', () => {
+  stopBackend();
+  app.relaunch();
+  app.quit();
+  return { ok: true };
+});
+
+// 采集 GPU 信息（名称 / 显存，best-effort；Electron 不直接暴露实时显存占用，故提供总显存）
+async function gpuInfoData() {
+  try {
+    const info = await app.getGPUInfo('complete');
+    // 各 Electron/Chromium 版本返回结构有差异：gpuDevice 可能为数组、单个对象或缺失
+    let devices = (info && Array.isArray(info.gpuDevice)) ? info.gpuDevice : [];
+    if (!devices.length && info && typeof info === 'object' && info.gpuDevice) {
+      devices = Array.isArray(info.gpuDevice) ? info.gpuDevice : [info.gpuDevice];
+    }
+    // 优先真实 GPU（排除软件/ANGLE/虚拟适配器）
+    const real = devices.find((x) => x && x.deviceString && !/^(Google|ANGLE|SwiftShader)/i.test(x.deviceString));
+    const dev = real || devices[0] || null;
+    if (!dev) return null;
+    // 不同版本显存字段名兼容
+    const name = dev.deviceString || dev.deviceName || dev.name || dev.vendorString || '';
+    if (!name) return null;  // 识别不到真实 GPU 型号时返回 null，前端不显示
+    const vramBytes = dev.dedicatedVideoMemory || dev.vramSize || dev.dedicatedMemory || 0;
+    const vramGB = vramBytes ? Math.round((vramBytes / (1024 ** 3)) * 10) / 10 : 0;
+    return { name, vramGB };
+  } catch (e) {
+    return null;
+  }
+}
+
+// 系统信息（CPU / 内存 / GPU / 显存 / OS）——每次启动由前端拉取用于展示
+ipcMain.handle('sys:gpu', async () => gpuInfoData());
+
+ipcMain.handle('sys:info', async () => {
+  const cpus = os.cpus();
+  const cpu = cpus[0];
+  const gpu = await gpuInfoData();
+  return {
+    cpuModel: cpu ? cpu.model : '',
+    cpuCores: cpus.length,
+    cpuSpeedGHz: cpu ? Math.round((cpu.speed / 1000) * 10) / 10 : 0,
+    totalMemGB: Math.round((os.totalmem() / (1024 ** 3)) * 10) / 10,
+    gpuName: gpu ? gpu.name : '',
+    gpuVramGB: gpu ? gpu.vramGB : 0,
+    osType: os.type(),
+    osRelease: os.release(),
+    osArch: os.arch(),
+  };
 });
 
 // 全局快捷键：Ctrl+Shift+L 打开日志控制台

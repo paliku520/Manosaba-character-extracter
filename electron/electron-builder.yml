@@ -38,6 +38,8 @@ nsis:
   artifactName: MCE-Setup-${version}.${ext}
   # 自定义 NSIS 脚本：安装时让用户选择是否创建桌面快捷方式 / 添加到开始菜单
   include: nsis/installer.nsh
+  # 安装引导（欢迎/完成页）左侧图片（164x314 BMP，源自 webui/assets/logo.ico）
+  installerSidebar: nsis/installer-sidebar.bmp
   # 安装器支持语言（界面文本随系统语言自动切换；displayLanguageSelector 允许手动选择）
   installerLanguages:
     - zh_CN

@@ -45,9 +45,14 @@ const api = new Proxy(
 
 window.pywebview = { api };
 
-// Electron 专属能力（调试日志控制台、任务栏进度/闪烁）
+// Electron 专属能力（调试日志控制台、任务栏进度/闪烁、重启、系统信息）
 window.__electron = {
   openLogConsole: () => ipcRenderer.invoke('win:openLogConsole'),
+  // 重启应用（禁用硬件加速等需重启生效时使用）
+  restart: () => ipcRenderer.invoke('win:restart'),
+  // 系统信息（CPU/内存/GPU/显存/OS）
+  sysInfo: () => ipcRenderer.invoke('sys:info'),
+  gpuInfo: () => ipcRenderer.invoke('sys:gpu'),
   // 拖拽导入：将拖入的 File 解析为磁盘绝对路径（Electron 29+ 标准 API）
   getPathForFile: (file) => webUtils.getPathForFile(file),
   // 任务栏（Windows 原生）：读条期间显示进度，读条完成后黄色闪烁

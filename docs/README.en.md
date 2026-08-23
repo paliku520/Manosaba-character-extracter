@@ -13,8 +13,10 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Auto Detection** — Detect component data: preview/export directly when absent, or export/composite when present
 - **Character Compositing** — Composite full illustrations by part position, depth & clipping masks, with categories/thumbnails and Multiply / Overlay / Softlight blend modes to reproduce the original look
 - **Anan Sketchbook** — Custom text on anan's sketchbook parts (font size / alignment / auto wrap)
-- **Part Management** — search, natural sorting, collapsible groups, select all, click to copy name
+- **Part Management** — search, natural sorting, collapsible groups, select all, quick-select ClippingMask parts, click to copy name
 - **Live Preview** — wheel zoom (cursor-centered), drag pan
+- **Preview Quality / Original Export** — preview composites at lower resolution to reduce load; export keeps original quality by default, can switch to match preview
+- **Low-end GPU Optimization** — can disable hardware acceleration (software rendering) and UI animations for smoother low-end devices
 - **Sprite Preview** — one-click preview of all sprites for no-component characters, check to export
 - **Hierarchy Viewer** — component tree, copy button per row
 - **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it; remembers the last used game directory
@@ -33,6 +35,20 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 > Currently fully tested on **Windows** only; Linux/macOS compatibility is unknown.
 
+## Minimum System Requirements
+
+| Item | Minimum | Recommended |
+|---|---|---|
+| OS | Windows 10 1809 (64-bit) | Windows 10 / 11 (64-bit) |
+| CPU | Dual-core 1.6 GHz (x64) | Quad-core or better |
+| RAM | 4 GB | 8 GB or more |
+| GPU | DirectX 11 / WebGL capable (integrated OK) | Dedicated GPU, 1 GB+ VRAM |
+| Storage | ~1 GB free space | 2 GB or more |
+
+> - The packaged build (portable / installer) already bundles the Python backend and Electron runtime, so **no Python / Node.js installation is required** — runs out of the box.
+> - Compositing creates large canvases (up to 2000×4000); on low-RAM or iGPU machines, enable **Disable Hardware Acceleration** and **Disable UI Animations** for smoother performance.
+> - On low-end devices, lower the **Preview Quality** (10–100%) to reduce load; export still keeps original quality by default.
+
 ## Usage
 
 ### Run (Recommended: launcher script)
@@ -41,7 +57,6 @@ On Windows, use the `start.bat` launcher in the repo root:
 
 ```bat
 start.bat            :: Electron frameless window (default; native Aero Snap / drag / double-click maximize / edge resize)
-start.bat py         :: PyWebView / WebView2 mode (native window)
 start.bat help       :: Show help
 ```
 
@@ -52,7 +67,7 @@ pip install -r requirements.txt        # Python dependencies
 cd electron && npm install             # Electron dependencies
 ```
 
-> Alternatively launch manually: `cd electron && npm start` (Electron mode) or `python run.py` (PyWebView mode)
+> Alternatively launch manually: `cd electron && npm start`
 
 
 ### Steps
@@ -64,7 +79,7 @@ cd electron && npm install             # Electron dependencies
 
 ### Settings
 
-Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Spoiler Notice**, **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Spoiler Notice**, **Preview Quality** (10–100%, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 
@@ -97,7 +112,7 @@ temp/                  # Sprite cache (clearable, speeds up re-loading)
 ## Project Structure
 
 ```
-├── run.py             # PyWebView mode entry (WebView2, fallback)
+├── run.py             # JsApi bridge & core logic (compositing/preview/settings; reused by backend.py)
 ├── backend.py         # Electron mode Python backend child process (stdio JSON-RPC)
 ├── electron/          # Electron UI shell
 │   ├── main.js        #   main process: frameless window + Python child bridge + window control
@@ -110,7 +125,7 @@ temp/                  # Sprite cache (clearable, speeds up re-loading)
 └── temp/              # Sprite cache (generated at runtime)
 ```
 
-Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [Electron](https://www.electronjs.org/) (frameless UI shell, Chromium rendering + native Aero Snap), [pywebview](https://github.com/r0x0r/pywebview) (fallback WebView2 mode).
+Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [Electron](https://www.electronjs.org/) (frameless UI shell, Chromium rendering + native Aero Snap).
 
 ## Acknowledgments & License
 
