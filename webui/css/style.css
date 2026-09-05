@@ -94,24 +94,6 @@ html[data-theme="light"] {
   --thumb-checker-light: #ffffff;
 }
 
-/* 主题色（accent）：默认绿由 :root 定义；以下为各角色主题色（深浅模式通用） */
-html[data-accent="alisa"] { --accent: #EA4D3E; --accent-2: #EA4D3E; --accent-soft: rgba(234, 77, 62, 0.13); }
-html[data-accent="anan"] { --accent: #9D97F9; --accent-2: #9D97F9; --accent-soft: rgba(157, 151, 249, 0.14); }
-html[data-accent="coco"] { --accent: #F77449; --accent-2: #F77449; --accent-soft: rgba(247, 116, 73, 0.13); }
-html[data-accent="ema"] { --accent: #FF8FB4; --accent-2: #FF8FB4; --accent-soft: rgba(255, 143, 180, 0.14); }
-html[data-accent="hanna"] { --accent: #A7CB1E; --accent-2: #A7CB1E; --accent-soft: rgba(167, 203, 30, 0.15); }
-html[data-accent="hiro"] { --accent: #F84F5A; --accent-2: #F84F5A; --accent-soft: rgba(248, 79, 90, 0.13); }
-html[data-accent="jailer"] { --accent: #C5C9D4; --accent-2: #C5C9D4; --accent-soft: rgba(197, 201, 212, 0.16); }
-html[data-accent="leia"] { --accent: #FDB95B; --accent-2: #FDB95B; --accent-soft: rgba(253, 185, 91, 0.15); }
-html[data-accent="margo"] { --accent: #B87BF0; --accent-2: #B87BF0; --accent-soft: rgba(184, 123, 240, 0.14); }
-html[data-accent="meruru"] { --accent: #E2BFB8; --accent-2: #E2BFB8; --accent-soft: rgba(226, 191, 184, 0.15); }
-html[data-accent="miria"] { --accent: #EFD28D; --accent-2: #EFD28D; --accent-soft: rgba(239, 210, 141, 0.15); }
-html[data-accent="nanoka"] { --accent: #84909A; --accent-2: #84909A; --accent-soft: rgba(132, 144, 154, 0.16); }
-html[data-accent="noah"] { --accent: #65E4EB; --accent-2: #65E4EB; --accent-soft: rgba(101, 228, 235, 0.14); }
-html[data-accent="sherry"] { --accent: #89B5FA; --accent-2: #89B5FA; --accent-soft: rgba(137, 181, 250, 0.14); }
-html[data-accent="warden"] { --accent: #B3B1C5; --accent-2: #B3B1C5; --accent-soft: rgba(179, 177, 197, 0.16); }
-html[data-accent="yuki"] { --accent: #C3D4ED; --accent-2: #C3D4ED; --accent-soft: rgba(195, 212, 237, 0.16); }
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body { height: 100%; }
@@ -1099,6 +1081,22 @@ select.input {
 .mode-card .mc-title { font-weight: 600; color: var(--text); font-size: 13px; }
 .mode-card .mc-desc { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
 
+/* 软件模式选择：每项一张卡片，带该作品的 TitleLogo.png */
+.mode-picker { display: flex; flex-direction: column; gap: 10px; }
+.mode-pick-card {
+  flex-direction: column; align-items: center; text-align: center;
+  gap: 8px; padding: 14px 16px; width: 100%;
+}
+.mode-pick-card.selected { border-color: var(--accent); background: var(--accent-soft); }
+.mode-pick-thumb {
+  display: grid; place-items: center; width: 100%; max-width: 300px;
+  padding: 8px 12px; border-radius: 10px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+}
+.mode-pick-logo { width: 100%; height: auto; max-height: 96px; object-fit: contain; }
+.mode-pick-name { font-size: 13px; font-weight: 600; font-family: var(--mono); color: var(--text-dim); }
+.mode-pick-card.selected .mode-pick-name { color: var(--accent); }
+
 /* ═══════════ Toast 提示框（参考「窝-home-team」风格：堆叠/关闭/进度条/滑入） ═══════════ */
 #toast-root {
   position: fixed; top: 0; left: 0; width: 0; height: 0;
@@ -1264,8 +1262,7 @@ select.input {
 .easter-scrim.show { opacity: 1; }
 .easter-phone {
   position: relative; z-index: 1;   /* 在遮罩层之上 */
-  width: 280px; height: 462px;   /* phone.png 1024:1688 */
-  background: url('../assets/EasterEgg/execution/phone.png') no-repeat center / 100% 100%;
+  width: 280px; height: 462px;   /* phone.png 1024:1688（图源见 css/<mode>.css） */
   position: relative;
   display: flex; align-items: center; justify-content: center;
   transform: rotate(-5deg);      /* 向左偏移 5°（仅淡入，不缩放） */
@@ -1293,11 +1290,9 @@ select.input {
 .exec-fill {
   position: absolute; left: 0; bottom: 0; width: 100%; height: 0%;
   background: #953949;
-  -webkit-mask-image: url('../assets/EasterEgg/execution/ExecutionButton_Base.png');
   -webkit-mask-size: 150px 150px;
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: bottom center;
-  mask-image: url('../assets/EasterEgg/execution/ExecutionButton_Base.png');
   mask-size: 150px 150px;
   mask-repeat: no-repeat;
   mask-position: bottom center;
@@ -1340,12 +1335,6 @@ select.input {
   box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
 }
 .meme-easter-img.show { opacity: 1; transform: scale(1); }
-
-/* 彩蛋：noah 长矛（锁定期间全局强制长矛光标，覆盖各元素自带 cursor 样式） */
-body.spear-lock,
-body.spear-lock * {
-  cursor: url('../assets/EasterEgg/simple_spear/simple_spear_cursor.png') 1 2, auto !important;
-}
 
 /* 启动加载界面（splash） */
 #splash {

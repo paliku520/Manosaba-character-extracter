@@ -90,8 +90,8 @@ After installation, the app reads/writes the following data under its **install 
 | Path | Purpose |
 |---|---|
 | `D:\mce\data` | Settings `settings.json` |
-| `D:\mce\output` | Exported sprites / composite PNGs |
-| `D:\mce\temp` | Sprite cache (clearable) |
+| `D:\mce\output` | Exported sprites / composite PNGs (per game mode `output/<mode>/`) |
+| `D:\mce\temp` | Sprite cache (clearable, per game mode `temp/<mode>/`) |
 | `D:\mce\resources\backend\logs` | Runtime logs (one-click cleanup) |
 
 > Data (`data`/`output`/`temp`/`logs`) is always stored **preferentially in the program directory** (the install directory or the portable extraction directory); it only falls back to `%APPDATA%\Manosaba Character Extracter` when that directory is not writable (e.g. failed permission grant, antivirus interference, read-only drive).
@@ -101,13 +101,18 @@ After installation, the app reads/writes the following data under its **install 
 ### Output Structure
 
 ```
-output/
-├── <name>/            # No components: sprites flat here
-└── <name>/            # With components: sprites/ (sprites) + composite/ (composite images)
-    ├── character_data.json  # part / hierarchy data
-    └── mask_mapping.json    # mask & blend mode mapping
-temp/                  # Sprite cache (clearable, speeds up re-loading)
+output/            # output root (default; or a user-chosen directory)
+└── <mode>/        # current game (manosaba; mahoumura / hanoura-maze are placeholders)
+    ├── <name>/    # No components: sprites flat here
+    └── <name>/    # With components: sprites/ (sprites) + composite/ (composite images)
+        ├── character_data.json  # part / hierarchy data
+        └── mask_mapping.json    # mask & blend mode mapping
+temp/
+└── <mode>/        # current game cache (clearable, speeds up re-loading)
+    └── preview/   # temporary preview images for no-component sprites
 ```
+
+> Both `output/` and `temp/` are further split by **game mode** into a sub-folder (e.g. `output/manosaba/`, `temp/manosaba/`) to reserve isolation for future games; legacy single-level data is auto-migrated into the current game's sub-folder on first launch.
 
 ## Project Structure
 

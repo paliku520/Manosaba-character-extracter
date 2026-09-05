@@ -11,8 +11,9 @@
   }
 - global.window 为窗口大小/最大化状态（与 Electron 主进程共用；首次启动不预创建，
   由 Electron 在窗口关闭时写入）
-- game.<mode> 为各作品独立配置；village / labyrinth 目前仅为占位 section（不实际应用）
+- game.<mode> 为各作品独立配置；mahoumura / hanoura-maze 目前仅为占位 section（不实际应用）
 - 旧版扁平结构（顶层 window/theme/accent/last_directory/output_dir/lang/...）自动迁移到新版
+- 旧 mode 名（village / labyrinth）→ 新版（mahoumura / hanoura-maze）自动迁移，兼容旧配置
 """
 
 import copy
@@ -100,8 +101,11 @@ CONFIG_VERSION = "2.0"
 # 当前生效作品（决定读取 game.<mode> 哪个 section）
 DEFAULT_MODE = "manosaba"
 
-# 全部作品 mode：village / labyrinth 目前仅为占位（保留默认字段，暂不实际应用）
-GAME_MODES = ("manosaba", "village", "labyrinth")
+# 全部作品 mode：mahoumura / hanoura-maze 目前仅为占位（保留默认字段，暂不实际应用）
+GAME_MODES = ("manosaba", "mahoumura", "hanoura-maze")
+
+# 旧版 mode 名 → 新版 mode 名（兼容迁移：village→mahoumura、labyrinth→hanoura-maze）
+_MODE_LEGACY = {"village": "mahoumura", "labyrinth": "hanoura-maze"}
 
 # 各作品独立配置的默认字段（game.<mode>）
 _DEFAULT_GAME_SECTION = {
@@ -112,7 +116,7 @@ _DEFAULT_GAME_SECTION = {
 
 
 def _default_settings() -> Dict[str, Any]:
-    """新版默认配置骨架（village / labyrinth 为占位 section；不含 window，
+    """新版默认配置骨架（mahoumura / hanoura-maze 为占位 section；不含 window，
     窗口状态由 Electron 在关闭时写入 global.window）"""
     return {
         "global": {
@@ -147,11 +151,27 @@ def _normalize_settings(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
       迁入 global（目标已有值时以新值为准，不覆盖）
     - 旧版 use_chinese_names（“显示中文名”）→ 新版 show_original_name（取反），仅当新值未设置
     - 旧版顶层 accent/last_directory/output_dir 迁入当前 mode 的 game.<mode> section
+    - 旧 mode 名迁移：village→mahoumura、labyrinth→hanoura-maze（global.mode 值 + game.<mode> 键）
     - 确保所有 mode 都有完整默认字段（其他两款游戏 为占位）
 
     返回 (归一化后的数据, 是否发生了需要落盘的变更)。
     """
     data = copy.deepcopy(raw)
+
+    # ── 旧 mode 名迁移：village→mahoumura、labyrinth→hanoura-maze ──
+    # 须在下方 GAME_MODES 校验之前执行，否则旧 mode 会被当作非法重置为 manosaba
+    g_raw = data.get("global")
+    if isinstance(g_raw, dict) and isinstance(g_raw.get("mode"), str):
+        _renamed = _MODE_LEGACY.get(g_raw["mode"])
+        if _renamed:
+            g_raw["mode"] = _renamed
+    game_raw = data.get("game")
+    if isinstance(game_raw, dict):
+        for _old_mode, _new_mode in _MODE_LEGACY.items():
+            if _old_mode in game_raw:
+                if _new_mode not in game_raw:
+                    game_raw[_new_mode] = game_raw[_old_mode]
+                del game_raw[_old_mode]
 
     # ── global ──
     if not isinstance(data.get("global"), dict):
@@ -335,15 +355,41 @@ def get_lang(default: Optional[str] = None) -> Optional[str]:
     return default
 
 
-def get_output_dir(default: Path) -> Path:
-    """返回当前作品的输出目录（game.<mode>.output_dir，绝对路径）；未设置或非法时返回 default"""
+def get_output_dir(default: Path, mode: Optional[str] = None) -> Path:
+    """返回指定作品（默认当前生效作品）的输出根目录（game.<mode>.output_dir，绝对路径）。
+
+    未设置或非法时返回 default。注意返回的是**根目录**：实际导出位置统一在其下
+    追加 <mode> 子层（见 game_output_dir），保证默认与自选目录结构一致。
+    """
     settings = load_settings()
-    raw = _game_section(settings).get("output_dir")
+    raw = _game_section(settings, mode).get("output_dir")
     if raw:
         p = Path(raw)
         if p.is_absolute():
             return p
     return default
+
+
+def game_cache_dir(base: Path, mode: Optional[str] = None) -> Path:
+    """返回指定作品（默认当前生效作品）的缓存根目录：<base>/temp/<mode>/。
+
+    mode 由 settings 的 global.mode 决定（manosaba / mahoumura / hanoura-maze，后两者为占位）。
+    角色缓存实际写入 <cache_dir>/<角色名>/ 下；无组件预览在 <cache_dir>/preview/ 下。
+    """
+    m = mode if mode in GAME_MODES else get_mode()
+    return Path(base) / "temp" / m
+
+
+def game_output_dir(base: Path, mode: Optional[str] = None) -> Path:
+    """返回指定作品（默认当前生效作品）的输出根目录（角色目录的直接父级）。
+
+    规则：<output_root>/<mode>/
+      - output_root 默认 = <base>/output，或用户自选的输出目录（game.<mode>.output_dir）；
+      - 无论默认还是自选，统一追加 <mode>，保证各作品输出相互隔离、结构一致。
+    """
+    m = mode if mode in GAME_MODES else get_mode()
+    root = get_output_dir(Path(base) / "output", mode=m)
+    return root / m
 
 
 def get_last_directory(default: str = "") -> str:

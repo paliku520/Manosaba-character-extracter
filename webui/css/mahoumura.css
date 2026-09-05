@@ -1,0 +1,24 @@
+/* ============================================================
+   <mode> 专属样式 — 当前为 mahoumura（预留）
+   通用界面样式在 css/style.css；本文件由 index.html #mode-css 按当前作品加载。
+   素材统一指向 assets/<mode>/ 目录（目前仅 TitleLogo.png，其余待补充）。
+   ============================================================ */
+
+/* 主题色（accent）：默认绿由 style.css :root 定义；以下为角色主题色（深浅模式通用）。
+   预留作品暂复用同一套角色主题色，保证任意 mode 下 accent 仍生效；后续可改为本作品专用集。 */
+html[data-accent="alisa"] { --accent: #EA4D3E; --accent-2: #EA4D3E; --accent-soft: rgba(234, 77, 62, 0.13); }
+html[data-accent="anan"] { --accent: #9D97F9; --accent-2: #9D97F9; --accent-soft: rgba(157, 151, 249, 0.14); }
+html[data-accent="coco"] { --accent: #F77449; --accent-2: #F77449; --accent-soft: rgba(247, 116, 73, 0.13); }
+html[data-accent="ema"] { --accent: #FF8FB4; --accent-2: #FF8FB4; --accent-soft: rgba(255, 143, 180, 0.14); }
+html[data-accent="hanna"] { --accent: #A7CB1E; --accent-2: #A7CB1E; --accent-soft: rgba(167, 203, 30, 0.15); }
+html[data-accent="hiro"] { --accent: #F84F5A; --accent-2: #F84F5A; --accent-soft: rgba(248, 79, 90, 0.13); }
+html[data-accent="jailer"] { --accent: #C5C9D4; --accent-2: #C5C9D4; --accent-soft: rgba(197, 201, 212, 0.16); }
+html[data-accent="leia"] { --accent: #FDB95B; --accent-2: #FDB95B; --accent-soft: rgba(253, 185, 91, 0.15); }
+html[data-accent="margo"] { --accent: #B87BF0; --accent-2: #B87BF0; --accent-soft: rgba(184, 123, 240, 0.14); }
+html[data-accent="meruru"] { --accent: #E2BFB8; --accent-2: #E2BFB8; --accent-soft: rgba(226, 191, 184, 0.15); }
+html[data-accent="miria"] { --accent: #EFD28D; --accent-2: #EFD28D; --accent-soft: rgba(239, 210, 141, 0.15); }
+html[data-accent="nanoka"] { --accent: #84909A; --accent-2: #84909A; --accent-soft: rgba(132, 144, 154, 0.16); }
+html[data-accent="noah"] { --accent: #65E4EB; --accent-2: #65E4EB; --accent-soft: rgba(101, 228, 235, 0.14); }
+html[data-accent="sherry"] { --accent: #89B5FA; --accent-2: #89B5FA; --accent-soft: rgba(137, 181, 250, 0.14); }
+html[data-accent="warden"] { --accent: #B3B1C5; --accent-2: #B3B1C5; --accent-soft: rgba(179, 177, 197, 0.16); }
+html[data-accent="yuki"] { --accent: #C3D4ED; --accent-2: #C3D4ED; --accent-soft: rgba(195, 212, 237, 0.16); }

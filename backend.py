@@ -154,7 +154,8 @@ def _shutdown_logs():
     try:
         log("info", _("app.disclaimer"))
         log("info", _("log.app_exited"))
-        preview_dir = run.BASE_DIR / "temp" / "preview"
+        # preview 临时目录随当前作品隔离（temp/<mode>/preview）
+        preview_dir = run.game_cache_dir(run.BASE_DIR) / "preview"
         if preview_dir.exists():
             shutil.rmtree(preview_dir, ignore_errors=True)
             log("info", _("log.preview_cleaned", path=str(preview_dir)))

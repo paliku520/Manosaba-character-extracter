@@ -62,12 +62,16 @@ from src.i18n import (
     T,
     _,
     current_lang,
+    set_mode as i18n_set_mode,
     set_lang,
 )
 from src.logtools import clear_logs, configure, flush_logs, log, log_raw
 from src.resource_monitor import ResourceMonitor
 from src.settings import (
     ACCENT_NAMES,
+    GAME_MODES,
+    game_cache_dir,
+    game_output_dir,
     get_accent,
     get_disable_animations,
     get_disable_hardware_accel,
@@ -75,6 +79,7 @@ from src.settings import (
     get_export_original_quality,
     get_lang,
     get_last_directory,
+    get_mode,
     get_no_spoiler,
     get_output_dir,
     get_preview_quality,
@@ -222,6 +227,50 @@ def _get_webui_url() -> str:
     raise FileNotFoundError("webui/index.html not found")
 
 
+# ── 旧版目录结构一次性迁移（temp/output 增加 <mode> 层）─────────────
+def _migrate_legacy_dirs(mode: str) -> None:
+    """把旧版“无 mode 层”的缓存/输出数据平移到 <mode> 子目录（幂等，仅当前生效作品）。
+
+    旧结构 → 新结构:
+      temp/<角色>/                 → temp/<mode>/<角色>/
+      temp/preview/<角色>/         → temp/<mode>/preview/<角色>/
+      <outputRoot>/<角色>/         → <outputRoot>/<mode>/<角色>/
+    其中 <outputRoot> = BASE_DIR/output 或用户自选的输出目录（game.<mode>.output_dir）。
+
+    仅迁移目录；目标已存在同名（可能已迁移/重复）时跳过、不覆盖；根下散落的
+    文件（如开发脚本）不迁移。重复调用无副作用。
+    """
+
+    def _move(target_root: Path, name: str) -> None:
+        src = target_root / name
+        dst = target_root / mode / name
+        if not src.is_dir() or dst.exists():
+            return
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(src), str(dst))
+            log("info", _("log.dir_migrated", src=str(src), dst=str(dst)))
+        except Exception as e:
+            log("warning", f"migrate {src} -> {dst} failed: {e}")
+
+    # temp 缓存（含无组件预览目录 preview）
+    temp_root = BASE_DIR / "temp"
+    if temp_root.is_dir():
+        _move(temp_root, "preview")
+        for child in sorted(p.name for p in temp_root.iterdir() if p.is_dir()):
+            if child == "preview" or child in GAME_MODES:
+                continue
+            _move(temp_root, child)
+
+    # 输出根（默认 BASE_DIR/output 或用户自选）
+    out_root = get_output_dir(BASE_DIR / "output")
+    if out_root.is_dir():
+        for child in sorted(p.name for p in out_root.iterdir() if p.is_dir()):
+            if child in GAME_MODES:
+                continue
+            _move(out_root, child)
+
+
 # ===================================================================
 # JS ↔ Python 桥接 API（js_api）
 # ===================================================================
@@ -245,9 +294,11 @@ class JsApi:
         self._composite_image: Optional[Image.Image] = None
         self._preview_sprites: Optional[List] = None  # 无组件角色的预览精灵
 
-        # 目录
-        self._output_dir = output_dir or get_output_dir(BASE_DIR / "output")
-        self._temp_dir = BASE_DIR / "temp"
+        # 目录（缓存/输出均按游戏模式隔离：temp/<mode>/、<outputRoot>/<mode>/）
+        self._mode = get_mode()  # 当前生效作品（manosaba / mahoumura / hanoura-maze，后两者为占位）
+        _migrate_legacy_dirs(self._mode)  # 旧版无 mode 层数据一次性平移到 <mode> 子目录（幂等）
+        self._output_dir = output_dir or game_output_dir(BASE_DIR)
+        self._temp_dir = game_cache_dir(BASE_DIR)
         self._export_count = get_export_count()  # 累计导出次数（每次成功导出 +1，跨会话持久化）
         self._show_original_name = get_show_original_name()  # 是否显示原始文件名（默认显示本地化角色名，settings.json）
         self._no_spoiler = get_no_spoiler()  # 是否不再提示剧透警告（settings.json）
@@ -316,8 +367,13 @@ class JsApi:
 
     @staticmethod
     def _translations(lang: str) -> Dict[str, str]:
-        """返回某语言的完整翻译模板表"""
-        return {key: entry.get(lang, entry.get(LANG_CN, key)) for key, entry in T.items()}
+        """返回某语言的完整翻译模板表。
+
+        实时读取 src.i18n.T（而非 import 时绑定的旧表），确保切换作品（set_mode）
+        重建翻译表后 get_app_info 立即返回新模式文案，无需重启后端。
+        """
+        from src import i18n as _i18n_mod
+        return {key: entry.get(lang, entry.get(LANG_CN, key)) for key, entry in _i18n_mod.T.items()}
 
     def get_app_info(self) -> dict:
         """前端初始化时调用：版本、语言、翻译表、输出目录等"""
@@ -328,6 +384,7 @@ class JsApi:
             "lang_names": {code: _(f"lang.{code}") for code in LANGUAGE_CODES},
             "translations": self._translations(current_lang()),
             "output_dir": str(self._output_dir),
+            "mode": self._mode,
             "bundle_count": len(self._bundles),
             "frozen": getattr(sys, "frozen", False),
             "theme": get_theme(),
@@ -341,6 +398,32 @@ class JsApi:
             "disable_animations": self._disable_animations,
             "debug": self._debug_monitor,
         }
+
+    def set_mode(self, mode: str) -> dict:
+        """切换软件模式（作品）并持久化到 settings.json 的 global.mode。
+
+        同时：重建 i18n 翻译表（控制台日志跟随新模式）、按新模式重算缓存/输出目录、
+        清空已加载的角色/部件/预览数据。返回与 get_app_info 一致的信息供前端刷新。
+        注意各作品数据独立（缓存/输出按 <mode> 隔离），切换后需重新加载对应游戏目录。
+        """
+        if mode not in GAME_MODES or mode == self._mode:
+            return self.get_app_info()
+        save_settings(mode=mode)
+        i18n_set_mode(mode)   # 重建翻译表（games/<mode> 无专有文件时仅用 common）
+        self._mode = mode
+        self._output_dir = game_output_dir(BASE_DIR)   # 按新模式（含其输出根）重算
+        self._temp_dir = game_cache_dir(BASE_DIR)
+        # 清空与旧作品绑定的数据（bundles/组件状态/角色数据/合成/预览）
+        self._bundles = {}
+        self._char_has_component = {}
+        self._character_data = None
+        self._composite_image = None
+        self._preview_sprites = None
+        self._loading_path = None
+        self._char_gen += 1
+        self._composite_gen += 1
+        log("info", _("log.mode_changed", mode=mode))
+        return self.get_app_info()
 
     def set_lang(self, code: str) -> dict:
         """切换语言并持久化，返回新翻译表（同时更新窗口标题）"""
@@ -543,12 +626,21 @@ class JsApi:
         return chosen
 
     def set_output_dir(self, path: str) -> dict:
-        """保存并应用输出目录"""
+        """保存并应用输出根目录；实际导出位置 = <根>/<mode>/。
+
+        对话框默认停在 <根>/<mode>/（如 output/manosaba），若用户直接确认该路径，
+        则把“所选路径的上一层”存为根，避免 <mode>/<mode> 双重嵌套。
+        """
         if path and Path(path).is_absolute():
-            self._output_dir = Path(path).resolve()
+            chosen = Path(path).resolve()
         else:
-            self._output_dir = (BASE_DIR / "output").resolve()
-        save_settings(self._output_dir)
+            chosen = (BASE_DIR / "output").resolve()
+        if chosen.name == self._mode:
+            root = chosen.parent   # 用户选中的正是当前 <mode> 子目录 → 根取上一层
+        else:
+            root = chosen
+        save_settings(root)
+        self._output_dir = root / self._mode
         log("info", _("log.output_dir_set", path=str(self._output_dir)))
         return {"output_dir": str(self._output_dir)}
 

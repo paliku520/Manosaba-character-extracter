@@ -15,8 +15,8 @@
         │   ├── en_US.yaml
         │   ├── ja_JP.yaml
         │   └── mgl_MG.yaml        # fiXmArge（魔女语）为 manosaba 独有语种
-        ├── village/               # 《魔法少女的因习村》（预留）
-        └── labyrinth/             # 《主播少女的秘密账号迷宫》（预留）
+        ├── mahoumura/             # 《魔法少女的因习村》（预留）
+        └── hanoura-maze/          # 《主播少女的秘密账号迷宫》（预留）
 
 加载规则：
   - 先加载 common/<lang>.yaml（通用界面文案）
@@ -46,7 +46,7 @@ LANG_MGL = "mgl_MG"     # 魔女语 (fiXmArge Language / Magical girl language)(
 LANGUAGE_CODES = [LANG_CN, LANG_EN, LANG_JA, LANG_MGL]
 
 # 全部作品 mode（与 src/settings.GAME_MODES 保持一致；此处不 import 以避免循环依赖）
-GAME_MODES = ("manosaba", "village", "labyrinth")
+GAME_MODES = ("manosaba", "mahoumura", "hanoura-maze")
 
 
 # ── 当前语言 / 当前作品 ────────────────────────────────────
@@ -153,7 +153,7 @@ def set_lang(code: str) -> None:
 
 
 def set_mode(mode: str) -> None:
-    """切换当前作品模式（manosaba / village / labyrinth），重建翻译表。
+    """切换当前作品模式（manosaba / mahoumura / hanoura-maze），重建翻译表。
 
     通常由调用方在切换作品时调用（settings.json 的 global.mode 变更后）。
     """

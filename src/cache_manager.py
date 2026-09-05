@@ -1,9 +1,12 @@
 """
 缓存管理模块 — 处理角色数据的缓存读写
 
-缓存目录: temp/<name>/
-  ├── character_data.json    # 提取的完整角色数据
-  └── sprites/               # 缓存的精灵 PNG
+缓存目录规则（按游戏模式隔离，mode 由调用方解析为缓存根目录传入）:
+  调用方传入的 cache_dir 应为“当前作品的缓存根目录”（如 run.py 的 temp/<mode>/，
+  mahoumura / hanoura-maze 为占位），角色数据实际写入其下:
+    <cache_dir>/<name>/
+      ├── character_data.json    # 提取的完整角色数据
+      └── sprites/               # 缓存的精灵 PNG
 """
 
 import json
@@ -23,7 +26,7 @@ def save_extracted_data(data: Dict, cache_dir: Path, character_name: str) -> Non
 
     Args:
         data:           extract_character_data 返回的完整数据字典
-        cache_dir:      缓存根目录（通常为 temp/）
+        cache_dir:      当前作品的缓存根目录（如 temp/<mode>/）
         character_name: 角色名
     """
     save_dir = cache_dir / character_name
@@ -43,12 +46,15 @@ def load_extracted_data(cache_dir: Path, character_name: str) -> Optional[Dict]:
     验证条件:
       1. character_data.json 存在
       2. sprites/ 目录存在
-      3. JSON 中所有 sprite_path 对应的文件存在
+      3. JSON 中所有部件对应的精灵文件（按当前 sprites/ 目录 + 文件名定位）存在
 
     任一不满足则返回 None。
 
+    说明：精灵路径按“当前 sprites/ 目录 + 存储的文件名”重建（不信任 JSON 里的旧绝对路径），
+    因此缓存目录被整体移动（如 temp 增加 <mode> 层）或换根目录后，旧缓存仍可命中。
+
     Args:
-        cache_dir:      缓存根目录（通常为 temp/）
+        cache_dir:      当前作品的缓存根目录（如 temp/<mode>/）
         character_name: 角色名
 
     Returns:
@@ -64,9 +70,23 @@ def load_extracted_data(cache_dir: Path, character_name: str) -> Optional[Dict]:
         with open(json_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        # 缓存目录整体迁移（如 temp 增加 <mode> 层/更换根目录）后，JSON 里记录的精灵
+        # 绝对路径仍指向旧位置；以“当前 sprites/ 目录 + 原文件名”重建全部精灵路径，
+        # 使缓存命中不依赖存储时的绝对位置。
+        data["sprites_dir"] = str(sprites_dir)
+        data["save_dir"] = str(sprites_dir.parent)
+        for part in data.get("transform_data", []):
+            if isinstance(part, dict) and part.get("sprite_path"):
+                part["sprite_path"] = str(sprites_dir / Path(part["sprite_path"]).name)
+        sm = data.get("sprite_mapping")
+        if isinstance(sm, dict):
+            for v in sm.values():
+                if isinstance(v, dict) and v.get("file_path"):
+                    v["file_path"] = str(sprites_dir / Path(v["file_path"]).name)
+
         # 旧缓存可能没有 mask_mapping：尝试读取同目录的 mask_mapping.json（独立生成的文件）
         if "mask_mapping" not in data:
-            mm_path = save_dir / "mask_mapping.json"
+            mm_path = json_path.parent / "mask_mapping.json"
             if mm_path.exists():
                 try:
                     data["mask_mapping"] = json.loads(mm_path.read_text(encoding="utf-8"))
@@ -92,10 +112,10 @@ def load_extracted_data(cache_dir: Path, character_name: str) -> Optional[Dict]:
 
 def clear_cache(cache_dir: Path) -> None:
     """
-    清空整个缓存目录。
+    清空当前作品的整个缓存目录。
 
     Args:
-        cache_dir: 缓存根目录
+        cache_dir: 当前作品的缓存根目录（如 temp/<mode>/）
     """
     if cache_dir.exists():
         import shutil

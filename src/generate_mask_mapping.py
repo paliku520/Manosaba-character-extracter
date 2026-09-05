@@ -9,7 +9,7 @@
     python src/generate_mask_mapping.py [temp_dir] [characters_dir] [--dry]
 
 默认:
-    temp_dir      = <项目根>/temp
+    temp_dir      = <项目根>/temp/<当前作品 mode>   (如 temp/manosaba)
     characters_dir = E:\\steam\\steamapps\\common\\manosaba_game\\
                      manosaba_Data\\StreamingAssets\\aa\\StandaloneWindows64\\
                      naninovel-characters_assets_naninovel\\characters
@@ -35,6 +35,16 @@ DEFAULT_CHARS_DIR = (
     / "naninovel-characters_assets_naninovel"
     / "characters"
 )
+
+
+def _default_temp_dir() -> Path:
+    """当前作品的缓存根目录（跟随 settings 的 global.mode；缺省 manosaba）"""
+    try:
+        from src.settings import get_mode
+        mode = get_mode()
+    except Exception:
+        mode = "manosaba"
+    return BASE / "temp" / mode
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +251,7 @@ def generate_for_character(temp_dir: Path, chars_dir: Path, name: str) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="生成角色 mask_mapping.json")
-    parser.add_argument("temp_dir", nargs="?", default=str(BASE / "temp"))
+    parser.add_argument("temp_dir", nargs="?", default=str(_default_temp_dir()))
     parser.add_argument("characters_dir", nargs="?", default=str(DEFAULT_CHARS_DIR))
     parser.add_argument("--dry", action="store_true", help="只诊断，不写文件")
     args = parser.parse_args()
@@ -269,7 +279,7 @@ def main():
             )
         else:
             out.append(f"[SKIP] {d['name']}: {d.get('reason')}")
-    report_path = BASE / "temp" / "_mask_mapping_report.txt"
+    report_path = Path(args.temp_dir) / "_mask_mapping_report.txt"
     report_path.write_text("\n".join(out), encoding="utf-8")
     print("report:", report_path)
 

@@ -90,8 +90,8 @@ cd electron && npm install             # Electron 依赖
 | 路径 | 用途 |
 |---|---|
 | `D:\mce\data` | 设置文件 `settings.json` |
-| `D:\mce\output` | 导出精灵 / 合成立绘 PNG |
-| `D:\mce\temp` | 精灵缓存（可清理） |
+| `D:\mce\output` | 导出精灵 / 合成立绘 PNG（按游戏 mode 分 `output/<mode>/`） |
+| `D:\mce\temp` | 精灵缓存（可清理，按游戏 mode 分 `temp/<mode>/`） |
 | `D:\mce\resources\backend\logs` | 运行日志（可一键清理） |
 
 > 数据（`data`/`output`/`temp`/`logs`）始终**优先存放在程序所在目录**（安装目录或绿色版解压目录），仅当该目录不可写（如授权失败、杀毒软件拦截、只读盘）时才回退到 `%APPDATA%\Manosaba Character Extracter` 作为兜底。
@@ -101,13 +101,18 @@ cd electron && npm install             # Electron 依赖
 ### 输出结构
 
 ```
-output/
-├── <角色名>/            # 无组件：精灵直接平铺
-└── <角色名>/            # 有组件：sprites/（精灵）+ composite/（合成图）
-    ├── character_data.json  # 部件 / 层级数据
-    └── mask_mapping.json    # 遮罩与混合方式映射
-temp/                    # 精灵缓存（可清除，重复角色加速加载）
+output/            # 输出根（默认；或用户自选目录）
+└── <mode>/        # 当前游戏（manosaba；mahoumura / hanoura-maze 为占位）
+    ├── <角色名>/  # 无组件：精灵直接平铺
+    └── <角色名>/  # 有组件：sprites/（精灵）+ composite/（合成图）
+        ├── character_data.json  # 部件 / 层级数据
+        └── mask_mapping.json    # 遮罩与混合方式映射
+temp/
+└── <mode>/        # 当前游戏缓存（可清除，重复角色加速加载）
+    └── preview/   # 无组件精灵预览临时图
 ```
+
+> `output/` 与 `temp/` 均按**游戏模式**再分一层子目录（如 `output/manosaba/`、`temp/manosaba/`），为后续多作品预留隔离；旧版单层数据会在首次启动时自动迁移到当前作品的子目录。
 
 ## 项目结构
 

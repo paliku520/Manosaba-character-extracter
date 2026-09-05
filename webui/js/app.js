@@ -15,6 +15,46 @@
     (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n) => (Number.isInteger(n) ? String(n) : Number(n).toFixed(1));
 
+  // ── 作品（mode）资源路径 ──────────────────────────────
+  // logo/背景/彩蛋等素材按 assets/<mode>/ 隔离（共用 UI 字体仍在 assets/fonts/）；
+  // 样式按 css/<mode>.css 加载（见 index.html #mode-css）。mode 由后端 get_app_info().mode 提供。
+  function currentMode() {
+    const m = App.info && App.info.mode;
+    return (m === 'manosaba' || m === 'mahoumura' || m === 'hanoura-maze') ? m : 'manosaba';
+  }
+  // assets/<当前 mode>/<相对路径>
+  function asset(p) {
+    return 'assets/' + currentMode() + '/' + p;
+  }
+  // 设置图片：依次尝试候选文件（assets/<mode>/…），命中即显示；全部缺失则隐藏（避免破图）
+  function setModeImg(id, files) {
+    const el = $(id);
+    if (!el) return;
+    const base = 'assets/' + currentMode();
+    let i = 0;
+    const next = () => {
+      if (i >= files.length) { el.style.visibility = 'hidden'; return; }
+      const file = files[i++];
+      const probe = new Image();
+      probe.onload = () => { el.style.visibility = ''; el.src = base + '/' + file; };
+      probe.onerror = next;
+      probe.src = base + '/' + file;
+    };
+    next();
+  }
+  // 后端 mode 就绪后应用：<html data-mode> + <mode> 样式表 + 各 logo 图（按作品素材）
+  function applyMode() {
+    const mode = currentMode();
+    document.documentElement.dataset.mode = mode;
+    const mc = $('#mode-css');
+    if (mc) mc.href = 'css/' + mode + '.css';
+    const zh = window.I18N && window.I18N.current === 'zh_CN';
+    // splash：中文优先 TitleLogo_CN，作品无 _CN 版则自动回退 TitleLogo.png
+    setModeImg('splash-logo', zh ? ['TitleLogo_CN.png', 'TitleLogo.png'] : ['TitleLogo.png']);
+    setModeImg('tb-logo-img', ['icon.ico']);
+    setModeImg('brand-logo-img', ['logo.ico']);
+  }
+
   // 将前端 console 输出转发到 Python 控制台（标注 [JS] 来源，与 Python 日志区分）
   (function () {
     const _levels = { log: 'info', info: 'info', warn: 'warning', error: 'error', debug: 'debug' };
@@ -960,7 +1000,7 @@
     overlay.id = 'meme-easter-overlay';
     overlay.innerHTML =
       '<div class="meme-easter-img-wrap">' +
-      '  <img class="meme-easter-img" src="assets/EasterEgg/assembly_meme_cn/meme.jpg" alt="">' +
+      '  <img class="meme-easter-img" src="' + asset('EasterEgg/assembly_meme_cn/meme.jpg') + '" alt="">' +
       '</div>';
     document.body.appendChild(overlay);
 
@@ -989,7 +1029,7 @@
         }, 500);
       }, 1000);
     };
-    const audio = new Audio('assets/EasterEgg/assembly_meme_cn/meme_1.wav');
+    const audio = new Audio(asset('EasterEgg/assembly_meme_cn/meme_1.wav'));
     audio.volume = 1;
 
     // 图片淡入时长与音频长度一致：元数据就绪后按 duration 设置过渡时长，再同时开始淡入 + 播放
@@ -1043,7 +1083,7 @@
   // 结束彩蛋：播放音频 + 清空预览 + 取消全选 + 解除锁定
   function finishSpearEaster() {
     if (!_spearEasterActive) return;
-    const audio = new Audio('assets/EasterEgg/simple_spear/balloon_pop.ogg');
+    const audio = new Audio(asset('EasterEgg/simple_spear/balloon_pop.ogg'));
     audio.volume = 1;
     audio.play().catch(() => {});
     clearPreview();
@@ -1617,6 +1657,70 @@
     wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') api.closeList(); });
     api.value = value; // 初始化显示
     return api;
+  }
+
+  // ═════════════ 软件模式切换（主页面入口 → 选择模态） ═════════════
+  const MODE_IDS = ['manosaba', 'mahoumura', 'hanoura-maze'];
+  function modeValid(m) { return MODE_IDS.indexOf(m) >= 0; }
+
+  // 切换：确认后调用后端持久化，并导航到“带新 mode 的 URL”（首帧即新作品样式/素材）
+  async function switchSoftwareMode(m) {
+    if (!modeValid(m) || !api()) return;
+    if (m === currentMode()) return;
+    const okc = await confirmDialog(
+      t('settings.mode_confirm_title'),
+      t('settings.mode_confirm_msg', { mode: m }),
+      t('dialog.ok'), t('dialog.cancel')
+    );
+    if (!okc) return;
+    try {
+      await api().set_mode(m);
+      // 兜底会话提示（供无 query 环境）；随后导航到带新 mode 的 URL
+      try { sessionStorage.setItem('mce_mode', m); } catch (e) { /* ignore */ }
+      const u = new URL(window.location.href);
+      u.searchParams.set('mode', m);
+      window.location.href = u.toString();
+    } catch (e) {
+      toast('软件模式切换失败: ' + (e && e.message ? e.message : e), 'error');
+    }
+  }
+
+  // 选择模态：每个作品一张卡片（带其 TitleLogo.png），点击即发起切换
+  function openModePicker() {
+    const body = document.createElement('div');
+    const desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = t('settings.mode_hint');
+    body.appendChild(desc);
+    const cur = currentMode();
+    const wrap = document.createElement('div');
+    wrap.className = 'mode-picker';
+    MODE_IDS.forEach((m) => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'mode-card mode-pick-card' + (m === cur ? ' selected' : '');
+      card.dataset.mode = m;
+      const thumb = document.createElement('span');
+      thumb.className = 'mode-pick-thumb';
+      const img = document.createElement('img');
+      img.className = 'mode-pick-logo';
+      img.alt = m;
+      img.src = 'assets/' + m + '/TitleLogo.png';
+      thumb.appendChild(img);
+      const nm = document.createElement('span');
+      nm.className = 'mode-pick-name';
+      nm.textContent = m;
+      card.appendChild(thumb);
+      card.appendChild(nm);
+      card.addEventListener('click', () => switchSoftwareMode(m));
+      wrap.appendChild(card);
+    });
+    body.appendChild(wrap);
+    const footer = document.createElement('div');
+    const closeBtn = btn(t('dialog.close'), 'btn sm', null);
+    footer.appendChild(closeBtn);
+    const { close } = showModal({ titleKey: 'settings.mode_picker_title', body, footer });
+    closeBtn.addEventListener('click', close);
   }
 
   function openSettings() {
@@ -2529,7 +2633,7 @@
     const ver = App.info && App.info.version ? 'v' + App.info.version : '';
     el.innerHTML =
       '<div class="about-hero">' +
-      '<div class="about-icon"><img src="assets/logo.ico" alt="logo"></div>' +
+      '<div class="about-icon"><img src="' + asset('logo.ico') + '" alt="logo"></div>' +
       '<h2>' + t('about.app_name') + '</h2>' +
       '<p class="about-version-line">' +
       '  <span class="about-ver">' + _aI('tag') + t('about.version_label', { version: ver }) + '</span>' +
@@ -2623,7 +2727,7 @@
   let _kiangAudio = null;
   function playKiangSound() {
     if (!_kiangAudio) {
-      _kiangAudio = new Audio('assets/EasterEgg/kiang/0201Trial08_Ema022.wav');
+      _kiangAudio = new Audio(asset('EasterEgg/kiang/0201Trial08_Ema022.wav'));
       _kiangAudio.volume = 0.8;
     }
     _kiangAudio.currentTime = 0;
@@ -2644,7 +2748,7 @@
     // 第一步：背景图（随机一张）立即显示
     const bgIdx = 1 + Math.floor(Math.random() * 7);
     overlay.style.backgroundImage =
-      'url("assets/EasterEgg/execution/bg/' + String(bgIdx).padStart(2, '0') + '.webp")';
+      'url("' + asset('EasterEgg/execution/bg/' + String(bgIdx).padStart(2, '0') + '.webp') + '")';
     document.body.appendChild(overlay);
 
     // 第二步：等待 1 秒后再加载叠加层与 phone，两者同步纯淡入（不缩放）
@@ -2657,11 +2761,11 @@
       phone.className = 'easter-phone';
       phone.innerHTML =
         '  <button type="button" class="exec-btn" id="exec-btn" aria-label="execution">' +
-        '    <img class="exec-layer exec-base" src="assets/EasterEgg/execution/ExecutionButton_Base.png" alt="">' +
+        '    <img class="exec-layer exec-base" src="' + asset('EasterEgg/execution/ExecutionButton_Base.png') + '" alt="">' +
         '    <div class="exec-fill"></div>' +
-        '    <img class="exec-layer exec-frame" src="assets/EasterEgg/execution/ExecutionButton_Frame.png" alt="">' +
-        '    <img class="exec-label" src="assets/EasterEgg/execution/ExecutionButton_Label.png" alt="">' +
-        '    <img class="exec-check" src="assets/EasterEgg/execution/ExecutionButton_CheckIcon.png" alt="">' +
+        '    <img class="exec-layer exec-frame" src="' + asset('EasterEgg/execution/ExecutionButton_Frame.png') + '" alt="">' +
+        '    <img class="exec-label" src="' + asset('EasterEgg/execution/ExecutionButton_Label.png') + '" alt="">' +
+        '    <img class="exec-check" src="' + asset('EasterEgg/execution/ExecutionButton_CheckIcon.png') + '" alt="">' +
         '  </button>';
       overlay.appendChild(phone);
 
@@ -2670,9 +2774,9 @@
       const check = phone.querySelector('.exec-check');
 
       // 三个音效：心跳（进入即播，循环）/ 长按（按住循环）/ 完成（一次）
-      const sHeart = new Audio('assets/EasterEgg/execution/Sfx_Scenario_035 Human heartbeat.wav');
-      const sHold = new Audio('assets/EasterEgg/execution/Sfx_System_ExecuteButton_001.wav');
-      const sDone = new Audio('assets/EasterEgg/execution/Sfx_System_ExecuteButton_002.wav');
+      const sHeart = new Audio(asset('EasterEgg/execution/Sfx_Scenario_035 Human heartbeat.wav'));
+      const sHold = new Audio(asset('EasterEgg/execution/Sfx_System_ExecuteButton_001.wav'));
+      const sDone = new Audio(asset('EasterEgg/execution/Sfx_System_ExecuteButton_002.wav'));
       sHeart.loop = false; sHeart.volume = .55;  // 心跳只播一次
       sHold.loop = true; sHold.volume = .6;
       sDone.volume = .9;
@@ -2721,7 +2825,7 @@
         // 过渡关闭界面（填满后 1.5 秒才开始淡出）；淡出开始时随机播放一段结束音频（End_1~5）
         setTimeout(() => {
           const endIdx = 1 + Math.floor(Math.random() * 5);
-          const sEnd = new Audio('assets/EasterEgg/execution/End_' + endIdx + '.wav');
+          const sEnd = new Audio(asset('EasterEgg/execution/End_' + endIdx + '.wav'));
           sEnd.volume = .9;
           sEnd.play().catch(() => {});
           overlay.classList.add('closing');
@@ -2748,7 +2852,7 @@
   // 关于页背景轮播（参考站 images/bg/01~45.webp，随机起始、定时切换）
   const ABOUT_BG_COUNT = 45;
   function aboutBgUrl(i) {
-    return 'assets/bg/' + String(i + 1).padStart(2, '0') + '.webp';
+    return asset('bg/' + String(i + 1).padStart(2, '0') + '.webp');
   }
   function initAboutBg() {
     const layer = $('#about-bg-layer');
@@ -2820,6 +2924,7 @@
     setupDragDrop();  // 拖拽导入：把游戏目录文件夹拖入窗口即可加载
     $('#btn-open-output').addEventListener('click', () => api().open_output());
     $('#btn-settings').addEventListener('click', openSettings);
+    $('#btn-switch-mode').addEventListener('click', openModePicker);
     $('#btn-clear-cache').addEventListener('click', async () => {
       if (_spearEasterActive) return;   // 长矛彩蛋锁定期间禁止清缓存
       switchTab('info');  // 先返回信息页，再清理
@@ -3025,6 +3130,7 @@
       setSplashProgress(45);
       App.info = info;
       window.I18N.set(info.translations, info.current_lang, info.lang_names);
+      applyMode();           // 按作品 mode 应用 <html data-mode>/<mode> 样式表与静态 logo
       setSplashProgress(60);
       updateTitleBar();
       const vb = $('#version-badge');

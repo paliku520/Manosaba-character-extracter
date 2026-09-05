@@ -1,10 +1,13 @@
 """
 导出管理模块 — 处理精灵导出和合成图保存的目录结构
 
-目录规则:
-  - 无组件角色: output/<name>/        (精灵直接平铺)
-  - 有组件角色: output/<name>/sprites/   (导出的精灵)
-                output/<name>/composite/  (合成图)
+目录规则（按游戏模式隔离，mode 由调用方解析为输出根目录传入）:
+  调用方传入的 output_dir 应为“当前作品的输出根目录”（如 run.py 的
+  <outputRoot>/<mode>/；<outputRoot> 默认 output/ 或用户自选目录，mahoumura /
+  hanoura-maze 为占位）:
+  - 无组件角色: <output_dir>/<name>/        (精灵直接平铺)
+  - 有组件角色: <output_dir>/<name>/sprites/   (导出的精灵)
+                <output_dir>/<name>/composite/  (合成图)
 """
 
 import re
@@ -33,7 +36,7 @@ def export_sprites(
 
     Args:
         bundle_path:       bundle 文件路径
-        output_dir:        输出根目录
+        output_dir:        当前作品的输出根目录（如 <outputRoot>/<mode>/）
         has_components:    角色是否拥有组件结构
         progress_callback: 可选进度回调 fn(current, total)
         cancel_check:      可选取消检查 fn() -> bool，返回 True 时抛 LoadCancelled
@@ -103,7 +106,7 @@ def save_composite(
 
     Args:
         image:          合成后的 PIL Image
-        output_dir:     输出根目录
+        output_dir:     当前作品的输出根目录（如 <outputRoot>/<mode>/）
         character_name: 角色名
 
     Returns:

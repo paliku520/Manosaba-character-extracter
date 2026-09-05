@@ -118,7 +118,7 @@ function settingsFilePath() {
 function activeMode(s) {
   const g = (s && typeof s === 'object' && s.global) || {};
   const m = g.mode;
-  return (m === 'manosaba' || m === 'village' || m === 'labyrinth') ? m : 'manosaba';
+  return (m === 'manosaba' || m === 'mahoumura' || m === 'hanoura-maze') ? m : 'manosaba';
 }
 
 // 最小窗口尺寸（窗口创建、读取/钳制已保存大小、边缘缩放均以此为下限，保持一致）
@@ -401,7 +401,7 @@ function webuiIndexHtml() {
   return path.join(webuiDir, 'index.html');
 }
 
-// 启动前注入已保存的设置（主题/主题色/语言），避免启动后闪变/文本跳动；splash 与首帧即正确
+// 启动前注入已保存的设置（软件模式/主题/主题色/语言），避免启动后闪变/文本跳动；splash 与首帧即正确
 function launchQueryOptions() {
   try {
     const dataRoot = app.isPackaged ? dataDir() : path.join(__dirname, '..');
@@ -411,6 +411,7 @@ function launchQueryOptions() {
     const mode = activeMode(s);
     const game = (s && s.game && s.game[mode]) || {};
     // 新版嵌套结构取值；兼容旧版顶层扁平字段
+    q.mode = mode;   // 作品 mode：首帧即切到对应 css/<mode>.css 与 assets/<mode>/ 素材（冷启动零闪动）
     if (g.theme || (s && s.theme)) q.theme = g.theme || s.theme;
     if (game.accent || (s && s.accent)) q.accent = game.accent || s.accent;
     if (g.lang || (s && s.lang)) q.lang = g.lang || s.lang;
