@@ -121,6 +121,28 @@ function activeMode(s) {
   return (m === 'manosaba' || m === 'village' || m === 'labyrinth') ? m : 'manosaba';
 }
 
+// 最小窗口尺寸（窗口创建、读取/钳制已保存大小、边缘缩放均以此为下限，保持一致）
+const MIN_WINDOW_W = 960;
+const MIN_WINDOW_H = 640;
+
+// 首次启动（无已保存窗口状态）的默认窗口大小：按主显示器工作区分辨率计算 16:9 尺寸，
+// 不能低于最小窗口大小，也不应超出屏幕（含超宽屏/低分辨率屏的兜底计算）
+function defaultWindowSize() {
+  const wa = screen.getPrimaryDisplay().workAreaSize;   // 主屏工作区（不含任务栏），单位 DIP
+  // 默认取工作区宽度的 80%，高度按 16:9 推算
+  let w = Math.round(wa.width * 0.8);
+  let h = Math.round((w * 9) / 16);
+  // 按宽度推算的高度超出工作区（超宽屏/低分辨率/竖屏）：改为按高度反推宽度，仍保持 16:9
+  if (h > wa.height) {
+    h = Math.round(wa.height * 0.9);
+    w = Math.round((h * 16) / 9);
+  }
+  // 窗口大小不能低于最小窗口大小（宽高各自钳到下限）
+  w = Math.max(w, MIN_WINDOW_W);
+  h = Math.max(h, MIN_WINDOW_H);
+  return { width: w, height: h };
+}
+
 function readWindowState() {
   try {
     const s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
@@ -128,8 +150,8 @@ function readWindowState() {
     const w = g.window || (s && s.window);   // 新版 global.window；兼容旧版顶层 window
     if (w && typeof w === 'object') {
       return {
-        width: Math.max(960, Number(w.width) || 1280),
-        height: Math.max(640, Number(w.height) || 860),
+        width: Math.max(MIN_WINDOW_W, Number(w.width) || 1280),
+        height: Math.max(MIN_WINDOW_H, Number(w.height) || 860),
         maximized: !!w.maximized,
       };
     }
@@ -342,11 +364,14 @@ function scaleFactor() {
 
 function createWindow() {
   const ws = readWindowState();
+  // 恢复上次窗口大小；首次启动（无已保存状态）时按主显示器分辨率计算 16:9 默认大小（不低于最小尺寸）。
+  // 不恢复位置（不指定 x/y → 由系统居中到主屏幕，避免跑到屏幕外）
+  const size = ws || defaultWindowSize();
   const opts = {
-    width: 1280,
-    height: 860,
-    minWidth: 960,
-    minHeight: 640,
+    width: size.width,
+    height: size.height,
+    minWidth: MIN_WINDOW_W,
+    minHeight: MIN_WINDOW_H,
     frame: false, // 无边框：标题栏由 webui 自绘（-webkit-app-region: drag）
     backgroundColor: '#0f1115',
     icon: path.join(__dirname, '..', 'webui', 'assets', 'icon.ico'),
@@ -358,11 +383,6 @@ function createWindow() {
       sandbox: false,
     },
   };
-  // 恢复上次窗口大小；不恢复位置（不指定 x/y → 由系统居中到主屏幕，避免跑到屏幕外）
-  if (ws) {
-    opts.width = ws.width;
-    opts.height = ws.height;
-  }
   win = new BrowserWindow(opts);
   if (ws && ws.maximized) win.maximize();
   win.loadFile(webuiIndexHtml(), launchQueryOptions());
@@ -518,8 +538,8 @@ ipcMain.handle('win:resize', (_e, dir, dx, dy) => {
     height -= ry;
   }
   if (dir.includes('b')) height += ry;
-  const MIN_W = 960;
-  const MIN_H = 640;
+  const MIN_W = MIN_WINDOW_W;   // 最小窗口宽度（与 createWindow/readWindowState 保持一致）
+  const MIN_H = MIN_WINDOW_H;
   if (width < MIN_W) {
     if (dir.includes('l')) x -= MIN_W - width;
     width = MIN_W;

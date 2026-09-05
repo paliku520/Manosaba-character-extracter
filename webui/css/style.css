@@ -1355,9 +1355,12 @@ body.spear-lock * {
 }
 #splash.hide { opacity: 0; pointer-events: none; transition: opacity .6s ease; }
 .splash-inner { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-/* 启动 Logo：游戏标题图（横版），仅按宽度缩放，保持原始高宽比；无边框/圆角/阴影 */
+/* 启动 Logo：游戏标题图（横版），按窗口实际大小缩放，保持原始高宽比；无边框/圆角/阴影。
+   宽度 = min(40vw, 高度换算宽度)：宽度随窗口实际宽度等比例缩放（40vw，约占窗口宽 4 成）；
+   同时以窗口高度为上限——预留下方副标题/进度条/文案约 240px 后，再按图片宽高比(≈1.7)换算成宽度上限，
+   保证窗口较矮/超宽时 Logo 不超高溢出，始终整体适配当前窗口且不显得过大。 */
 .splash-logo {
-  width: min(440px, 78vw);
+  width: min(20vw, calc((100vh - 240px) * 1.7));
   height: auto;
 }
 .splash-subtitle {
