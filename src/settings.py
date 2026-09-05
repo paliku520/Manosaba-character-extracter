@@ -11,7 +11,7 @@
   }
 - global.window 为窗口大小/最大化状态（与 Electron 主进程共用；首次启动不预创建，
   由 Electron 在窗口关闭时写入）
-- game.<mode> 为各作品独立配置；village / labyrinth 目前仅为占位 section（不实际应用）
+- game.<mode> 为各作品独立配置（已搁置多作品兼容，当前仅 manosaba）
 - 旧版扁平结构（顶层 window/theme/accent/last_directory/output_dir/lang/...）自动迁移到新版
 """
 
@@ -100,8 +100,8 @@ CONFIG_VERSION = "2.0"
 # 当前生效作品（决定读取 game.<mode> 哪个 section）
 DEFAULT_MODE = "manosaba"
 
-# 全部作品 mode：village / labyrinth 目前仅为占位（保留默认字段，暂不实际应用）
-GAME_MODES = ("manosaba", "village", "labyrinth")
+# 作品 mode 白名单：已搁置多作品兼容（兼容新游戏工作量巨大），当前仅保留 manosaba
+GAME_MODES = ("manosaba",)
 
 # 各作品独立配置的默认字段（game.<mode>）
 _DEFAULT_GAME_SECTION = {
@@ -112,7 +112,7 @@ _DEFAULT_GAME_SECTION = {
 
 
 def _default_settings() -> Dict[str, Any]:
-    """新版默认配置骨架（village / labyrinth 为占位 section；不含 window，
+    """新版默认配置骨架（当前仅 manosaba section；不含 window，
     窗口状态由 Electron 在关闭时写入 global.window）"""
     return {
         "global": {
@@ -147,7 +147,8 @@ def _normalize_settings(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
       迁入 global（目标已有值时以新值为准，不覆盖）
     - 旧版 use_chinese_names（“显示中文名”）→ 新版 show_original_name（取反），仅当新值未设置
     - 旧版顶层 accent/last_directory/output_dir 迁入当前 mode 的 game.<mode> section
-    - 确保所有 mode 都有完整默认字段（其他两款游戏 为占位）
+    - 确保所有 mode 都有完整默认字段；并剔除不在 GAME_MODES 的遗留 game section
+      （village / labyrinth 占位已移除，旧配置文件里的残留分节自动清理）
 
     返回 (归一化后的数据, 是否发生了需要落盘的变更)。
     """
@@ -201,6 +202,12 @@ def _normalize_settings(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
         if isinstance(sec, dict):
             merged.update(sec)
         game[m] = merged
+
+    # 清理不在 GAME_MODES 的遗留 game section（village / labyrinth 占位已移除，
+    # 旧配置文件残留的分节自动剔除，避免占位配置再次扩散）
+    for m in list(game.keys()):
+        if m not in GAME_MODES:
+            del game[m]
 
     return data, data != raw
 
@@ -263,7 +270,7 @@ def save_settings(
     """保存设置到新版嵌套配置（只更新传入的字段，保留其余已有字段）
 
     - global：theme / lang / export_count / show_original_name / no_spoiler_notice / mode
-    - game.<当前 mode>：accent / last_directory / output_dir（其他两款游戏 为占位）
+    - game.<当前 mode>（manosaba）：accent / last_directory / output_dir
     """
     data = load_settings()
     g = _global_section(data)

@@ -114,11 +114,12 @@ function settingsFilePath() {
   return path.join(dataRoot, 'data', 'settings.json');
 }
 
-// 当前生效作品 mode（新版结构 global.mode；其他两款游戏 为占位，暂不实际应用）
+// 当前生效作品 mode（新版结构 global.mode）。已搁置多作品兼容（兼容新游戏工作量巨大），
+// 当前仅保留 manosaba：白名单外的旧值一律回退默认 manosaba。
+const VALID_MODES = ['manosaba'];
 function activeMode(s) {
   const g = (s && typeof s === 'object' && s.global) || {};
-  const m = g.mode;
-  return (m === 'manosaba' || m === 'village' || m === 'labyrinth') ? m : 'manosaba';
+  return VALID_MODES.includes(g.mode) ? g.mode : 'manosaba';
 }
 
 // 最小窗口尺寸（窗口创建、读取/钳制已保存大小、边缘缩放均以此为下限，保持一致）

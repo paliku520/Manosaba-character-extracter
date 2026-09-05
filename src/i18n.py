@@ -10,13 +10,11 @@
     │   ├── ja_JP.yaml
     │   └── mgl_MG.yaml
     └── games/
-        ├── manosaba/              # 《魔法少女的魔女审判》专有（角色名、剧情术语、含游戏名文案等）
-        │   ├── zh_CN.yaml
-        │   ├── en_US.yaml
-        │   ├── ja_JP.yaml
-        │   └── mgl_MG.yaml        # fiXmArge（魔女语）为 manosaba 独有语种
-        ├── village/               # 《魔法少女的因习村》（预留）
-        └── labyrinth/             # 《主播少女的秘密账号迷宫》（预留）
+        └── manosaba/              # 《魔法少女的魔女审判》专有（角色名、剧情术语、含游戏名文案等）
+            ├── zh_CN.yaml
+            ├── en_US.yaml
+            ├── ja_JP.yaml
+            └── mgl_MG.yaml        # fiXmArge（魔女语）为 manosaba 独有语种
 
 加载规则：
   - 先加载 common/<lang>.yaml（通用界面文案）
@@ -45,8 +43,9 @@ LANG_MGL = "mgl_MG"     # 魔女语 (fiXmArge Language / Magical girl language)(
 
 LANGUAGE_CODES = [LANG_CN, LANG_EN, LANG_JA, LANG_MGL]
 
-# 全部作品 mode（与 src/settings.GAME_MODES 保持一致；此处不 import 以避免循环依赖）
-GAME_MODES = ("manosaba", "village", "labyrinth")
+# 作品 mode 白名单（与 src/settings.GAME_MODES 保持一致；此处不 import 以避免循环依赖）。
+# 已搁置多作品兼容，当前仅 manosaba。
+GAME_MODES = ("manosaba",)
 
 
 # ── 当前语言 / 当前作品 ────────────────────────────────────
@@ -153,7 +152,7 @@ def set_lang(code: str) -> None:
 
 
 def set_mode(mode: str) -> None:
-    """切换当前作品模式（manosaba / village / labyrinth），重建翻译表。
+    """切换当前作品模式（重建翻译表；当前仅支持 manosaba）。
 
     通常由调用方在切换作品时调用（settings.json 的 global.mode 变更后）。
     """
