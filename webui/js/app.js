@@ -861,9 +861,11 @@
           '<span class="part-thumb"><span class="noimg">…</span></span>' +
           '<span class="part-info">' +
           '  <span class="part-name"></span>' +
-          '  <span class="part-meta"></span>' +
-          '</span>' +
-          '<span class="part-alpha"></span>';
+          '  <span class="part-sub">' +
+          '    <span class="part-meta"></span>' +
+          '    <span class="part-alpha"></span>' +
+          '  </span>' +
+          '</span>';
 
         item.querySelector('.part-name').textContent = p.name;
         item.querySelector('.part-meta').textContent =

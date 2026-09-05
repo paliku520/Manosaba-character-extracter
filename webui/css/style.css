@@ -535,14 +535,48 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .parts-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .parts-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.parts-toolbar-actions { display: flex; gap: 6px; }
+.parts-toolbar-actions { display: flex; align-items: center; gap: 6px; }
+/* 顶部工具栏图标按钮：短标签防换行；长操作（快速勾选 ClippingMask）做成纯图标 + 悬停说明 */
+.parts-toolbar-actions .btn { white-space: nowrap; }
+.parts-toolbar-actions .btn svg { flex-shrink: 0; }
+.btn.icon-cc { padding: 6px 9px; gap: 6px; }
+.btn.icon-only { padding: 6px 10px; }
+/* ClippingMask 提示：收敛成小 (?) 圆形图标，鼠标悬浮才弹出说明（不占整行，把空间让给列表） */
 .clip-hint {
-  flex: 1 1 100%; display: flex; align-items: center; gap: 7px;
-  font-size: 11px; line-height: 1.5; color: var(--text-dim);
-  background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  border-radius: var(--radius); padding: 6px 10px;
+  position: relative;
+  flex: 0 0 auto;
+  display: inline-grid; place-items: center;
+  width: 20px; height: 20px;
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  background: var(--bg-panel);
+  color: var(--text-faint);
+  font-size: 12px; font-family: var(--mono); font-weight: 700; line-height: 1;
+  cursor: help; -webkit-user-select: none; user-select: none;
+  transition: border-color .14s, color .14s, background .14s;
 }
-.clip-hint svg { color: var(--accent); flex-shrink: 0; }
+.clip-hint:hover,
+.clip-hint:focus-visible {
+  border-color: var(--accent); color: var(--accent); background: var(--accent-soft);
+}
+.clip-hint .ch-q { pointer-events: none; }
+.clip-hint .ch-text {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  width: 250px; max-width: 70vw;
+  padding: 8px 10px;
+  background: var(--bg-elev); color: var(--text-dim);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  font-size: 11px; font-family: var(--font); font-weight: 400; line-height: 1.6;
+  text-align: left; white-space: normal;
+  opacity: 0; visibility: hidden; transform: translateY(-3px);
+  transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+  pointer-events: none; z-index: 80;
+}
+.clip-hint:hover .ch-text,
+.clip-hint:focus-visible .ch-text {
+  opacity: 1; visibility: visible; transform: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
 .parts-search-wrap { position: relative; flex: 1 1 100%; display: flex; align-items: center; margin-top: 2px; }
 .parts-search-wrap svg { position: absolute; left: 10px; color: var(--text-faint); pointer-events: none; }
 .parts-search-wrap .search { width: 100%; padding-left: 32px; }
@@ -588,29 +622,39 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .part-group.collapsed .part-caret { transform: rotate(-90deg); }
 .part-group.collapsed .part-item { display: none; }
 
+/* 部件行：勾选框 + 缩略图固定最左；名称在上，坐标/尺寸/透明度作为小字副标题在下。行高加大、无分隔线、更简洁 */
 .part-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 8px 12px; cursor: default;
-  transition: background .1s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;          /* 加大行高，避免局促 */
+  min-width: 0;
+  cursor: default;
+  transition: background .12s ease;
 }
 .part-item:hover { background: var(--bg-hover); }
-.part-item + .part-item { border-top: 1px solid var(--border); }
+/* 去掉部件行之间多余的分隔线（改用留白区分，视觉更干净） */
+.part-group .part-item + .part-item { border-top: none; }
 .part-item input[type="checkbox"] {
-  appearance: none; width: 17px; height: 17px; flex-shrink: 0;
-  border: 2px solid var(--border-strong); border-radius: 5px;
+  appearance: none; width: 18px; height: 18px;
+  flex: 0 0 18px;             /* 最左固定宽 */
+  margin: 0;
+  border: 2px solid var(--border-strong); border-radius: 6px;
   background: var(--bg-panel); cursor: pointer; position: relative;
-  transition: all .12s;
+  transition: border-color .12s, background .12s;
 }
+.part-item input[type="checkbox"]:hover { border-color: var(--accent); }
 .part-item input[type="checkbox"]:checked {
   background: var(--accent); border-color: var(--accent);
 }
 .part-item input[type="checkbox"]:checked::after {
-  content: ""; position: absolute; left: 4.5px; top: 1px;
-  width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0;
+  content: ""; position: absolute; left: 5px; top: 1px;
+  width: 5px; height: 10px; border: solid #fff; border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 .part-thumb {
-  width: 46px; height: 46px; border-radius: 8px; flex-shrink: 0;
+  width: 44px; height: 44px; border-radius: 9px;
+  flex: 0 0 44px;             /* 最左固定宽，不随行内容伸缩 */
   /* 固定银灰棋盘格（仿 PS 透明棋盘格：白 + 银灰，不随主题变化） */
   background-color: #c0c0c0;
   background-image:
@@ -620,15 +664,31 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   background-position: 0 0, 8px 8px;
   border: 1px solid var(--border);
   display: grid; place-items: center; overflow: hidden;
+  transition: border-color .12s;
 }
 .part-thumb img { max-width: 100%; max-height: 100%; image-rendering: auto; }
 .part-thumb .noimg { color: var(--text-faint); font-size: 10px; }
-.part-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
-.part-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.part-meta { font-size: 11px; color: var(--text-faint); font-family: var(--mono); }
+.part-info {
+  flex: 1 1 auto;             /* 中间自动占满 */
+  min-width: 0;
+  display: flex; flex-direction: column; justify-content: center;
+  gap: 3px;
+}
+.part-name {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 副标题行：坐标/order/尺寸（自动省略） + 透明度小字 */
+.part-sub {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  font-size: 11px; font-family: var(--mono); line-height: 1.4;
+}
+.part-meta {
+  flex: 1 1 auto; min-width: 0; color: var(--text-faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .part-alpha {
-  font-size: 11px; color: var(--text-dim); flex-shrink: 0;
-  background: var(--bg-elev); padding: 2px 7px; border-radius: 6px;
+  flex: 0 0 auto; color: var(--text-dim); white-space: nowrap;
 }
 
 .empty-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-faint); padding: 40px; }
@@ -648,8 +708,16 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   padding: 10px 14px; border-bottom: 1px solid var(--border);
   font-size: 12px; font-weight: 600; color: var(--text-dim);
 }
-.selected-panel { flex: 0 0 34%; min-height: 0; }
-.selected-list { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 10px; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+/* “已选精灵”面板：随内容自适应，但设最大高度并内部滚动，避免挤占下方预览区 */
+.selected-panel { flex: 0 0 auto; min-height: 0; max-height: 40%; }
+.selected-list {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px 10px; list-style: none;
+  display: flex; flex-direction: column; gap: 2px;
+}
 .selected-list li {
   font-size: 12px; font-family: var(--mono); color: var(--text-dim);
   padding: 4px 8px; border-radius: 6px; background: var(--bg-elev);
@@ -661,8 +729,28 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .selected-list li:first-child { margin-top: 0; }
 .selected-empty { color: var(--text-faint); font-size: 12px; text-align: center; padding: 16px; }
 
-.preview-panel { flex: 1; }
-.preview-toolbar { display: flex; gap: 6px; padding: 10px 14px; flex-wrap: wrap; align-items: center; }
+.preview-panel { flex: 1; min-height: 0; }
+/* 预览控制带：紧凑分排（操作 / 导出+画质 / 缩放 / 素描本），把画布留成独立卡片 */
+.preview-toolbar {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 12px 6px; flex: 0 0 auto;
+}
+/* 行1：生成 / 保存 / 清空（紧凑一排） */
+.pv-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pv-actions .btn { padding: 5px 10px; white-space: nowrap; }
+/* 行2：导出原始画质（左）… 预览画质（右） */
+.pv-settings {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; min-width: 0;
+}
+.pv-settings .pq-wrap { margin-left: 0; flex: 0 0 auto; }
+/* 统一控件高度：预览区的按钮 / 滑杆 / 下拉固定为 32px，消除参差感 */
+.preview-toolbar .btn { height: 32px; box-sizing: border-box; }
+.pv-settings .color-picker-btn { height: 32px; padding: 0 10px; }
+.pv-settings .pq-switch { min-width: 0; overflow: hidden; }
+.pv-settings .pq-switch > span:last-child {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* 预览画质（部件选择页工具栏）：标签 + 自定义下拉（createDropdown，与设置同款） */
 .pq-wrap { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -672,21 +760,33 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .pq-switch > span:last-child { font-size: 12px; color: var(--text-dim); }
 
 /* Anan 素描本自定义文字输入（选中 Arms01/Arms02 时显示；紧凑布局减少预览占用） */
+/* 素描本文字编辑：出现时收拢成紧凑的一行（按钮 + 字号滑杆 + 对齐），放不下时整齐换行 */
+/* “编辑文字”行：收拢成一个小按钮 + 字号滑杆 + 左/中/右，严格同一行（不换行） */
 .sketch-input-wrap {
-  display: flex; flex-direction: column; gap: 4px;
-  margin: 0 14px 8px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; min-width: 0; flex-wrap: nowrap;
+  margin: 2px 0 0;
 }
 .sketch-input-wrap[hidden] { display: none; }
 .sketch-edit-btn {
-  display: flex; width: 100%;
-  justify-content: flex-start;
-  padding: 6px 10px; overflow: hidden;
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: flex-start;
+  flex: 0 0 auto; min-width: 0;
+  gap: 5px; padding: 0 10px; height: 32px;
+  white-space: nowrap;
 }
+/* 已输入文字摘要：不再占用布局，悬停按钮时以小气泡提示 */
 .sketch-edit-btn .sketch-text-summary {
-  flex: 1; min-width: 0; text-align: left;
-  font-size: 12px; color: var(--text-faint);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: none;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 70;
+  max-width: 280px; padding: 6px 9px;
+  background: var(--bg-elev); color: var(--text-dim);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  font-size: 11px; font-weight: 400; line-height: 1.5;
+  white-space: normal; text-align: left;
 }
+.sketch-edit-btn:hover .sketch-text-summary { display: block; }
 .sketch-edit-btn.has-text { color: var(--text); }
 /* 素描本文字编辑模态中的 textarea（最大 5 行） */
 .sketch-modal-textarea {
@@ -698,20 +798,27 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   transition: border-color .15s;
 }
 .sketch-modal-textarea:focus { border-color: var(--accent); }
+/* 字号行：与左/中/右严格同排（flex + space-between + min-width:0 + nowrap） */
 .sketch-controls-row {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; flex: 1 1 auto; min-width: 0; flex-wrap: nowrap;
 }
-.sketch-controls-row label { font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
-.sketch-controls-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.sketch-controls-row label {
+  font-size: 12px; color: var(--text-dim);
+  flex: 0 0 auto; white-space: nowrap;
+}
+.sketch-controls-row input[type="range"] {
+  flex: 1 1 auto; min-width: 40px; height: 32px; accent-color: var(--accent);
+}
 .sketch-controls-row .sketch-size-value {
   font-size: 11px; font-family: var(--mono); color: var(--text-dim);
-  min-width: 26px; text-align: right; flex-shrink: 0;
+  min-width: 26px; text-align: right; flex: 0 0 auto; white-space: nowrap;
 }
 /* 对齐分段：滑动指示条（左右平移动画）；宽度容纳英文标签（Left/Center/Right） */
 .sketch-seg {
   position: relative;
   display: inline-flex; align-items: stretch;
-  flex: 0 1 170px; min-width: 156px;
+  flex: 0 1 150px; min-width: 0; height: 32px;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-panel); overflow: hidden;
 }
@@ -733,32 +840,52 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .sketch-seg button.active { color: #fff; }
 .sketch-seg button:disabled { opacity: .5; cursor: default; }
+/* 预览画布：做成独立圆角卡片（“工作台”），与上方控制带分隔开 */
 .preview {
-  flex: 1; margin: 0 14px 14px; border-radius: var(--radius-sm);
-  background: var(--bg-elev); border: 1px solid var(--border);
-  overflow: auto; position: relative; display: grid; place-items: center;
+  flex: 1; margin: 0 12px 12px; border-radius: 12px;
+  background: var(--bg-elev); border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-sm);
+  overflow: auto; position: relative; display: block;
   min-height: 120px;
 }
-.preview.zoomed { place-items: start; }
 .preview.dragging { cursor: grabbing; }
 .preview.dragging #preview-img { cursor: grabbing; }
+/* 舞台：铺满可视区；图片小于视口时始终居中；大于视口时按实际像素扩展、可从左上滚到四角。
+   替代原先“放大后切换到左上角锚点”导致的缩放跳动；#preview 的滚动/滚轮数学保持不变。 */
+.pv-stage {
+  min-width: 100%; min-height: 100%;
+  width: max-content; height: max-content;
+  display: grid; place-items: center;
+}
 .preview-empty { color: var(--text-faint); font-size: 13px; }
 #preview-img {
-  max-width: 100%; max-height: 100%; object-fit: contain;
+  display: block;
+  max-width: none; max-height: none;
   cursor: grab; -webkit-user-select: none; user-select: none; -webkit-user-drag: none;
 }
+/* 未合成/已清空时图片带 hidden 属性：必须显式隐藏（display:block 会覆盖浏览器内置的 [hidden] 规则，
+   否则会出现“破图 + preview”占位提示） */
+#preview-img[hidden] { display: none; }
+/* 缩放行：整体一行、禁止换行，各控件禁止被挤压 */
 .preview-zoom {
-  display: flex; align-items: center; gap: 10px;
-  margin: 0 14px 10px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin: 0; min-width: 0;
 }
-.preview-zoom .zoom-label { font-size: 12px; color: var(--text-dim); flex-shrink: 0; }
-.preview-zoom input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.preview-zoom .zoom-label {
+  font-size: 12px; color: var(--text-dim);
+  flex: 0 0 auto; white-space: nowrap;
+}
+.preview-zoom input[type="range"] {
+  flex: 1 1 auto; min-width: 60px; height: 32px;
+  accent-color: var(--accent);
+}
 .preview-zoom .zoom-value {
   font-size: 11px; font-family: var(--mono); color: var(--text-dim);
-  min-width: 44px; text-align: right; flex-shrink: 0;
+  min-width: 44px; text-align: right; flex: 0 0 auto; white-space: nowrap;
 }
+.preview-zoom .btn { flex: 0 0 auto; white-space: nowrap; }
 .preview-info {
-  margin: 0 14px 12px; padding: 4px 10px;
+  margin: 0 12px 10px; padding: 4px 10px;
   font-size: 11px; font-family: var(--mono);
   color: var(--text-dim);
   background: var(--bg-elev);
@@ -1287,3 +1414,50 @@ body.no-anim .easter-scrim { transition: opacity .7s ease !important; }
 body.no-anim .easter-phone { transition: opacity .7s ease !important; }
 body.no-anim .exec-btn { transition: transform .15s ease, filter .15s ease !important; }
 body.no-anim .about-bg-layer { transition: opacity .6s ease !important; }
+
+/* ═══ 响应式平滑过渡：窗口跨断点时容器/间距/尺寸平滑变化，避免瞬间跳变 ═══
+   注意：隐藏型元素（.part-meta / .part-alpha）用的是 display:none（display 不可过渡），
+   因此它们仍即时隐藏；能过渡的是可插值的 padding/gap/width/max-height 等，见下。 */
+.parts-layout { transition: padding .3s ease, gap .3s ease; }
+.parts-col { transition: gap .3s ease; }
+.preview-col { transition: min-width .3s ease, gap .3s ease; }
+.parts-toolbar { transition: padding .3s ease, gap .3s ease; }
+.preview-toolbar { transition: padding .3s ease, gap .3s ease; }
+.pv-actions,
+.pv-settings,
+.preview-zoom,
+.sketch-controls-row { transition: gap .25s ease; }
+.panel-header { transition: padding .3s ease; }
+.part-item { transition: padding .3s ease, background .15s ease; }
+.part-thumb {
+  transition: width .25s ease, height .25s ease, flex-basis .25s ease, border-color .15s ease;
+}
+.selected-panel,
+.selected-list { transition: max-height .3s ease; }
+.preview { transition: margin .3s ease, border-radius .3s ease, box-shadow .3s ease; }
+
+/* ═══════════ 响应式：部件选择页自适应（低分辨率折叠次要信息，保证核心勾选/预览可用） ═══════════ */
+/* 中等宽度窗口：隐藏坐标/尺寸等次要行，缩小缩略图与已选列表上限 */
+@media (max-width: 1120px) {
+  .part-meta { display: none; }
+  .part-item { gap: 8px; }
+  .part-thumb { width: 40px; height: 40px; flex-basis: 40px; }
+  .selected-list { max-height: 132px; }
+}
+/* 窄宽度窗口：进一步压缩——隐藏透明度胶囊、收窄预览列最小宽、收紧工具区留白，说明横幅让位给列表 */
+@media (max-width: 920px) {
+  .parts-layout { gap: 10px; padding: 10px; }
+  .preview-col { min-width: 300px; }
+  .part-item { padding: 6px 10px; }
+  .part-thumb { width: 34px; height: 34px; flex-basis: 34px; }
+  .part-alpha { display: none; }
+  .preview-toolbar { padding: 6px 10px; }
+  .preview { margin: 0 10px 10px; }
+}
+/* 矮窗口高度：压缩工具栏与已选列表占用的竖向空间，提升可用预览面积 */
+@media (max-height: 760px) {
+  .parts-toolbar { padding: 8px 12px; }
+  .preview-toolbar { padding: 6px 10px; }
+  .selected-list { max-height: 120px; }
+  .panel-header { padding: 8px 12px; }
+}

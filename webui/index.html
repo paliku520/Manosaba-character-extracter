@@ -193,13 +193,21 @@
                 <span id="parts-count" class="pill"></span>
               </div>
               <div class="parts-toolbar-actions">
-                <button id="btn-select-all" class="btn sm" data-i18n="parts.select_all">全选</button>
-                <button id="btn-deselect-all" class="btn sm" data-i18n="parts.deselect_all">取消全选</button>
-                <button id="btn-select-clip" class="btn sm" data-i18n="parts.select_clip">快速勾选ClippingMask部件</button>
-              </div>
-              <div class="clip-hint">
-                <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 11v5M12 7.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                <span data-i18n="parts.clip_importance">ClippingMask 部件是被裁剪进角色区域的叠加层（光效/轮廓等），勾选后才能正确合成；缺失时相关光影效果将不显示。</span>
+                <button type="button" id="btn-select-all" class="btn sm icon-cc" data-i18n-title="parts.select_all" title="全选">
+                  <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="m9.5 12.2 2 2 3.5-4.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                  <span data-i18n="parts.select_all">全选</span>
+                </button>
+                <button type="button" id="btn-deselect-all" class="btn sm icon-cc" data-i18n-title="parts.deselect_all" title="取消全选">
+                  <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="m9.5 9.5 5 5m0-5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+                  <span data-i18n="parts.deselect_all">取消全选</span>
+                </button>
+                <button type="button" id="btn-select-clip" class="btn sm icon-only" data-i18n-title="parts.select_clip" title="快速勾选ClippingMask部件" aria-label="快速勾选ClippingMask部件">
+                  <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 22V8a2 2 0 0 0-2-2H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <span class="clip-hint" role="note" tabindex="0" aria-label="ClippingMask 提示">
+                  <span class="ch-q" aria-hidden="true">?</span>
+                  <span class="ch-text" data-i18n="parts.clip_importance">ClippingMask 部件是被裁剪进角色区域的叠加层（光效/轮廓等），勾选后才能正确合成；缺失时相关光影效果将不显示。</span>
+                </span>
               </div>
               <div class="parts-search-wrap">
                 <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -232,46 +240,52 @@
                 </label>
               </div>
               <div class="preview-toolbar">
-                <button id="btn-composite" class="btn sm primary" data-i18n="parts.composite_btn">生成合成图像</button>
-                <button id="btn-save" class="btn sm" data-i18n="parts.save_composite">保存合成图</button>
-                <button id="btn-clear-preview" class="btn sm ghost" data-i18n="parts.clear_preview">清空预览</button>
-                <label class="switch pq-switch" data-i18n-title="settings.export_original_hint" title="关闭后导出的图像与预览画质一致（体积更小、更省资源）。">
-                  <input type="checkbox" id="set-export-original" checked>
-                  <span class="slider"></span>
-                  <span data-i18n="settings.export_original_label">导出原始画质</span>
-                </label>
-                <span class="pq-wrap">
-                  <span class="pq-label" data-i18n="parts.preview_quality_label">预览画质</span>
-                  <span id="preview-quality-slot"></span>
-                </span>
-              </div>
-              <div id="sketch-input-wrap" class="sketch-input-wrap" hidden>
-                <button type="button" id="btn-sketch-edit" class="btn sm sketch-edit-btn">
-                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M11.5 1.5l3 3L5.5 13.5 2 14l.5-3.5L11.5 1.5zM9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>
-                  <span data-i18n="parts.sketch_edit">编辑文字</span>
-                  <span id="sketch-text-summary" class="sketch-text-summary"></span>
-                </button>
-                <div class="sketch-controls-row">
-                  <label for="sketch-size" data-i18n="parts.sketch_size">字号</label>
-                  <input type="range" id="sketch-size" min="32" max="100" step="2" value="56">
-                  <span id="sketch-size-value" class="sketch-size-value">56</span>
-                  <div class="sketch-seg" id="sketch-align">
-                    <span class="seg-ind" aria-hidden="true"></span>
-                    <button type="button" data-align="left" data-i18n="parts.align_left">左</button>
-                    <button type="button" data-align="center" class="active" data-i18n="parts.align_center">中</button>
-                    <button type="button" data-align="right" data-i18n="parts.align_right">右</button>
+                <div class="pv-actions">
+                  <button id="btn-composite" class="btn sm primary" data-i18n="parts.composite_btn">生成合成图像</button>
+                  <button id="btn-save" class="btn sm" data-i18n="parts.save_composite">保存合成图</button>
+                  <button id="btn-clear-preview" class="btn sm ghost" data-i18n="parts.clear_preview">清空预览</button>
+                </div>
+                <div class="pv-settings">
+                  <label class="switch pq-switch" data-i18n-title="settings.export_original_hint" title="关闭后导出的图像与预览画质一致（体积更小、更省资源）。">
+                    <input type="checkbox" id="set-export-original" checked>
+                    <span class="slider"></span>
+                    <span data-i18n="settings.export_original_label">导出原始画质</span>
+                  </label>
+                  <span class="pq-wrap">
+                    <span class="pq-label" data-i18n="parts.preview_quality_label">预览画质</span>
+                    <span id="preview-quality-slot"></span>
+                  </span>
+                </div>
+                <div class="preview-zoom">
+                  <label class="zoom-label" for="zoom-slider" data-i18n="parts.zoom">缩放</label>
+                  <input type="range" id="zoom-slider" min="0" max="100" step="1" value="0" disabled>
+                  <button id="btn-zoom-fit" class="btn sm ghost" data-i18n="parts.zoom_fit" title="Fit">适配</button>
+                  <span id="zoom-value" class="zoom-value">适配</span>
+                </div>
+                <div id="sketch-input-wrap" class="sketch-input-wrap" hidden>
+                  <button type="button" id="btn-sketch-edit" class="btn sm sketch-edit-btn">
+                    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M11.5 1.5l3 3L5.5 13.5 2 14l.5-3.5L11.5 1.5zM9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>
+                    <span data-i18n="parts.sketch_edit">编辑文字</span>
+                    <span id="sketch-text-summary" class="sketch-text-summary"></span>
+                  </button>
+                  <div class="sketch-controls-row">
+                    <label for="sketch-size" data-i18n="parts.sketch_size">字号</label>
+                    <input type="range" id="sketch-size" min="32" max="100" step="2" value="56">
+                    <span id="sketch-size-value" class="sketch-size-value">56</span>
+                    <div class="sketch-seg" id="sketch-align">
+                      <span class="seg-ind" aria-hidden="true"></span>
+                      <button type="button" data-align="left" data-i18n="parts.align_left">左</button>
+                      <button type="button" data-align="center" class="active" data-i18n="parts.align_center">中</button>
+                      <button type="button" data-align="right" data-i18n="parts.align_right">右</button>
+                    </div>
                   </div>
                 </div>
               </div>
-              <div class="preview-zoom">
-                <label class="zoom-label" for="zoom-slider" data-i18n="parts.zoom">缩放</label>
-                <input type="range" id="zoom-slider" min="0" max="100" step="1" value="0" disabled>
-                <button id="btn-zoom-fit" class="btn sm ghost" data-i18n="parts.zoom_fit" title="Fit">适配</button>
-                <span id="zoom-value" class="zoom-value">适配</span>
-              </div>
               <div id="preview" class="preview">
-                <div id="preview-empty" class="preview-empty" data-i18n="parts.no_preview">尚无预览</div>
-                <img id="preview-img" alt="preview" hidden>
+                <div class="pv-stage">
+                  <div id="preview-empty" class="preview-empty" data-i18n="parts.no_preview">尚无预览</div>
+                  <img id="preview-img" alt="preview" hidden>
+                </div>
               </div>
               <div id="preview-info" class="preview-info" hidden></div>
             </div>
