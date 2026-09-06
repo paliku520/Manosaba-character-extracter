@@ -6,7 +6,8 @@
 新版数据结构（config_version = "2.0"）：
   {
     "global": { "mode", "config_version", "window", "theme",
-                "lang", "export_count", "show_original_name", "no_spoiler_notice" },
+                "lang", "export_count", "show_original_name", "no_spoiler_notice",
+                "auto_find_characters", ... },
     "game": { "<mode>": { "accent", "last_directory", "output_dir" }, ... }
   }
 - global.window 为窗口大小/最大化状态（与 Electron 主进程共用；首次启动不预创建，
@@ -123,6 +124,7 @@ def _default_settings() -> Dict[str, Any]:
             "disable_hardware_accel": False,    # 禁用硬件加速（UI 渲染）
             "export_original_quality": True,    # 导出原始画质图像（关闭时导出与预览画质一致）
             "disable_animations": False,        # 禁用界面动画（淡入/过渡，低配 GPU 提速）
+            "auto_find_characters": True,       # 加载时自动定位 characters 目录（False 时需手动指定）
         },
         "game": {m: dict(_DEFAULT_GAME_SECTION) for m in GAME_MODES},
     }
@@ -209,6 +211,22 @@ def _normalize_settings(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
         if m not in GAME_MODES:
             del game[m]
 
+    # auto_find_characters 是全局设置（早期版本曾存入 game.<mode>，此处自动迁移到 global 并清理）。
+    # 优先保留 global 已有值；缺失时取当前 mode game section 的值，保证老配置不丢设置。
+    afc = g.get("auto_find_characters")
+    if afc is None:
+        for m in GAME_MODES:
+            sec = game.get(m)
+            if isinstance(sec, dict) and "auto_find_characters" in sec:
+                afc = sec["auto_find_characters"]
+                break
+    if afc is not None:
+        g["auto_find_characters"] = bool(afc)
+    for m in list(game.keys()):
+        sec = game.get(m)
+        if isinstance(sec, dict):
+            sec.pop("auto_find_characters", None)
+
     return data, data != raw
 
 
@@ -265,11 +283,14 @@ def save_settings(
     disable_hardware_accel: Optional[bool] = None,
     export_original_quality: Optional[bool] = None,
     disable_animations: Optional[bool] = None,
+    auto_find_characters: Optional[bool] = None,
     mode: Optional[str] = None,
 ) -> None:
     """保存设置到新版嵌套配置（只更新传入的字段，保留其余已有字段）
 
-    - global：theme / lang / export_count / show_original_name / no_spoiler_notice / mode
+    - global：theme / lang / export_count / show_original_name / no_spoiler_notice / mode /
+      preview_quality / disable_hardware_accel / export_original_quality / disable_animations /
+      auto_find_characters
     - game.<当前 mode>（manosaba）：accent / last_directory / output_dir
     """
     data = load_settings()
@@ -294,6 +315,8 @@ def save_settings(
         g["export_original_quality"] = bool(export_original_quality)
     if disable_animations is not None:
         g["disable_animations"] = bool(disable_animations)
+    if auto_find_characters is not None:
+        g["auto_find_characters"] = bool(auto_find_characters)
 
     section = _game_section(data, _mode_from(data))
     if output_dir is not None:
@@ -358,6 +381,19 @@ def get_last_directory(default: str = "") -> str:
     settings = load_settings()
     raw = _game_section(settings).get("last_directory")
     if isinstance(raw, str) and raw:
+        return raw
+    return default
+
+
+def get_auto_find_characters(default: bool = True) -> bool:
+    """返回是否自动查找 characters 目录（global.auto_find_characters，全局设置）。
+
+    False 时加载不做自动定位，需手动指定 characters 目录（直接包含 .bundle 的文件夹）。
+    未设置时返回 default。
+    """
+    settings = load_settings()
+    raw = _global_section(settings).get("auto_find_characters")
+    if isinstance(raw, bool):
         return raw
     return default
 

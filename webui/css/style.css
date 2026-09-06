@@ -577,6 +577,25 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   opacity: 1; visibility: visible; transform: none;
   transition: opacity .15s ease, transform .15s ease;
 }
+/* 设置悬停说明气泡：portal 到 body 的 fixed 提示，规避弹窗滚动容器裁剪；
+   观感对齐部件页 .ch-text（bg-elev + 描边 + 圆角 + 阴影） */
+.ui-tip {
+  position: fixed; left: 0; top: 0; z-index: 1500;   /* 高于 modal(100)/toast(200)/彩蛋(300)/下拉(1000) */
+  width: max-content; max-width: 260px;
+  padding: 8px 10px;
+  background: var(--bg-elev); color: var(--text-dim);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  box-shadow: var(--shadow-sm);
+  font-size: 11px; font-family: var(--font); font-weight: 400; line-height: 1.6;
+  text-align: left; white-space: normal; overflow-wrap: break-word;
+  opacity: 0; visibility: hidden; transform: translateY(-3px);
+  transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
+  pointer-events: none;
+}
+.ui-tip.show {
+  opacity: 1; visibility: visible; transform: none;
+  transition: opacity .15s ease, transform .15s ease;
+}
 .parts-search-wrap { position: relative; flex: 1 1 100%; display: flex; align-items: center; margin-top: 2px; }
 .parts-search-wrap svg { position: absolute; left: 10px; color: var(--text-faint); pointer-events: none; }
 .parts-search-wrap .search { width: 100%; padding-left: 32px; }
@@ -1017,7 +1036,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .sn-panel.active { display: block; }
 
 /* 设置窗口：固定高度；页签常驻顶部，分区内容在面板内滚动 */
-.modal.settings-modal { height: 560px; max-height: calc(100vh - 48px); }
+.modal.settings-modal { height: 470px; max-height: calc(100vh - 48px); }
 .modal.settings-modal .modal-body {
   display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }

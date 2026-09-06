@@ -69,6 +69,7 @@ from src.resource_monitor import ResourceMonitor
 from src.settings import (
     ACCENT_NAMES,
     get_accent,
+    get_auto_find_characters,
     get_disable_animations,
     get_disable_hardware_accel,
     get_export_count,
@@ -255,6 +256,7 @@ class JsApi:
         self._disable_hardware_accel = get_disable_hardware_accel()  # 是否禁用硬件加速（UI 渲染）
         self._export_original_quality = get_export_original_quality()  # 导出原始画质（关闭时导出与预览一致）
         self._disable_animations = get_disable_animations()  # 是否禁用界面动画（低配 GPU 提速）
+        self._auto_find_characters = get_auto_find_characters()  # 是否自动查找 characters 目录（False 时需手动指定 characters 目录）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
@@ -339,6 +341,7 @@ class JsApi:
             "disable_hardware_accel": self._disable_hardware_accel,
             "export_original_quality": self._export_original_quality,
             "disable_animations": self._disable_animations,
+            "auto_find_characters": self._auto_find_characters,
             "debug": self._debug_monitor,
         }
 
@@ -420,6 +423,13 @@ class JsApi:
         save_settings(disable_animations=self._disable_animations)
         log("info", _("log.animations_off") if self._disable_animations else _("log.animations_on"))
         return {"disable_animations": self._disable_animations}
+
+    def set_auto_find_characters(self, enable: bool) -> dict:
+        """保存是否自动查找 characters 目录（关闭后需手动指定 characters 目录；下次加载生效）"""
+        self._auto_find_characters = bool(enable)
+        save_settings(auto_find_characters=self._auto_find_characters)
+        log("info", _("log.auto_find_on") if self._auto_find_characters else _("log.auto_find_off"))
+        return {"auto_find_characters": self._auto_find_characters}
 
     def _preview_max_side(self) -> int:
         """预览 data URL 的最大边长（随预览画质缩放；100% → 1600px）"""
@@ -595,7 +605,9 @@ class JsApi:
                 # 一旦有新一次 load_directory 调用（代号变化），中断本次查找
                 return gen != self._load_generation
             self._emit("status", {"text": _("app.progress.loading_bundles")})
-            result = self._loader.load_from_directory(path, progress_callback=cb, cancel_check=cancel)
+            result = self._loader.load_from_directory(
+                path, progress_callback=cb, cancel_check=cancel, auto_find=self._auto_find_characters
+            )
             if result.get("cancelled"):
                 # 已被更新的加载取代（取消日志已在 load_directory 同步打印）
                 self._emit("load_complete", result)

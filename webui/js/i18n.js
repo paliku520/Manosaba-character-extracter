@@ -55,6 +55,8 @@
       'settings.export_original_hint': '关闭后导出的图像与预览画质一致（体积更小、更省资源）。',
       'settings.disable_animations_label': '禁用界面动画',
       'settings.disable_animations_hint': '关闭淡入/过渡等动画，低配设备更流畅；立即生效。',
+      'settings.auto_find_characters_label': '自动查找 characters 目录',
+      'settings.auto_find_characters_hint': '开启后选择游戏目录即可自动定位 characters 目录；关闭时需手动选择 characters 目录（直接包含角色 .bundle 文件的文件夹）。',
       'parts.preview_quality_label': '预览画质',
       'about.sys_title': '系统信息',
       'about.sys_loading': '正在获取系统信息...',

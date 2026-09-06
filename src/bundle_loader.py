@@ -164,7 +164,7 @@ class BundleLoader:
     # ── 主流程 ────────────────────────────────────────────
 
     def load_from_directory(
-        self, directory: str, progress_callback=None, cancel_check=None
+        self, directory: str, progress_callback=None, cancel_check=None, auto_find: bool = True
     ) -> dict:
         """
         从指定目录加载所有 bundle
@@ -173,6 +173,8 @@ class BundleLoader:
             directory: 游戏根目录或 characters 目录路径
             progress_callback: 可选进度回调 fn(current, total)
             cancel_check: 可选取消检查 fn() -> bool；返回 True 时中止本次查找
+            auto_find: 是否自动查找 characters 目录（默认 True）。为 False 时把所选目录
+                直接当作 characters 目录（不做任何自动定位/递归搜索），需用户手动指定。
 
         Returns:
             {"success": bool, "bundles": {角色名: 路径}, "count": int, "errors": [错误信息], "cancelled": bool}
@@ -191,21 +193,28 @@ class BundleLoader:
             result["errors"].append(_("dialog.bundle_not_found", path=directory))
             return result
 
-        # 判断是游戏根目录还是 characters 目录
-        try:
-            characters_dir = self._resolve_characters_dir(root_path, result, cancel_check)
-        except _SearchCancelled:
-            result["cancelled"] = True
-            return result
-        if characters_dir is None:
-            return result
+        if auto_find:
+            # 自动查找：用户选择游戏目录即可，自行定位 characters 目录
+            try:
+                characters_dir = self._resolve_characters_dir(root_path, result, cancel_check)
+            except _SearchCancelled:
+                result["cancelled"] = True
+                return result
+            if characters_dir is None:
+                return result
+        else:
+            # 手动模式：关闭自动查找后，用户所选目录即 characters 目录本身（不做任何查找）
+            characters_dir = root_path
 
         log("info", _("log.characters_dir_found", path=characters_dir))
 
         # 搜索所有 bundle 文件
         bundle_files = sorted(characters_dir.glob("*.bundle"))
         if not bundle_files:
-            result["errors"].append(_("dialog.no_bundle_files", path=characters_dir))
+            if auto_find:
+                result["errors"].append(_("dialog.no_bundle_files", path=characters_dir))
+            else:
+                result["errors"].append(_("dialog.characters_manual_hint", path=characters_dir))
             return result
 
         log("info", _("log.bundle_files_found", count=len(bundle_files)))

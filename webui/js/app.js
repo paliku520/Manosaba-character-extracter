@@ -1619,6 +1619,72 @@
     return api;
   }
 
+  // ── 悬停说明气泡（共享单例；portal 到 body + fixed 定位，规避弹窗滚动容器裁剪）──
+  let _uiTipEl = null;
+
+  function _ensureUiTip() {
+    if (_uiTipEl && _uiTipEl.isConnected) return _uiTipEl;
+    const el = document.createElement('div');
+    el.className = 'ui-tip';
+    document.body.appendChild(el);
+    _uiTipEl = el;
+    return el;
+  }
+
+  // 在锚点附近显示气泡：优先下方，放不下自动改上方；水平方向夹紧到视口内
+  function _showUiTip(anchor, text) {
+    const tip = _ensureUiTip();
+    tip.textContent = text;
+    tip.classList.remove('show');
+    // visibility:hidden 时仍有布局，可先测量尺寸再定位
+    const r = anchor.getBoundingClientRect();
+    const gap = 8;
+    const tw = tip.offsetWidth;
+    const th = tip.offsetHeight;
+    let left = Math.round(r.left + r.width / 2 - tw / 2);
+    left = Math.max(gap, Math.min(left, window.innerWidth - tw - gap));
+    let top = r.bottom + gap;
+    if (top + th > window.innerHeight - gap) {
+      top = r.top - th - gap;                    // 下方放不下 → 改到上方
+    }
+    top = Math.max(gap, top);
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+    void tip.offsetWidth;                        // 强制 reflow：保证有淡入过渡起始帧
+    tip.classList.add('show');
+  }
+
+  function _hideUiTip() {
+    if (_uiTipEl) _uiTipEl.classList.remove('show');
+  }
+
+  // 点击任意处（含关闭弹窗）时收起气泡
+  document.addEventListener('pointerdown', _hideUiTip, true);
+
+  // 设置行内悬停说明：触发按钮复用「部件选择页」的 .clip-hint 外观（圆形 ? + 悬停高亮）；
+  // 悬停/聚焦弹出说明气泡（文字随语言读取，样式见 .ui-tip）
+  function tipIcon(titleKey) {
+    const el = document.createElement('span');
+    el.className = 'clip-hint';
+    el.setAttribute('role', 'note');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('aria-label', t(titleKey));
+    const q = document.createElement('span');
+    q.className = 'ch-q';
+    q.setAttribute('aria-hidden', 'true');
+    q.textContent = '?';
+    el.appendChild(q);
+    const show = () => _showUiTip(el, t(titleKey));
+    const hide = () => _hideUiTip();
+    el.addEventListener('mouseenter', show);
+    el.addEventListener('mouseleave', hide);
+    el.addEventListener('focus', show);
+    el.addEventListener('blur', hide);
+    // 嵌在 .switch 的 <label> 内：点击不应触发开关切换（仅用于悬停/聚焦查看）
+    el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
+    return el;
+  }
+
   function openSettings() {
     const body = document.createElement('div');
     // 设置分区：外观 / 显示 / 数据
@@ -1656,8 +1722,12 @@
     const langRow = document.createElement('div');
     langRow.className = 'form-row';
     const langLabel = document.createElement('label');
-    langLabel.setAttribute('data-i18n', 'lang.label');
-    langLabel.textContent = t('lang.label');
+    const langLabelText = document.createElement('span');
+    langLabelText.setAttribute('data-i18n', 'lang.label');
+    langLabelText.textContent = t('lang.label');
+    langLabel.appendChild(langLabelText);
+    // AI 翻译免责声明改为悬停图标提示（不再整段铺开）
+    langLabel.appendChild(tipIcon('settings.lang_ai_note'));
     langRow.appendChild(langLabel);
     const langDropdown = createDropdown({
       options: (App.info.langs || []).map((code) => ({
@@ -1668,12 +1738,6 @@
     });
     settingsLangDropdown = langDropdown;
     langRow.appendChild(langDropdown.el);
-    // 语言下拉提示：AI 翻译仅供参考（随语言切换自动刷新）
-    const langNote = document.createElement('div');
-    langNote.className = 'form-note';
-    langNote.setAttribute('data-i18n', 'settings.lang_ai_note');
-    langNote.textContent = t('settings.lang_ai_note');
-    langRow.appendChild(langNote);
 
     const themeRow = document.createElement('div');
     themeRow.className = 'form-row';
@@ -1753,12 +1817,8 @@
     hwSwitch.appendChild(hwCb);
     hwSwitch.appendChild(hwSlider);
     hwSwitch.appendChild(hwText);
+    hwSwitch.appendChild(tipIcon('settings.hw_accel_hint'));
     hwRow.appendChild(hwSwitch);
-    const hwNote = document.createElement('div');
-    hwNote.className = 'form-note';
-    hwNote.setAttribute('data-i18n', 'settings.hw_accel_hint');
-    hwNote.textContent = t('settings.hw_accel_hint');
-    hwRow.appendChild(hwNote);
 
     // 禁用界面动画（低配 GPU 提速；纯前端 CSS，立即生效，无需重启）
     const animRow = document.createElement('div');
@@ -1777,12 +1837,28 @@
     animSwitch.appendChild(animCb);
     animSwitch.appendChild(animSlider);
     animSwitch.appendChild(animText);
+    animSwitch.appendChild(tipIcon('settings.disable_animations_hint'));
     animRow.appendChild(animSwitch);
-    const animNote = document.createElement('div');
-    animNote.className = 'form-note';
-    animNote.setAttribute('data-i18n', 'settings.disable_animations_hint');
-    animNote.textContent = t('settings.disable_animations_hint');
-    animRow.appendChild(animNote);
+
+    // 自动查找 characters 目录（关闭后需手动指定 characters 目录）
+    const autoFindRow = document.createElement('div');
+    autoFindRow.className = 'form-row';
+    autoFindRow.id = 'auto-find-row';
+    const autoFindSwitch = document.createElement('label');
+    autoFindSwitch.className = 'switch';
+    const autoFindCb = document.createElement('input');
+    autoFindCb.type = 'checkbox';
+    autoFindCb.id = 'set-auto-find';
+    const autoFindSlider = document.createElement('span');
+    autoFindSlider.className = 'slider';
+    const autoFindText = document.createElement('span');
+    autoFindText.setAttribute('data-i18n', 'settings.auto_find_characters_label');
+    autoFindText.textContent = t('settings.auto_find_characters_label');
+    autoFindSwitch.appendChild(autoFindCb);
+    autoFindSwitch.appendChild(autoFindSlider);
+    autoFindSwitch.appendChild(autoFindText);
+    autoFindSwitch.appendChild(tipIcon('settings.auto_find_characters_hint'));
+    autoFindRow.appendChild(autoFindSwitch);
 
     const actionRow = document.createElement('div');
     actionRow.className = 'form-row';
@@ -1807,8 +1883,9 @@
     secDisplay.appendChild(debugRow);
     secDisplay.appendChild(hwRow);
     secDisplay.appendChild(animRow);
-    // 数据：输出目录 / 维护操作
+    // 数据：输出目录 / 自动查找 characters / 维护操作
     secData.appendChild(outRow);
+    secData.appendChild(autoFindRow);
     secData.appendChild(actionRow);
 
     // 设置分区用 notebook（页签）划分：外观 / 显示 / 数据，竖版排版（一次只显示一个分区）
@@ -1914,6 +1991,14 @@
       const r = await api().set_disable_animations(animCb.checked);
       App.info.disable_animations = !!r.disable_animations;
       applyAnimations(!!r.disable_animations);
+    });
+
+    // 自动查找 characters 目录（下次加载生效）
+    autoFindCb.checked = !!App.info.auto_find_characters;
+    autoFindCb.addEventListener('change', async () => {
+      if (!api()) return;
+      const r = await api().set_auto_find_characters(autoFindCb.checked);
+      App.info.auto_find_characters = !!r.auto_find_characters;
     });
 
     outField.querySelector('#set-browse').addEventListener('click', async () => {
