@@ -1,7 +1,8 @@
 # fiXmArge（魔女语，架空语言）通用部分
 # 该语种为 manosaba 独有，此处存放「通用界面文案」的魔女语翻译
 # 缺失键会回退到中文（如 app.status.analyze_done，由用户自行补充）
-# log.* 的魔女语与英文一致（便于日志阅读）
+# log.* 和 console.* 的魔女语与英文一致（便于日志阅读）
+# 具体翻译方法可以参考md文档:_fiXmArge_Language.md
 
 about:
   copyright: "Non-commercial · For learning"
@@ -54,6 +55,27 @@ app:
 
 console:
   exit_msg_electron: "Application exited safely.\n\nNote: If the backend service (Python) has not fully closed,\nthe system will clean it up automatically within a few seconds."
+  # Log console window (webui/console/) UI text
+  title: "Log Console"
+  filter_all: "All"
+  filter_debug: "Debug"
+  filter_info: "Info"
+  filter_warning: "Warning"
+  filter_error: "Error"
+  search_placeholder: "Search logs…"
+  autoscroll: "Auto scroll"
+  wrap: "Wrap lines"
+  copy: "Copy"
+  save: "Export log"
+  clear: "Clear"
+  empty: "No logs yet"
+  no_match: "No matching logs"
+  status: "{total} lines · showing {shown}"
+  copied: "Copied {count} lines"
+  copy_failed: "Copy failed"
+  save_done: "Log saved: {path}"
+  save_failed: "Save failed: {msg}"
+  jump_latest: "Jump to latest"
 
 dialog:
   prerelease_title: "hAquEi: Toim oF now"

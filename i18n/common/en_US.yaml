@@ -53,6 +53,27 @@ app:
 
 console:
   exit_msg_electron: "Application exited safely.\n\nNote: If the backend service (Python) has not fully closed,\nthe system will clean it up automatically within a few seconds."
+  # Log console window (webui/console/) UI text
+  title: "Log Console"
+  filter_all: "All"
+  filter_debug: "Debug"
+  filter_info: "Info"
+  filter_warning: "Warning"
+  filter_error: "Error"
+  search_placeholder: "Search logs…"
+  autoscroll: "Auto scroll"
+  wrap: "Wrap lines"
+  copy: "Copy"
+  save: "Export log"
+  clear: "Clear"
+  empty: "No logs yet"
+  no_match: "No matching logs"
+  status: "{total} lines · showing {shown}"
+  copied: "Copied {count} lines"
+  copy_failed: "Copy failed"
+  save_done: "Log saved: {path}"
+  save_failed: "Save failed: {msg}"
+  jump_latest: "Jump to latest"
 
 dialog:
   prerelease_title: "Pre-release Notice"

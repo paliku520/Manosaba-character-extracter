@@ -1,116 +1,13 @@
 /* ============================================================
    Manosaba Character Extracter — PyWebView 现代主题
    深色为默认，浅色通过 html[data-theme="light"] 切换
+   ------------------------------------------------------------
+   字体（@font-face）与主题变量（深浅配色 / 角色主题色）统一放在
+   theme.css：主界面与日志控制台（webui/console/）等独立窗口共用
+   同一份变量，改字体/配色只需改那一处。
    ============================================================ */
 
-/* JetBrains Mono 字体（assets/fonts） */
-@font-face {
-  font-family: "JetBrains Mono";
-  src: url("../assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "JetBrains Mono";
-  src: url("../assets/fonts/JetBrainsMono-Light.woff2") format("woff2");
-  font-weight: 300; font-style: normal; font-display: swap;
-}
-
-/* 有爱圆体 CN Extended（大部分 UI 文本的默认字体） */
-@font-face {
-  font-family: "有爱圆体 CN Extended";
-  src: url("../assets/fonts/YouaiRoundCN-Light.ttf") format("truetype");
-  font-weight: 300; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "有爱圆体 CN Extended";
-  src: url("../assets/fonts/YouaiRoundCN-Medium.ttf") format("truetype");
-  font-weight: 500; font-style: normal; font-display: swap;
-}
-@font-face {
-  font-family: "Tsukushi Mincho";
-  src: url("../assets/fonts/TsukushiMincho.otf") format("opentype");
-  font-weight: 400; font-style: normal; font-display: swap;
-}
-
-:root {
-  /* 主题变量（深色） */
-  --bg: #0b0f14;
-  --bg-sidebar: #0e131a;
-  --bg-panel: #151c26;
-  --bg-elev: #1a2330;
-  --bg-hover: #1a2330;
-  --bg-active: #22303f;
-  --border: #24303e;
-  --border-strong: #33465c;
-  --text: #e6edf3;
-  --text-dim: #9aa7b4;
-  --text-faint: #6b7785;
-  --accent: #35d07f;
-  --accent-2: #58a6ff;
-  --accent-soft: rgba(53, 208, 127, 0.12);
-  --success: #35d07f;
-  --warning: #fbbf24;
-  --danger: #f85149;
-  --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
-  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.35);
-  /* 无组件精灵预览棋盘格配色（--thumb-checker-*，浅/暗主题各一套）；有组件部件缩略图用固定银灰棋盘格（见 .part-thumb） */
-  --thumb-checker-dark: #3a414b;    /* 棋盘格深格（暗色主题） */
-  --thumb-checker-light: #4f5761;   /* 棋盘格浅格（暗色主题） */
-  --radius: 14px;
-  --radius-sm: 8px;
-  --toast-bg: #1a2330;
-  --toast-close-bg: rgba(255, 255, 255, 0.08);
-  --sidebar-w: 250px;
-  --font: "有爱圆体 CN Extended", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
-  --mono: "JetBrains Mono", "Cascadia Code", "Consolas", "Courier New", monospace;
-}
-
-/* 日语界面：主要字体用筑紫明朝（TsukushiMincho），有爱圆体降为次要 */
-html[lang^="ja"] {
-  --font: "Tsukushi Mincho", "有爱圆体 CN Extended", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
-}
-
-html[data-theme="light"] {
-  --bg: #f4f6fb;
-  --bg-sidebar: #ffffff;
-  --bg-panel: #ffffff;
-  --bg-elev: #f0f2f8;
-  --bg-hover: #e8ebf4;
-  --bg-active: #dfe4f0;
-  --border: #e2e6f0;
-  --border-strong: #c9d2e4;
-  --text: #1c2430;
-  --text-dim: #5b6575;
-  --text-faint: #93a0b3;
-  --accent: #2aa865;
-  --accent-2: #3b82c4;
-  --accent-soft: rgba(53, 208, 127, 0.12);
-  --toast-bg: #ffffff;
-  --toast-close-bg: rgba(0, 0, 0, 0.06);
-  --shadow: 0 10px 30px rgba(30, 41, 80, 0.12);
-  --shadow-sm: 0 2px 8px rgba(30, 41, 80, 0.08);
-  /* 无组件精灵预览棋盘格配色（浅色主题）：PS 银灰 + 白 */
-  --thumb-checker-dark: #c0c0c0;
-  --thumb-checker-light: #ffffff;
-}
-
-/* 主题色（accent）：默认绿由 :root 定义；以下为各角色主题色（深浅模式通用） */
-html[data-accent="alisa"] { --accent: #EA4D3E; --accent-2: #EA4D3E; --accent-soft: rgba(234, 77, 62, 0.13); }
-html[data-accent="anan"] { --accent: #9D97F9; --accent-2: #9D97F9; --accent-soft: rgba(157, 151, 249, 0.14); }
-html[data-accent="coco"] { --accent: #F77449; --accent-2: #F77449; --accent-soft: rgba(247, 116, 73, 0.13); }
-html[data-accent="ema"] { --accent: #FF8FB4; --accent-2: #FF8FB4; --accent-soft: rgba(255, 143, 180, 0.14); }
-html[data-accent="hanna"] { --accent: #A7CB1E; --accent-2: #A7CB1E; --accent-soft: rgba(167, 203, 30, 0.15); }
-html[data-accent="hiro"] { --accent: #F84F5A; --accent-2: #F84F5A; --accent-soft: rgba(248, 79, 90, 0.13); }
-html[data-accent="jailer"] { --accent: #C5C9D4; --accent-2: #C5C9D4; --accent-soft: rgba(197, 201, 212, 0.16); }
-html[data-accent="leia"] { --accent: #FDB95B; --accent-2: #FDB95B; --accent-soft: rgba(253, 185, 91, 0.15); }
-html[data-accent="margo"] { --accent: #B87BF0; --accent-2: #B87BF0; --accent-soft: rgba(184, 123, 240, 0.14); }
-html[data-accent="meruru"] { --accent: #E2BFB8; --accent-2: #E2BFB8; --accent-soft: rgba(226, 191, 184, 0.15); }
-html[data-accent="miria"] { --accent: #EFD28D; --accent-2: #EFD28D; --accent-soft: rgba(239, 210, 141, 0.15); }
-html[data-accent="nanoka"] { --accent: #84909A; --accent-2: #84909A; --accent-soft: rgba(132, 144, 154, 0.16); }
-html[data-accent="noah"] { --accent: #65E4EB; --accent-2: #65E4EB; --accent-soft: rgba(101, 228, 235, 0.14); }
-html[data-accent="sherry"] { --accent: #89B5FA; --accent-2: #89B5FA; --accent-soft: rgba(137, 181, 250, 0.14); }
-html[data-accent="warden"] { --accent: #B3B1C5; --accent-2: #B3B1C5; --accent-soft: rgba(179, 177, 197, 0.16); }
-html[data-accent="yuki"] { --accent: #C3D4ED; --accent-2: #C3D4ED; --accent-soft: rgba(195, 212, 237, 0.16); }
+@import url("theme.css");
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 

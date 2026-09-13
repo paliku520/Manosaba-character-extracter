@@ -52,6 +52,27 @@ app:
 
 console:
   exit_msg_electron: "アプリケーションは安全に終了しました。\n\nヒント：バックエンドサービス（Python）が完全に終了していない場合、\n数秒後にシステムが自動的にクリーンアップします。"
+  # ログコンソールウィンドウ（webui/console/）の UI テキスト
+  title: "ログコンソール"
+  filter_all: "すべて"
+  filter_debug: "デバッグ"
+  filter_info: "情報"
+  filter_warning: "警告"
+  filter_error: "エラー"
+  search_placeholder: "ログを検索…"
+  autoscroll: "自動スクロール"
+  wrap: "折り返し"
+  copy: "コピー"
+  save: "ログを保存"
+  clear: "クリア"
+  empty: "ログがありません"
+  no_match: "一致するログがありません"
+  status: "全 {total} 行 · 表示 {shown} 行"
+  copied: "{count} 行をコピーしました"
+  copy_failed: "コピーに失敗しました"
+  save_done: "ログを保存しました: {path}"
+  save_failed: "保存に失敗しました: {msg}"
+  jump_latest: "最新へ"
 
 dialog:
   prerelease_title: "プレリリース版のお知らせ"

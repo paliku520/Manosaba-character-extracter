@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCE — Log Console</title>
+  <!-- 与主界面共用字体/主题变量（webui/css/theme.css），保证配色与语言字体一致 -->
+  <link rel="stylesheet" href="../css/theme.css">
+  <link rel="stylesheet" href="console.css">
+  <script>
+    // 启动前应用 Electron 主进程注入的主题/主题色/语言（与 webui/index.html 同一套 query 参数）
+    (function () {
+      try {
+        var p = new URLSearchParams(location.search);
+        var t = p.get('theme'); if (t) document.documentElement.dataset.theme = t;
+        var a = p.get('accent'); if (a) document.documentElement.dataset.accent = a;
+        var l = p.get('lang'); if (l) document.documentElement.lang = l;
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
+</head>
+<body>
+  <!-- ══════════ 头部：字符画 + 标题 + 总行数 ══════════ -->
+  <header id="c-header">
+    <pre id="c-banner" aria-hidden="true"></pre>
+    <div class="c-head-right">
+      <span id="c-title">MCE — Log Console</span>
+      <span id="c-count" class="c-pill">0</span>
+    </div>
+  </header>
+
+  <!-- ══════════ 工具栏：级别过滤 / 搜索 / 跟随开关 / 操作 ══════════ -->
+  <div id="c-toolbar">
+    <div class="c-levels" id="c-levels">
+      <button type="button" class="c-chip active" data-level="all" data-i18n="console.filter_all">全部</button>
+      <button type="button" class="c-chip" data-level="debug" data-i18n="console.filter_debug">调试</button>
+      <button type="button" class="c-chip" data-level="info" data-i18n="console.filter_info">信息</button>
+      <button type="button" class="c-chip" data-level="warning" data-i18n="console.filter_warning">警告</button>
+      <button type="button" class="c-chip" data-level="error" data-i18n="console.filter_error">错误</button>
+    </div>
+    <div class="c-search">
+      <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="c-search" type="text" spellcheck="false" autocomplete="off" data-i18n-placeholder="console.search_placeholder" placeholder="搜索日志…">
+    </div>
+    <label class="c-switch">
+      <input type="checkbox" id="c-autoscroll" checked>
+      <span class="c-slider"></span>
+      <span data-i18n="console.autoscroll">自动滚动</span>
+    </label>
+    <label class="c-switch">
+      <input type="checkbox" id="c-wrap" checked>
+      <span class="c-slider"></span>
+      <span data-i18n="console.wrap">自动换行</span>
+    </label>
+    <div class="c-actions">
+      <button type="button" id="c-copy" class="c-btn" data-i18n="console.copy">复制</button>
+      <button type="button" id="c-save" class="c-btn" data-i18n="console.save">导出日志</button>
+      <button type="button" id="c-clear" class="c-btn danger" data-i18n="console.clear">清空</button>
+    </div>
+  </div>
+
+  <!-- ══════════ 日志列表 ══════════ -->
+  <div id="c-log-wrap">
+    <div id="c-log" tabindex="0"></div>
+    <div id="c-empty" class="c-empty" data-i18n="console.empty" hidden>暂无日志</div>
+    <button type="button" id="c-jump" class="c-jump" data-i18n="console.jump_latest" hidden>跳到最新</button>
+  </div>
+
+  <!-- ══════════ 状态栏 ══════════ -->
+  <div id="c-statusbar">
+    <span id="c-msg"></span>
+    <span id="c-counts"></span>
+  </div>
+
+  <script src="../js/i18n.js"></script>
+  <script src="console.js"></script>
+</body>
+</html>

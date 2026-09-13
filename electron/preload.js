@@ -60,15 +60,47 @@ window.__electron = {
     progress: (value) => ipcRenderer.invoke('taskbar:progress', value),
     flash: () => ipcRenderer.invoke('taskbar:flash'),
   },
+  // 日志控制台（独立窗口）：订阅日志事件 + 清空主进程缓冲 + 导出日志文件
+  logConsole: {
+    // 订阅：preload 先于页面脚本运行，订阅前到达的事件会按序缓存、订阅时立即回放
+    onEvent: (cb) => {
+      if (typeof cb !== 'function' || logConsoleSubscriber) return;
+      logConsoleSubscriber = cb;
+      const buffered = logConsoleEvents.splice(0);
+      for (let i = 0; i < buffered.length; i++) cb(buffered[i]);
+    },
+    clear: () => ipcRenderer.invoke('log:clear'),
+    save: (text) => ipcRenderer.invoke('log:save', text),
+  },
 };
 
-// 日志控制台窗口：接收主进程日志行并追加显示（主窗口无 #log 元素则忽略）
-ipcRenderer.on('log-line', (_e, line) => {
-  const el = document.getElementById('log');
-  if (el) {
-    el.textContent += line + '\n';
-    el.scrollTop = el.scrollHeight;
-  }
+// 日志控制台窗口：主进程先发 log:init（字符画 + 历史日志），随后逐条发 log-line。
+// 页面脚本可能在首条日志到达之后才订阅，因此此处先入队、订阅时按到达顺序回放，
+// 保证不丢日志、且历史回放与增量日志不会乱序。
+const logConsoleEvents = [];       // 订阅前缓存的事件（有序）
+let logConsoleSubscriber = null;   // 控制台页面订阅回调（仅一个）
+
+function emitLogConsoleEvent(ev) {
+  if (logConsoleSubscriber) logConsoleSubscriber(ev);
+  else logConsoleEvents.push(ev);
+}
+
+ipcRenderer.on('log:init', (_e, payload) => {
+  emitLogConsoleEvent({
+    type: 'init',
+    banner: (payload && payload.banner) || '',
+    lines: (payload && payload.lines) || [],
+  });
+});
+
+ipcRenderer.on('log-line', (_e, payload) => {
+  // 主进程发送 { text, append }：append=true 表示多行日志的续行（前端追加到同一行）
+  const p = (payload && typeof payload === 'object') ? payload : { text: payload };
+  emitLogConsoleEvent({
+    type: 'line',
+    text: String(p.text == null ? '' : p.text),
+    append: !!p.append,
+  });
 });
 
 // 后端事件推送 → 前端 window.__pywebview.events.<event>(payload)

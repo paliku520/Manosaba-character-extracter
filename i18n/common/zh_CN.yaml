@@ -53,6 +53,27 @@ app:
 
 console:
   exit_msg_electron: "应用已安全退出。\n\n提示：如果后端服务（Python）未完全关闭，\n系统会在几秒内自动清理。"
+  # 日志控制台窗口（webui/console/）界面文案
+  title: "日志控制台"
+  filter_all: "全部"
+  filter_debug: "调试"
+  filter_info: "信息"
+  filter_warning: "警告"
+  filter_error: "错误"
+  search_placeholder: "搜索日志…"
+  autoscroll: "自动滚动"
+  wrap: "自动换行"
+  copy: "复制"
+  save: "导出日志"
+  clear: "清空"
+  empty: "暂无日志"
+  no_match: "没有匹配的日志"
+  status: "共 {total} 行 · 显示 {shown} 行"
+  copied: "已复制 {count} 行到剪贴板"
+  copy_failed: "复制失败"
+  save_done: "日志已保存: {path}"
+  save_failed: "保存失败: {msg}"
+  jump_latest: "跳到最新"
 
 dialog:
   prerelease_title: "测试版提示"

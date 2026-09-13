@@ -201,6 +201,14 @@ def log(log_type: str, text: str, source: str = "PY") -> None:
     prefix = level.value
     src = (source.upper() or "PY").strip()
 
+    # 多行消息（如 "系统信息:\nCPU: ...\n内存: ..."）的续行统一缩进 4 空格：
+    #   ① 日志文件/终端里层次更清楚；
+    #   ② 日志控制台（Electron）据此识别续行，把它们并入同一条日志记录，
+    #      按级别过滤时多行消息不会被拆散（续行没有级别前缀，否则会被当作独立行滤掉）。
+    # log_raw() 不加缩进，其多行内容仍按独立行输出（banner / 分限线等）。
+    if "\n" in text:
+        text = text.replace("\n", "\n    ")
+
     # 构建消息：时间戳 + 来源 + 日志级别 + 内容
     if prefix:
         bracket_content = prefix[1:-1]  # 获取 INFO, WARNING 等

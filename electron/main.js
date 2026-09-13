@@ -55,6 +55,7 @@ try {
 let win = null;
 let py = null;
 let logWin = null;              // 日志控制台窗口（Electron BrowserWindow）
+const LOG_BUFFER_MAX = 2000;    // 控制台历史日志回放上限（行）
 const logBuffer = [];           // 最近日志（打开控制台时回放）
 const pending = new Map(); // id -> {resolve, reject}
 let seq = 0;
@@ -245,6 +246,7 @@ function saveLastDirectory(dir) {
 function startPython() {
   const { cmd, args } = pyCommand();
   console.log('[main] start backend:', cmd, args.join(' '));
+  pushLog('[main] start backend: ' + cmd);   // 后端启动失败时控制台也能看到原因
   py = spawn(cmd, args, {
     stdio: ['pipe', 'pipe', 'pipe'],
     windowsHide: true,
@@ -288,6 +290,7 @@ function startPython() {
   });
   py.on('exit', (code) => {
     console.error('[py] backend exited', code);
+    pushLog('[main] backend exited with code ' + code);
     py = null;
     // 拒绝所有挂起请求
     for (const [, p] of pending) p.reject(new Error('backend exited'));
@@ -307,22 +310,58 @@ function callApi(method, args = []) {
   });
 }
 
-/* ── 日志控制台（Electron 黑底控制台窗口）──────────── */
+/* ── 日志控制台（独立窗口，前端页面 webui/console/）──────────── */
 
-const LOG_HTML = 'data:text/html;charset=utf-8,' + encodeURIComponent(
-  '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
-  'body{margin:0;background:#0c0c0c;color:#ccc;font:12px/1.55 Consolas,\'Courier New\',monospace;padding:6px 8px;white-space:pre-wrap;word-break:break-all}' +
-  '::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#333;border-radius:4px}' +
-  '</style></head><body id="log"></body></html>'
-);
+// 控制台窗口前端入口：打包后在 resources/webui/console/；开发模式在项目根 webui/console/
+function logConsoleHtml() {
+  const webuiDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'webui')
+    : path.join(__dirname, '..', 'webui');
+  return path.join(webuiDir, 'console', 'index.html');
+}
+
+// 控制台窗口底色跟随 settings.json 主题，避免打开瞬间黑/白闪
+function consoleBackgroundColor() {
+  try {
+    const s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
+    const g = (s && typeof s === 'object' && s.global) || {};
+    if ((g.theme || s.theme) === 'light') return '#f4f6fb';
+  } catch {}
+  return '#0f1115';
+}
+
+// 日志记录首行识别（与 src/logtools.py 的输出格式一致）：
+//   [yyyy-MM-dd HH:mm:ss] [来源] [级别] 内容 / [yyyy-MM-dd HH:mm:ss] [来源] 内容
+const RE_LOG_HEAD = /^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\s*\[[^\]]{1,12}\](?:\s*\[[A-Za-z]{1,12}\])?\s?/;
+// 主进程自身往控制台补的日志（[main] ...）也各自算一条记录
+const RE_MAIN_HEAD = /^\[(?:main|py|electron)\]/i;
+// 多行日志的续行（logtools 对 log() 的多行消息统一做了 4 空格缩进；log_raw 不缩进）
+const RE_LOG_CONT = /^ {4}/;
 
 // 推送日志到控制台（剥离 ANSI 颜色码，避免转义序列乱码；终端仍保留颜色高亮）
+//
+// 多行日志（如 log("info", "系统信息:\nCPU: ...\n内存: ...\n系统: ...")）经 stderr 按行到达：
+// 首行带 [时间] [来源] [级别] 前缀，续行只有 4 空格缩进。若把续行当独立日志行推送，
+// 控制台按级别过滤时会把消息尾部丢掉（日志显示不完整）；因此这里把续行并入同一条记录：
+//   - logBuffer 内合并为一条（重开控制台回放完整消息）
+//   - 发给控制台的增量行带 append 标记（前端追加到同一行）
+// 无前缀也无缩进的行（banner / 分限线等原始输出）仍各自算一条记录。
 function pushLog(line) {
   const plain = String(line).replace(/\u001b\[[0-9;]*m/g, '');
+  const isHead = RE_LOG_HEAD.test(plain) || RE_MAIN_HEAD.test(plain);
+
+  if (!isHead && RE_LOG_CONT.test(plain) && logBuffer.length) {
+    logBuffer[logBuffer.length - 1] += '\n' + plain;
+    if (logWin && !logWin.isDestroyed()) {
+      logWin.webContents.send('log-line', { text: plain, append: true });
+    }
+    return;
+  }
+
   logBuffer.push(plain);
-  if (logBuffer.length > 800) logBuffer.shift();
+  if (logBuffer.length > LOG_BUFFER_MAX) logBuffer.shift();
   if (logWin && !logWin.isDestroyed()) {
-    logWin.webContents.send('log-line', plain);
+    logWin.webContents.send('log-line', { text: plain, append: false });
   }
 }
 
@@ -334,11 +373,15 @@ function openLogConsole() {
     return;
   }
   logWin = new BrowserWindow({
-    width: 780,
-    height: 520,
-    title: 'MCE - Log Console',
-    backgroundColor: '#0c0c0c',
+    width: 880,
+    height: 580,
+    minWidth: 520,
+    minHeight: 320,
+    title: 'MCE — Log Console',
+    backgroundColor: consoleBackgroundColor(),
     autoHideMenuBar: true,   // 隐藏菜单栏（File/Edit/View/Window/Help）
+    icon: path.join(__dirname, '..', 'webui', 'assets', 'icon.ico'),
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: false,
@@ -346,11 +389,12 @@ function openLogConsole() {
       sandbox: false,
     },
   });
-  logWin.loadURL(LOG_HTML);
+  // 主题/主题色/语言随主窗口注入（与主窗口同一套 query 参数），字体与配色保持一致
+  logWin.loadFile(logConsoleHtml(), launchQueryOptions());
+  logWin.once('ready-to-show', () => logWin.show());
   logWin.webContents.on('did-finish-load', () => {
-    // 控制台首行显示 MCE 字符画，随后回放历史日志
-    logWin.webContents.send('log-line', MCE_BANNER);
-    logBuffer.forEach((l) => logWin.webContents.send('log-line', l));
+    // 先发字符画 + 历史日志（前端 preload 按到达顺序缓存、订阅时回放），随后增量推送 log-line
+    logWin.webContents.send('log:init', { banner: MCE_BANNER, lines: logBuffer.slice() });
   });
   logWin.on('closed', () => { logWin = null; });
 }
@@ -446,6 +490,33 @@ ipcMain.handle('win:quit', () => {
 ipcMain.handle('win:openLogConsole', () => {
   openLogConsole();
   return { ok: true };
+});
+
+// 日志控制台：清空主进程侧历史缓冲（避免重开控制台时回放已清空的日志）
+ipcMain.handle('log:clear', () => {
+  logBuffer.length = 0;
+  return { ok: true };
+});
+
+// 日志控制台：导出当前（过滤后的）日志文本（原生保存对话框 + 写文件）
+ipcMain.handle('log:save', async (_e, text) => {
+  const parent = (logWin && !logWin.isDestroyed()) ? logWin : win;
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+  const r = await dialog.showSaveDialog(parent, {
+    title: 'Export log',
+    defaultPath: `mce-log-${stamp}.txt`,
+    filters: [
+      { name: 'Text', extensions: ['txt'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(r.filePath, String(text == null ? '' : text), 'utf8');
+    return { ok: true, path: r.filePath };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
 });
 
 // 重启应用（禁用硬件加速等需重启生效时使用）：先停后端再 relaunch
