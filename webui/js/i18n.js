@@ -38,6 +38,14 @@
       'parts.save_composite': '保存合成图',
       'parts.clear_preview': '清空预览',
       'parts.no_preview': '尚无预览',
+      'parts.lightbox_hint': '滚轮缩放 · 拖拽平移 · 点击空白处 / Esc 关闭',
+      'parts.lightbox_close': '关闭',
+      'parts.lightbox_zoom_in': '放大',
+      'parts.lightbox_zoom_out': '缩小',
+      'parts.lightbox_fit': '适应',
+      'parts.lightbox_export': '导出',
+      'parts.lightbox_loading': '正在生成预览…',
+      'preview.lightbox_export_current': '导出当前',
       'parts.empty_hint': '请先在左侧选择一个角色进入拼接模式',
       'hierarchy.hint': '角色组件层级结构',
       'hierarchy.expand_all': '全部展开',
@@ -107,8 +115,16 @@
       document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
         el.setAttribute('placeholder', this.t(el.getAttribute('data-i18n-placeholder')));
       });
-      document.querySelectorAll('[data-i18n-title]').forEach((el) => {
-        el.setAttribute('title', this.t(el.getAttribute('data-i18n-title')));
+      // 悬停提示统一走自定义气泡（app.js 的全局委托监听 data-tip），因此写入 data-tip；
+      // 同时移除原生 title，避免系统气泡与自定义气泡同时出现（样式不一致）
+      document.querySelectorAll('[data-i18n-title], [data-i18n-tip]').forEach((el) => {
+        const key = el.getAttribute('data-i18n-title') || el.getAttribute('data-i18n-tip');
+        el.setAttribute('data-tip', this.t(key));
+        el.removeAttribute('title');
+      });
+      // aria-label（无障碍）：与悬停提示同源，语言切换后一并刷新
+      document.querySelectorAll('[data-i18n-aria]').forEach((el) => {
+        el.setAttribute('aria-label', this.t(el.getAttribute('data-i18n-aria')));
       });
     },
   };

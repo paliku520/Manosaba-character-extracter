@@ -420,6 +420,7 @@ class SpriteCompositor:
         sketch_font_size: int = 56,
         sketch_align: str = "center",
         mask_mapping: Optional[Dict] = None,
+        canvas_size: Optional[Tuple[int, int]] = None,
     ) -> Optional[Image.Image]:
         """
         合成角色图像。
@@ -438,6 +439,9 @@ class SpriteCompositor:
                            ClippingMask_*（role=masked）是"被裁剪"的叠加层，
                            先裁剪到区域再按 blend_mode（normal/multiply/overlay/softlight）混合。
                            为 None 时保持旧行为（全部普通 alpha 合成）。
+            canvas_size:    指定画布尺寸（单部件放大预览用：与整角色合成同一画布，
+                           使该精灵落在它在角色中的真实位置，而不是画面中央）；
+                           为 None 时按所选部件自动计算。
 
         Returns:
             PIL Image (RGBA)，失败返回 None
@@ -473,8 +477,9 @@ class SpriteCompositor:
                     sketch_anchor = (float(ref["position"]["x"]), float(ref["position"]["y"]))
                     sorted_parts = [p for p in sorted_parts if not p["name"].startswith("Option_Arms")]
 
-        # 计算画布大小；复用同尺寸画布（原地清空），避免每次合成重建 2000x4000 大画布
-        canvas_size = self._calc_canvas_size(sorted_parts)
+        # 计算画布大小（可外部指定，如单部件预览沿用整角色画布）；
+        # 复用同尺寸画布（原地清空），避免每次合成重建 2000x4000 大画布
+        canvas_size = tuple(canvas_size) if canvas_size else self.calc_canvas_size(sorted_parts)
         if self._canvas is None or self._canvas.size != canvas_size:
             self._canvas = Image.new("RGBA", canvas_size, (0, 0, 0, 0))
         else:
@@ -703,8 +708,8 @@ class SpriteCompositor:
         except Exception as e:
             log("warning", f"[composite] 绘制素描本文字失败: {e}")
 
-    def _calc_canvas_size(self, parts: List[Dict]) -> Tuple[int, int]:
-        """根据部件位置和尺寸计算画布大小"""
+    def calc_canvas_size(self, parts: List[Dict]) -> Tuple[int, int]:
+        """根据部件位置和尺寸计算画布大小（也可用于预估整角色画布，供临时画布复用）"""
         if not parts:
             return self.canvas_size
 

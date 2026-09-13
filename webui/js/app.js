@@ -36,6 +36,12 @@
     });
   })();
 
+  // 禁用原生图片拖拽：拖动 logo / 部件缩略图会拖出半透明“拖影”，观感像 bug。
+  // 预览图的平移是自实现的（mousedown 拖拽），不依赖 HTML5 拖拽，因此可以全局禁用。
+  document.addEventListener('dragstart', (e) => {
+    if (e.target && e.target.tagName === 'IMG') e.preventDefault();
+  });
+
   // 复制文本到剪贴板（优先 Clipboard API，回退 execCommand），成功后 toast 提示
   function copyText(text) {
     const done = () => toast(t('app.copied', { text }), 'success');
@@ -593,7 +599,7 @@
       const nameEl = document.createElement('div');
       nameEl.className = 'sprite-preview-name';
       nameEl.textContent = s.name;
-      nameEl.title = s.name;
+      setTipText(nameEl, s.name);   // 名称被省略号截断时，悬停用统一气泡显示完整名称
       const sizeEl = document.createElement('div');
       sizeEl.className = 'sprite-preview-size';
       sizeEl.textContent = (s.size && s.size[0]) ? s.size[0] + '×' + s.size[1] : '';
@@ -602,6 +608,15 @@
       item.appendChild(thumb);
       item.appendChild(meta);
       item.addEventListener('click', () => togglePreviewSel(s.name));
+      // 右键精灵 → 放大预览（无组件角色没有位置数据，直接展示精灵本身）
+      item.addEventListener('contextmenu', (e) => {
+        if (_spearEasterActive) return;
+        const url = App.previewThumbs[s.name];
+        if (!url) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openLightbox({ src: url, kind: 'sprite', name: s.name });
+      });
       grid.appendChild(item);
     });
   }
@@ -615,6 +630,7 @@
   }
 
   function clearPreview() {
+    closePreviewLightbox();   // 预览已清空：同步收起放大叠加层
     const img = $('#preview-img');
     img.hidden = true;
     img.removeAttribute('src');
@@ -630,11 +646,16 @@
     if (zoomEl) { zoomEl.disabled = true; zoomEl.value = 0; }
     const zv = $('#zoom-value');
     if (zv) zv.textContent = t('parts.zoom_fit');
-    const pc = $('#preview');
-    if (pc) pc.classList.remove('zoomed', 'dragging');
+    const pc = previewViewport();
+    if (pc) { pc.classList.remove('zoomed', 'dragging'); pc.scrollLeft = 0; pc.scrollTop = 0; }
   }
 
   // ═════════════ 预览缩放 / 平移 ═════════════
+
+  // 滚动/滚轮/拖拽都作用在“预览滚动容器”上：卡片本身不滚动，滚动条因而落在卡片之外
+  function previewViewport() {
+    return $('#preview-scroll') || $('#preview');
+  }
 
   const ZOOM_MAX = 4;          // 最大缩放 400%
   let previewZoom = 1;         // 当前缩放（1 = 100%，最小值以总分辨率为准 = 适配）
@@ -643,9 +664,9 @@
 
   function computeFit() {
     const size = App.previewSize;
-    const container = $('#preview');
+    const container = previewViewport();
     if (!size || !container) return 1;
-    const cw = container.clientWidth - 2;  // 减去 border
+    const cw = container.clientWidth - 2;  // 减去预览卡片左右 border
     const ch = container.clientHeight - 2;
     if (cw <= 0 || ch <= 0) return 1;
     return Math.min(cw / size[0], ch / size[1]);
@@ -669,7 +690,7 @@
 
   function applyPreviewZoom() {
     const size = App.previewSize;
-    const container = $('#preview');
+    const container = previewViewport();
     const img = $('#preview-img');
     const slider = $('#zoom-slider');
     if (!size || !container || !img || !slider) return;
@@ -686,7 +707,7 @@
 
   function onPreviewWheel(e) {
     const size = App.previewSize;
-    const container = $('#preview');
+    const container = previewViewport();
     if (!size || !container) return;
     e.preventDefault();
     const oldZ = previewZoom;
@@ -706,7 +727,7 @@
 
   function onPreviewMouseDown(e) {
     if (e.button !== 0) return;
-    const container = $('#preview');
+    const container = previewViewport();
     previewDragging = {
       x: e.clientX, y: e.clientY,
       sl: container.scrollLeft, st: container.scrollTop,
@@ -717,7 +738,7 @@
 
   function onPreviewMouseMove(e) {
     if (!previewDragging) return;
-    const container = $('#preview');
+    const container = previewViewport();
     container.scrollLeft = previewDragging.sl - (e.clientX - previewDragging.x);
     container.scrollTop = previewDragging.st - (e.clientY - previewDragging.y);
     e.preventDefault();
@@ -726,12 +747,12 @@
   function onPreviewMouseUp() {
     if (!previewDragging) return;
     previewDragging = null;
-    const c = $('#preview');
+    const c = previewViewport();
     if (c) c.classList.remove('dragging');
   }
 
   function bindPreviewZoom() {
-    const container = $('#preview');
+    const container = previewViewport();
     const slider = $('#zoom-slider');
     $('#btn-zoom-fit').addEventListener('click', () => {
       slider.value = 0;
@@ -744,11 +765,270 @@
     });
     container.addEventListener('wheel', onPreviewWheel, { passive: false });
     container.addEventListener('mousedown', onPreviewMouseDown);
+    // 右键预览区 → 整屏放大（叠加层 + 预览图居中）
+    container.addEventListener('contextmenu', (e) => {
+      if (_spearEasterActive) return;   // 长矛彩蛋锁定期间不放大
+      e.preventDefault();
+      openPreviewLightbox();
+    });
     document.addEventListener('mousemove', onPreviewMouseMove);
     document.addEventListener('mouseup', onPreviewMouseUp);
     window.addEventListener('resize', () => {
       if (App.previewSize && $('#zoom-slider').value === '0') applyPreviewZoom();
     });
+  }
+
+  // ── 放大预览：整屏叠加层（可滚轮缩放 / 拖拽平移 + 底部操作卡片）──
+  // openLightbox({ src }) 传 null 时先打开叠加层显示“生成中”（部件预览要等后端合成），
+  // 拿到图片后由 lbSetImage() 填入。kind='composite' 时才提供「导出」（导出当前合成图）。
+  let _lb = null;                 // 当前查看器状态（null = 未打开）
+  const LB_MIN_RATIO = 0.5;       // 最小缩放 = 适配的一半
+  const LB_STEP = 1.25;           // 按钮每次缩放的倍率
+  const LB_MAX_SCALE = 16;        // 绝对上限（大画布适配后很小，仍能放大看细节）
+
+  const LB_ICONS = {
+    zoomIn: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M11 8v6M8 11h6"/>',
+    zoomOut: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/>',
+    fit: '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>',
+    export: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/>',
+    close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  };
+
+  function lbIcon(name) {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      (LB_ICONS[name] || '') + '</svg>';
+  }
+
+  function closePreviewLightbox() {
+    const lb = _lb;
+    if (!lb) return;
+    _lb = null;
+    document.removeEventListener('keydown', onLightboxEsc, true);
+    document.removeEventListener('pointermove', lb.onMove);
+    document.removeEventListener('pointerup', lb.onUp);
+    lb.root.classList.remove('show');
+    setTimeout(() => lb.root.remove(), 220);   // 等淡出过渡结束再移除
+  }
+
+  function onLightboxEsc(e) {
+    if (!_lb || e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    closePreviewLightbox();
+  }
+
+  // 应用缩放/平移：图片绝对定位在舞台中心，再按 (dx, dy) 平移、按 scale 缩放
+  function lbApply() {
+    const lb = _lb;
+    if (!lb) return;
+    lb.img.style.transform =
+      'translate(-50%, -50%) translate(' + lb.dx + 'px, ' + lb.dy + 'px) scale(' + lb.scale + ')';
+    if (lb.zoomLabel) {
+      lb.zoomLabel.textContent = Math.abs(lb.scale - lb.fit) < 1e-3
+        ? t('parts.zoom_fit')
+        : Math.round(lb.scale / lb.fit * 100) + '%';
+    }
+  }
+
+  // 适配：整图完整可见、居中不平移
+  function lbFit() {
+    const lb = _lb;
+    if (!lb || !lb.img.naturalWidth) return;
+    const sw = lb.stage.clientWidth;
+    const sh = lb.stage.clientHeight;
+    if (sw <= 0 || sh <= 0) return;
+    lb.fit = Math.min(sw / lb.img.naturalWidth, sh / lb.img.naturalHeight);
+    lb.scale = lb.fit;
+    lb.dx = 0;
+    lb.dy = 0;
+    lbApply();
+  }
+
+  // 以舞台内 (cx, cy) 为中心缩放（默认舞台中心）：保持该点下的内容不动
+  function lbZoomAt(factor, cx, cy) {
+    const lb = _lb;
+    if (!lb || !lb.fit) return;
+    const next = Math.max(lb.fit * LB_MIN_RATIO, Math.min(LB_MAX_SCALE, lb.scale * factor));
+    if (Math.abs(next - lb.scale) < 1e-6) return;
+    const k = next / lb.scale;
+    const ox = (cx === undefined ? lb.stage.clientWidth / 2 : cx) - lb.stage.clientWidth / 2;
+    const oy = (cy === undefined ? lb.stage.clientHeight / 2 : cy) - lb.stage.clientHeight / 2;
+    lb.dx += (ox - lb.dx) * (1 - k);
+    lb.dy += (oy - lb.dy) * (1 - k);
+    lb.scale = next;
+    lbApply();
+  }
+
+  // 填入图片（同步打开时直接给 src；部件预览等后端返回后再调用）
+  function lbSetImage(dataUrl) {
+    const lb = _lb;
+    if (!lb || !dataUrl) return;
+    const loading = lb.stage.querySelector('.lightbox-loading');
+    if (loading) loading.remove();
+    lb.img.hidden = false;
+    lb.img.addEventListener('load', lbFit, { once: true });
+    lb.img.src = dataUrl;
+    lb.zoomBtns.forEach((b) => { b.disabled = false; });
+    if (lb.img.complete) lbFit();
+  }
+
+  function openLightbox(opts) {
+    const src = (opts && opts.src) || null;
+    const kind = (opts && opts.kind) || 'image';
+    const name = (opts && opts.name) || null;   // 精灵预览时记录当前精灵名（供「导出当前」使用）
+    closePreviewLightbox();           // 防御性：先收回上一次
+    // 上一次可能仍在淡出（延迟移除）：直接清掉，保证同一时刻只有一个查看器
+    document.querySelectorAll('.preview-lightbox').forEach((el) => el.remove());
+
+    const root = document.createElement('div');
+    root.className = 'preview-lightbox';
+
+    const stage = document.createElement('div');
+    stage.className = 'lightbox-stage';
+    const img = document.createElement('img');
+    img.className = 'lightbox-img';
+    img.alt = 'preview';
+    img.hidden = !src;
+    stage.appendChild(img);
+    if (!src) {
+      const loading = document.createElement('div');
+      loading.className = 'lightbox-loading';
+      loading.textContent = t('parts.lightbox_loading');
+      stage.appendChild(loading);
+    }
+
+    const zone = document.createElement('div');
+    zone.className = 'lightbox-bottom';
+    const hint = document.createElement('div');
+    hint.className = 'lightbox-hint';
+    hint.textContent = t('parts.lightbox_hint');
+    const bar = document.createElement('div');
+    bar.className = 'lightbox-bar';
+    const zoomLabel = document.createElement('span');
+    zoomLabel.className = 'lightbox-zoom';
+
+    const mkBtn = (iconName, key, cls, onClick) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn sm' + (cls ? ' ' + cls : '');
+      b.setAttribute('aria-label', t(key));
+      b.innerHTML = lbIcon(iconName) + '<span></span>';
+      b.querySelector('span').textContent = t(key);
+      b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+      return b;
+    };
+    const btnOut = mkBtn('zoomOut', 'parts.lightbox_zoom_out', 'ghost', () => lbZoomAt(1 / LB_STEP));
+    const btnIn = mkBtn('zoomIn', 'parts.lightbox_zoom_in', 'ghost', () => lbZoomAt(LB_STEP));
+    const btnFit = mkBtn('fit', 'parts.lightbox_fit', 'ghost', lbFit);
+    bar.appendChild(zoomLabel);
+    bar.appendChild(btnOut);
+    bar.appendChild(btnIn);
+    bar.appendChild(btnFit);
+    const zoomBtns = [btnOut, btnIn, btnFit];
+    // 导出：合成预览 → 保存合成图；无组件精灵预览 → 导出精灵；部件预览没有可导出对象，不提供
+    if (kind === 'composite') {
+      const b = mkBtn('export', 'parts.lightbox_export', 'primary', dispatchLightboxExport);
+      bar.appendChild(b);
+      zoomBtns.push(b);
+    } else if (kind === 'sprite') {
+      // 无组件预览：导出“当前正在查看的这一张”精灵
+      const b = mkBtn('export', 'preview.lightbox_export_current', 'primary', dispatchLightboxExport);
+      bar.appendChild(b);
+      zoomBtns.push(b);
+    }
+    bar.appendChild(mkBtn('close', 'parts.lightbox_close', '', closePreviewLightbox));
+    if (!src) zoomBtns.forEach((b) => { b.disabled = true; });   // 生成中先禁用（除关闭外）
+
+    zone.appendChild(hint);
+    zone.appendChild(bar);
+    root.appendChild(stage);
+    root.appendChild(zone);
+    document.body.appendChild(root);
+
+    const lb = {
+      root, stage, img, kind, name, zoomLabel, zoomBtns,
+      scale: 1, fit: 1, dx: 0, dy: 0, drag: null, moved: false,
+      onMove: null, onUp: null,
+    };
+    _lb = lb;
+
+    // 滚轮缩放：以光标位置为中心
+    stage.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const r = stage.getBoundingClientRect();
+      lbZoomAt(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+    // 拖拽平移（左键；拖拽过的这一次不触发“点击关闭”）
+    stage.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !lb.img.naturalWidth) return;
+      lb.drag = { x: e.clientX, y: e.clientY, dx: lb.dx, dy: lb.dy };
+      lb.moved = false;
+      stage.classList.add('grabbing');
+      e.preventDefault();
+    });
+    lb.onMove = (e) => {
+      if (!lb.drag) return;
+      const mx = e.clientX - lb.drag.x;
+      const my = e.clientY - lb.drag.y;
+      if (!lb.moved && Math.abs(mx) + Math.abs(my) > 4) lb.moved = true;
+      lb.dx = lb.drag.dx + mx;
+      lb.dy = lb.drag.dy + my;
+      lbApply();
+    };
+    lb.onUp = () => {
+      if (!lb.drag) return;
+      lb.drag = null;
+      stage.classList.remove('grabbing');
+    };
+    document.addEventListener('pointermove', lb.onMove);
+    document.addEventListener('pointerup', lb.onUp);
+    // 点击空白处关闭；点在底部操作卡片上不关闭
+    root.addEventListener('click', (e) => {
+      if (e.target.closest('.lightbox-bar')) return;
+      if (lb.moved) { lb.moved = false; return; }   // 刚拖拽过，忽略这一次点击
+      closePreviewLightbox();
+    });
+    root.addEventListener('contextmenu', (e) => { e.preventDefault(); closePreviewLightbox(); });
+    document.addEventListener('keydown', onLightboxEsc, true);
+
+    void root.offsetWidth;            // 强制 reflow：先渲染隐藏初始态，再加 .show 触发淡入
+    root.classList.add('show');
+    if (src) {
+      img.src = src;
+      img.addEventListener('load', lbFit, { once: true });
+      if (img.complete) lbFit();
+    }
+    return lb;
+  }
+
+  // 打开当前合成图的放大预览（右键预览区）
+  function openPreviewLightbox() {
+    const img = $('#preview-img');
+    const src = (img && !img.hidden) ? img.getAttribute('src') : null;
+    if (!src) return;                 // 无预览图时不弹出
+    openLightbox({ src, kind: 'composite' });
+  }
+
+  // 部件放大预览：后端用“合成逻辑 + 临时画布”把该部件画在它的真实位置（不在画面中央）
+  function openPartLightbox(name) {
+    if (_spearEasterActive || !api()) return;
+    openLightbox({ src: null, kind: 'part' });   // 先开叠加层显示“生成中”
+    api().preview_part(name);
+  }
+
+  // 查看器内的「导出」按来源分发：合成预览 → 保存合成图；无组件精灵预览 → 导出当前这张精灵
+  function dispatchLightboxExport() {
+    const lb = _lb;
+    const kind = lb ? lb.kind : null;
+    if (kind === 'sprite') {
+      const name = lb.name;                      // 当前正在查看的精灵
+      closePreviewLightbox();
+      if (name && api()) api().export_preview(App.currentName, [name]);
+      return;
+    }
+    closePreviewLightbox();
+    if (kind === 'composite' && App.characterData) api().save_composite();
   }
 
   // ═════════════ 部件选择 / 预览 ═════════════
@@ -825,7 +1105,7 @@
       g.className = 'part-group';
       const h = document.createElement('div');
       h.className = 'part-group-header';
-      h.title = cat;
+      setTipText(h, cat);
       const caret = document.createElement('span');
       caret.className = 'part-caret';
       caret.innerHTML =
@@ -839,7 +1119,7 @@
       desel.type = 'button';
       desel.className = 'part-deselect';
       desel.textContent = t('parts.deselect_group');
-      desel.title = cat;
+      setTipText(desel, cat);
       desel.addEventListener('click', (e) => {
         e.stopPropagation();   // 不触发展开/折叠
         deselectGroup(g);
@@ -878,6 +1158,14 @@
         cb.checked = App.selected.has(p.name);
         // 仅点击复选框切换勾选；点击卡片其他区域不触发选择/合成
         cb.addEventListener('change', () => onPartToggle(p.name, cb.checked));
+
+        // 右键部件行 → 放大预览（后端用合成逻辑把该部件画到临时画布的真实位置上）
+        item.addEventListener('contextmenu', (e) => {
+          if (_spearEasterActive) return;
+          e.preventDefault();
+          e.stopPropagation();
+          openPartLightbox(p.name);
+        });
 
         App.partEls[p.name] = { cb, thumb: item.querySelector('.part-thumb') };
         g.appendChild(item);
@@ -1111,16 +1399,13 @@
     if (ind) ind.style.transform = 'translateX(' + (idx * 100) + '%)';
   }
 
-  // “编辑文字”按钮上显示已应用文字的摘要（首行截断）
+  // “编辑文字”按钮：有文字时鼠标悬停用统一气泡显示已输入内容（不再内嵌摘要小气泡，避免样式不统一）
   function syncSketchSummary() {
-    const s = $('#sketch-text-summary');
-    if (!s) return;
     const text = (App.sketchText || '').trim();
-    const first = text.split('\n')[0] || '';
-    const shown = first.length > 22 ? first.slice(0, 22) + '…' : first;
-    s.textContent = shown ? ' ' + shown : '';
     const btn = $('#btn-sketch-edit');
-    if (btn) btn.classList.toggle('has-text', !!text);
+    if (!btn) return;
+    btn.classList.toggle('has-text', !!text);
+    setTipText(btn, text || '');
   }
 
   // 打开素描本文字编辑模态窗口（最大 5 行；确定后提交并刷新预览）
@@ -1201,7 +1486,7 @@
       if (App.selected.has(p.name)) {
         const li = document.createElement('li');
         li.textContent = p.name;
-        li.title = t('app.click_to_copy');
+        setTipText(li, t('app.click_to_copy'));
         li.addEventListener('click', () => copyText(p.name));
         ul.appendChild(li);
       }
@@ -1346,7 +1631,7 @@
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
     copyBtn.className = 'tree-copy';
-    copyBtn.title = t('app.click_to_copy');
+    setTipText(copyBtn, t('app.click_to_copy'));
     copyBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
       'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -1621,6 +1906,7 @@
 
   // ── 悬停说明气泡（共享单例；portal 到 body + fixed 定位，规避弹窗滚动容器裁剪）──
   let _uiTipEl = null;
+  let _uiTipAnchor = null;   // 当前气泡锚点（同一元素内部移动时不重建气泡）
 
   function _ensureUiTip() {
     if (_uiTipEl && _uiTipEl.isConnected) return _uiTipEl;
@@ -1635,6 +1921,7 @@
   function _showUiTip(anchor, text) {
     const tip = _ensureUiTip();
     tip.textContent = text;
+    _uiTipAnchor = anchor;
     tip.classList.remove('show');
     // visibility:hidden 时仍有布局，可先测量尺寸再定位
     const r = anchor.getBoundingClientRect();
@@ -1655,31 +1942,70 @@
   }
 
   function _hideUiTip() {
+    _uiTipAnchor = null;
     if (_uiTipEl) _uiTipEl.classList.remove('show');
   }
 
-  // 点击任意处（含关闭弹窗）时收起气泡
-  document.addEventListener('pointerdown', _hideUiTip, true);
+  // 统一提示入口：把提示文本写进 data-tip（同时移除原生 title，避免系统气泡与自定义气泡重叠显示）；
+  // 传空文本则清除提示。所有带 data-tip 的元素由下方全局委托统一弹出同一套 .ui-tip 气泡。
+  function setTipText(el, text) {
+    if (!el) return;
+    el.removeAttribute('title');
+    if (text) el.setAttribute('data-tip', text);
+    else el.removeAttribute('data-tip');
+  }
+
+  // 全局委托：[data-tip] 元素悬停 / 键盘聚焦时统一弹出 .ui-tip 气泡（全项目提示样式唯一）
+  const _tipTarget = (node) => (node && node.closest) ? node.closest('[data-tip]') : null;
+  let _uiTipMuted = null;   // 刚被点击的锚点：指针离开前不再弹出，避免点击后气泡残留
+  document.addEventListener('pointerover', (e) => {
+    const el = _tipTarget(e.target);
+    if (!el || el === _uiTipAnchor || el === _uiTipMuted) return;
+    _showUiTip(el, el.getAttribute('data-tip') || '');
+  });
+  document.addEventListener('pointerout', (e) => {
+    const el = _tipTarget(e.target);
+    if (!el) return;
+    const to = e.relatedTarget;
+    if (to && el.contains(to)) return;            // 仍在同一提示元素内部，不收起
+    if (el === _uiTipMuted) _uiTipMuted = null;   // 指针离开后恢复提示
+    if (el === _uiTipAnchor) _hideUiTip();
+  });
+  document.addEventListener('focusin', (e) => {
+    const el = _tipTarget(e.target);
+    // 鼠标点击获得的焦点不弹气泡（:focus-visible 仅键盘聚焦命中），避免点击后气泡残留
+    if (!el || !el.matches(':focus-visible')) return;
+    _showUiTip(el, el.getAttribute('data-tip') || '');
+  });
+  document.addEventListener('focusout', (e) => {
+    const el = _tipTarget(e.target);
+    if (el && el === _uiTipAnchor) _hideUiTip();
+  });
+
+  // 点击任意处（含关闭弹窗）时收起气泡；被点的提示元素在被移出前保持静默
+  document.addEventListener('pointerdown', (e) => {
+    _uiTipMuted = _tipTarget(e.target);
+    _hideUiTip();
+  }, true);
 
   // 设置行内悬停说明：触发按钮复用「部件选择页」的 .clip-hint 外观（圆形 ? + 悬停高亮）；
-  // 悬停/聚焦弹出说明气泡（文字随语言读取，样式见 .ui-tip）
+  // 说明文字写入 data-tip，由上面的全局委托统一弹出 .ui-tip 气泡。
+  // 同时挂上 data-i18n-title / data-i18n-aria：语言切换时 applyDom 会把提示与 aria-label 一并刷新
+  // （否则弹窗内这些提示会停留在创建时的旧语言）。
   function tipIcon(titleKey) {
     const el = document.createElement('span');
     el.className = 'clip-hint';
     el.setAttribute('role', 'note');
     el.setAttribute('tabindex', '0');
+    el.setAttribute('data-i18n-title', titleKey);
+    el.setAttribute('data-i18n-aria', titleKey);
     el.setAttribute('aria-label', t(titleKey));
     const q = document.createElement('span');
     q.className = 'ch-q';
     q.setAttribute('aria-hidden', 'true');
     q.textContent = '?';
     el.appendChild(q);
-    const show = () => _showUiTip(el, t(titleKey));
-    const hide = () => _hideUiTip();
-    el.addEventListener('mouseenter', show);
-    el.addEventListener('mouseleave', hide);
-    el.addEventListener('focus', show);
-    el.addEventListener('blur', hide);
+    setTipText(el, t(titleKey));
     // 嵌在 .switch 的 <label> 内：点击不应触发开关切换（仅用于悬停/聚焦查看）
     el.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); });
     return el;
@@ -2462,6 +2788,17 @@
     });
   });
 
+  // 部件放大预览（临时画布已生成）：填入叠加层；失败则关闭并提示
+  on('part_preview_ready', (r) => {
+    if (!_lb || _lb.kind !== 'part') return;
+    if (!r || !r.ok) {
+      closePreviewLightbox();
+      toast(t('dialog.composite_error_msg', { msg: (r && r.error) || '' }), 'error');
+      return;
+    }
+    lbSetImage(r.data_url);
+  });
+
   on('composite_done', (r) => {
     clearProgress();
     if (!r.ok) {
@@ -2632,13 +2969,13 @@
       '<div class="about-section">' +
       '  <h3>' + _aI('user') + t('about.dev_title') + '</h3>' +
       '  <div class="about-row">' + t('about.dev_name') + '</div>' +
-      '  <div class="about-link">' + _aI('play') + '<span class="about-link-label">' + t('about.dev_bilibili') + ': ' + t('about.dev_click') + ' →</span><button type="button" class="about-open bili" data-url="https://space.bilibili.com/511874938" title="' + t('about.dev_click') + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
-      '  <div class="about-link">' + _aI('branch') + '<span class="about-link-label">' + t('about.dev_github') + ': ' + t('about.dev_click') + ' →</span><button type="button" class="about-open gh" data-url="https://github.com/paliku520" title="' + t('about.dev_click') + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
+      '  <div class="about-link">' + _aI('play') + '<span class="about-link-label">' + t('about.dev_bilibili') + ': ' + t('about.dev_click') + ' →</span><button type="button" class="about-open bili" data-url="https://space.bilibili.com/511874938" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
+      '  <div class="about-link">' + _aI('branch') + '<span class="about-link-label">' + t('about.dev_github') + ': ' + t('about.dev_click') + ' →</span><button type="button" class="about-open gh" data-url="https://github.com/paliku520" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
       '</div>' +
       '<div class="about-section">' +
       '  <h3>' + _aI('code') + t('about.links_title') + '</h3>' +
-      '  <div class="about-link">' + _aI('repo') + '<span class="about-link-label">' + t('about.links_repo') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter" title="' + t('about.dev_click') + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
-      '  <div class="about-link">' + _aI('bug') + '<span class="about-link-label">' + t('about.links_issues') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter/issues" title="' + t('about.dev_click') + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
+      '  <div class="about-link">' + _aI('repo') + '<span class="about-link-label">' + t('about.links_repo') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
+      '  <div class="about-link">' + _aI('bug') + '<span class="about-link-label">' + t('about.links_issues') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter/issues" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
       '</div>' +
       '<div class="about-section">' +
       '  <h3>' + _aI('code') + t('about.sys_title') + '</h3>' +
@@ -3114,7 +3451,7 @@
       updateTitleBar();
       const vb = $('#version-badge');
       vb.textContent = 'v' + info.version;
-      vb.title = 'v' + info.version;  // 完整版本号（被省略号截断时悬停可见）
+      setTipText(vb, 'v' + info.version);   // 完整版本号（被省略号截断时悬停可见）
       const isPrerelease = /(pre|rc|beta|alpha)/i.test(info.version || '');
       vb.classList.toggle('prerelease', isPrerelease);
       document.title = 'Manosaba Character Extracter v' + info.version;

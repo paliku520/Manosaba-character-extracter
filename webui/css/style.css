@@ -129,6 +129,10 @@ body {
   user-select: none;
 }
 
+/* 禁用原生图片拖拽：拖动 logo / 部件缩略图会拖出半透明“拖影”（观感像 bug）；
+   预览图的平移是自实现的（mousedown 拖拽），不依赖 HTML5 拖拽，因此可全局禁用 */
+img { -webkit-user-drag: none; }
+
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
@@ -559,26 +563,8 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   border-color: var(--accent); color: var(--accent); background: var(--accent-soft);
 }
 .clip-hint .ch-q { pointer-events: none; }
-.clip-hint .ch-text {
-  position: absolute; top: calc(100% + 8px); right: 0;
-  width: 250px; max-width: 70vw;
-  padding: 8px 10px;
-  background: var(--bg-elev); color: var(--text-dim);
-  border: 1px solid var(--border-strong); border-radius: 8px;
-  box-shadow: var(--shadow-sm);
-  font-size: 11px; font-family: var(--font); font-weight: 400; line-height: 1.6;
-  text-align: left; white-space: normal;
-  opacity: 0; visibility: hidden; transform: translateY(-3px);
-  transition: opacity .15s ease, transform .15s ease, visibility 0s linear .15s;
-  pointer-events: none; z-index: 80;
-}
-.clip-hint:hover .ch-text,
-.clip-hint:focus-visible .ch-text {
-  opacity: 1; visibility: visible; transform: none;
-  transition: opacity .15s ease, transform .15s ease;
-}
-/* 设置悬停说明气泡：portal 到 body 的 fixed 提示，规避弹窗滚动容器裁剪；
-   观感对齐部件页 .ch-text（bg-elev + 描边 + 圆角 + 阴影） */
+/* 全项目唯一的悬停提示气泡（.ui-tip）：portal 到 body 的 fixed 提示，规避弹窗滚动容器裁剪；
+   文案写在元素的 data-tip 上，由 app.js 的全局委托统一接管（任意带 [data-tip] 的元素悬停/聚焦即弹出）。 */
 .ui-tip {
   position: fixed; left: 0; top: 0; z-index: 1500;   /* 高于 modal(100)/toast(200)/彩蛋(300)/下拉(1000) */
   width: max-content; max-width: 260px;
@@ -794,18 +780,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   gap: 5px; padding: 0 10px; height: 32px;
   white-space: nowrap;
 }
-/* 已输入文字摘要：不再占用布局，悬停按钮时以小气泡提示 */
-.sketch-edit-btn .sketch-text-summary {
-  display: none;
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 70;
-  max-width: 280px; padding: 6px 9px;
-  background: var(--bg-elev); color: var(--text-dim);
-  border: 1px solid var(--border-strong); border-radius: 8px;
-  box-shadow: var(--shadow-sm);
-  font-size: 11px; font-weight: 400; line-height: 1.5;
-  white-space: normal; text-align: left;
-}
-.sketch-edit-btn:hover .sketch-text-summary { display: block; }
+/* 已输入文字：悬停时由统一的 .ui-tip 气泡展示（见 app.js setTipText），此处只保留状态高亮 */
 .sketch-edit-btn.has-text { color: var(--text); }
 /* 素描本文字编辑模态中的 textarea（最大 5 行） */
 .sketch-modal-textarea {
@@ -859,18 +834,24 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .sketch-seg button.active { color: #fff; }
 .sketch-seg button:disabled { opacity: .5; cursor: default; }
-/* 预览画布：做成独立圆角卡片（“工作台”），与上方控制带分隔开 */
+/* 预览滚动容器：滚动条由它承担 → 滚动条落在预览卡片“外面”，卡片内不再被滚动条压角/裁切。
+   display:grid：内容小于视口时卡片自动铺满，内容变大时卡片随内容一起撑开。 */
+.preview-scroll {
+  flex: 1; min-height: 120px; margin: 0 12px 12px;
+  overflow: auto; display: grid; border-radius: 12px;
+}
+.preview-scroll.dragging { cursor: grabbing; }
+.preview-scroll.dragging #preview-img { cursor: grabbing; }
+/* 预览画布：独立圆角卡片（“工作台”），只负责观感，不承担滚动 */
 .preview {
-  flex: 1; margin: 0 12px 12px; border-radius: 12px;
+  position: relative;
+  display: grid; place-items: center;
+  border-radius: 12px;
   background: var(--bg-elev); border: 1px solid var(--border-strong);
   box-shadow: var(--shadow-sm);
-  overflow: auto; position: relative; display: block;
-  min-height: 120px;
 }
-.preview.dragging { cursor: grabbing; }
-.preview.dragging #preview-img { cursor: grabbing; }
-/* 舞台：铺满可视区；图片小于视口时始终居中；大于视口时按实际像素扩展、可从左上滚到四角。
-   替代原先“放大后切换到左上角锚点”导致的缩放跳动；#preview 的滚动/滚轮数学保持不变。 */
+/* 舞台：铺满卡片；图片小于可视区时始终居中；大于可视区时按实际像素扩展、可从左上滚到四角。
+   滚动由外层 .preview-scroll 承担，卡片只负责观感（滚动条因而不会压在卡片里）。 */
 .pv-stage {
   min-width: 100%; min-height: 100%;
   width: max-content; height: max-content;
@@ -913,6 +894,58 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   text-align: center;
   flex-shrink: 0;
 }
+
+/* ═══════════ 放大预览（右键预览区/部件/精灵 → 整屏查看器） ═══════════ */
+/* 结构：叠加层 > .lightbox-stage（可滚轮缩放 / 拖拽平移的画布）+ .lightbox-bottom（提示 + 操作卡片） */
+.preview-lightbox {
+  position: fixed; inset: 0; z-index: 1200;   /* 高于弹窗(100)/通知(200)/彩蛋(300)/下拉(1000)，低于 .ui-tip(1500) */
+  display: flex; flex-direction: column;
+  background: rgba(0, 0, 0, .82);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  opacity: 0; transition: opacity .2s ease;
+}
+.preview-lightbox.show { opacity: 1; }
+/* 画布：撑满除底部操作区外的空间，拖拽平移的命中区 */
+.lightbox-stage {
+  position: relative; flex: 1; min-height: 0; overflow: hidden;
+  touch-action: none; cursor: grab;
+}
+.lightbox-stage.grabbing { cursor: grabbing; }
+.lightbox-img {
+  position: absolute; left: 50%; top: 50%;
+  max-width: none; max-height: none;
+  border-radius: 8px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+  transform: translate(-50%, -50%);   /* 初始即居中；缩放/平移由 JS 覆盖 */
+  transform-origin: center center;
+  -webkit-user-select: none; user-select: none; -webkit-user-drag: none;
+  pointer-events: none;               /* 拖拽/点击统一由舞台处理，避免拖到图上丢事件 */
+}
+.lightbox-img[hidden] { display: none; }
+.lightbox-loading {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--text-dim); font-size: 13px;
+}
+/* 底部：一行小字提示 + 操作卡片（关闭 / 放大 / 缩小 / 适应 / 导出） */
+.lightbox-bottom {
+  flex: 0 0 auto; display: flex; flex-direction: column; align-items: center;
+  gap: 8px; padding: 0 16px 16px;
+}
+.lightbox-hint { color: var(--text-faint); font-size: 11px; text-align: center; }
+.lightbox-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-panel); border: 1px solid var(--border-strong);
+  border-radius: 14px; box-shadow: var(--shadow);
+}
+.lightbox-zoom {
+  min-width: 48px; margin-right: 2px; text-align: right;
+  font-size: 11px; font-family: var(--mono); color: var(--text-dim);
+}
+.lightbox-bar .btn { padding: 6px 12px; }
+/* ghost 按钮在深色遮罩上对比度不足：查看器内补一层描边（仅外观差异） */
+.lightbox-bar .btn.ghost { border-color: rgba(255, 255, 255, .22); }
+.lightbox-bar .btn.ghost:hover { border-color: var(--accent); }
 
 /* 开关 */
 .switch { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 12px; color: var(--text-dim); }
@@ -1456,7 +1489,8 @@ body.no-anim .about-bg-layer { transition: opacity .6s ease !important; }
 }
 .selected-panel,
 .selected-list { transition: max-height .3s ease; }
-.preview { transition: margin .3s ease, border-radius .3s ease, box-shadow .3s ease; }
+.preview-scroll { transition: margin .3s ease, border-radius .3s ease; }
+.preview { transition: border-radius .3s ease, box-shadow .3s ease; }
 
 /* ═══════════ 响应式：部件选择页自适应（低分辨率折叠次要信息，保证核心勾选/预览可用） ═══════════ */
 /* 中等宽度窗口：隐藏坐标/尺寸等次要行，缩小缩略图与已选列表上限 */
@@ -1474,7 +1508,7 @@ body.no-anim .about-bg-layer { transition: opacity .6s ease !important; }
   .part-thumb { width: 34px; height: 34px; flex-basis: 34px; }
   .part-alpha { display: none; }
   .preview-toolbar { padding: 6px 10px; }
-  .preview { margin: 0 10px 10px; }
+  .preview-scroll { margin: 0 10px 10px; }
 }
 /* 矮窗口高度：压缩工具栏与已选列表占用的竖向空间，提升可用预览面积 */
 @media (max-height: 760px) {

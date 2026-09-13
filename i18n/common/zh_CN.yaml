@@ -235,6 +235,13 @@ parts:
   deselect_all: "取消全选"
   deselect_group: "取消选择"
   empty_hint: "请先在左侧选择一个角色进入拼接模式"
+  lightbox_close: "关闭"
+  lightbox_export: "导出"
+  lightbox_fit: "适应"
+  lightbox_hint: "滚轮缩放 · 拖拽平移 · 点击空白处 / Esc 关闭"
+  lightbox_loading: "正在生成预览…"
+  lightbox_zoom_in: "放大"
+  lightbox_zoom_out: "缩小"
   no_preview: "未生成预览"
   no_selection_hint: "请至少选择一个部件"
   preview_quality_label: "预览画质"
@@ -246,7 +253,7 @@ parts:
   selected_list_title: "已选精灵"
   total: "个部件"
   zoom: "缩放"
-  zoom_fit: "适配"
+  zoom_fit: "适应"
 
 preview:
   banner: "此角色无组件数据，已进入精灵预览模式（选中后导出）"
@@ -255,6 +262,7 @@ preview:
   empty: "未找到任何精灵"
   export_all: "导出全部"
   export_selected: "导出选中"
+  lightbox_export_current: "导出当前"
   select_all: "全选"
   selected_count: "已选 {count}/{total}"
 

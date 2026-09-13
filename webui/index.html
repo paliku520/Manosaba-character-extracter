@@ -193,20 +193,20 @@
                 <span id="parts-count" class="pill"></span>
               </div>
               <div class="parts-toolbar-actions">
-                <button type="button" id="btn-select-all" class="btn sm icon-cc" data-i18n-title="parts.select_all" title="全选">
+                <button type="button" id="btn-select-all" class="btn sm icon-cc" data-i18n-title="parts.select_all">
                   <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="m9.5 12.2 2 2 3.5-4.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
                   <span data-i18n="parts.select_all">全选</span>
                 </button>
-                <button type="button" id="btn-deselect-all" class="btn sm icon-cc" data-i18n-title="parts.deselect_all" title="取消全选">
+                <button type="button" id="btn-deselect-all" class="btn sm icon-cc" data-i18n-title="parts.deselect_all">
                   <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="m9.5 9.5 5 5m0-5-5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
                   <span data-i18n="parts.deselect_all">取消全选</span>
                 </button>
-                <button type="button" id="btn-select-clip" class="btn sm icon-only" data-i18n-title="parts.select_clip" title="快速勾选ClippingMask部件" aria-label="快速勾选ClippingMask部件">
+                <button type="button" id="btn-select-clip" class="btn sm icon-only" data-i18n-title="parts.select_clip" aria-label="快速勾选ClippingMask部件">
                   <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M18 22V8a2 2 0 0 0-2-2H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 </button>
-                <span class="clip-hint" role="note" tabindex="0" aria-label="ClippingMask 提示">
+                <!-- ClippingMask 提示：小 (?) 圆形图标，悬停/聚焦弹出统一样式的 .ui-tip 气泡 -->
+                <span class="clip-hint" role="note" tabindex="0" aria-label="ClippingMask 提示" data-tip="ClippingMask 部件包含光效/轮廓等叠加层，开启后更接近原作效果。（快捷勾选后，最终效果以手动调整为准）" data-i18n-title="parts.clip_importance">
                   <span class="ch-q" aria-hidden="true">?</span>
-                  <span class="ch-text" data-i18n="parts.clip_importance">ClippingMask 部件是被裁剪进角色区域的叠加层（光效/轮廓等），勾选后才能正确合成；缺失时相关光影效果将不显示。</span>
                 </span>
               </div>
               <div class="parts-search-wrap">
@@ -233,7 +233,7 @@
             <div class="panel preview-panel">
               <div class="panel-header">
                 <span data-i18n="parts.preview_title">实时预览</span>
-                <label class="switch" title="自动更新">
+                <label class="switch" data-i18n-title="parts.auto_update">
                   <input type="checkbox" id="auto-update" checked>
                   <span class="slider"></span>
                   <span data-i18n="parts.auto_update">自动更新</span>
@@ -246,7 +246,7 @@
                   <button id="btn-clear-preview" class="btn sm ghost" data-i18n="parts.clear_preview">清空预览</button>
                 </div>
                 <div class="pv-settings">
-                  <label class="switch pq-switch" data-i18n-title="settings.export_original_hint" title="关闭后导出的图像与预览画质一致（体积更小、更省资源）。">
+                  <label class="switch pq-switch" data-i18n-title="settings.export_original_hint">
                     <input type="checkbox" id="set-export-original" checked>
                     <span class="slider"></span>
                     <span data-i18n="settings.export_original_label">导出原始画质</span>
@@ -259,14 +259,13 @@
                 <div class="preview-zoom">
                   <label class="zoom-label" for="zoom-slider" data-i18n="parts.zoom">缩放</label>
                   <input type="range" id="zoom-slider" min="0" max="100" step="1" value="0" disabled>
-                  <button id="btn-zoom-fit" class="btn sm ghost" data-i18n="parts.zoom_fit" title="Fit">适配</button>
+                  <button id="btn-zoom-fit" class="btn sm ghost" data-i18n="parts.zoom_fit" data-i18n-title="parts.zoom_fit">适配</button>
                   <span id="zoom-value" class="zoom-value">适配</span>
                 </div>
                 <div id="sketch-input-wrap" class="sketch-input-wrap" hidden>
                   <button type="button" id="btn-sketch-edit" class="btn sm sketch-edit-btn">
                     <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M11.5 1.5l3 3L5.5 13.5 2 14l.5-3.5L11.5 1.5zM9.5 3.5l3 3" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round" stroke-linecap="round"/></svg>
                     <span data-i18n="parts.sketch_edit">编辑文字</span>
-                    <span id="sketch-text-summary" class="sketch-text-summary"></span>
                   </button>
                   <div class="sketch-controls-row">
                     <label for="sketch-size" data-i18n="parts.sketch_size">字号</label>
@@ -281,10 +280,13 @@
                   </div>
                 </div>
               </div>
-              <div id="preview" class="preview">
-                <div class="pv-stage">
-                  <div id="preview-empty" class="preview-empty" data-i18n="parts.no_preview">尚无预览</div>
-                  <img id="preview-img" alt="preview" hidden>
+              <!-- 预览滚动容器：滚动条挂在它身上 → 滚动条位于预览卡片之外（卡片内不再被滚动条压角/裁切） -->
+              <div id="preview-scroll" class="preview-scroll">
+                <div id="preview" class="preview">
+                  <div class="pv-stage">
+                    <div id="preview-empty" class="preview-empty" data-i18n="parts.no_preview">尚无预览</div>
+                    <img id="preview-img" alt="preview" hidden>
+                  </div>
                 </div>
               </div>
               <div id="preview-info" class="preview-info" hidden></div>

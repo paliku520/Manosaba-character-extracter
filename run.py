@@ -239,6 +239,9 @@ class JsApi:
         self._window: Optional[Any] = None
         self._loader = BundleLoader()
         self._compositor = SpriteCompositor(scale=100.0)
+        # 单部件放大预览用的“临时画布”合成器（与主合成器分离：各自持有画布，
+        # 避免单部件预览把主预览共享的大画布清空重画）
+        self._part_compositor: Optional[SpriteCompositor] = None
 
         # 内部状态（均为私有，避免被 js_api 递归暴露到前端）
         self._bundles: Dict[str, str] = {}            # {角色名: bundle路径}
@@ -646,6 +649,8 @@ class JsApi:
         self._preview_sprites = None
         # 清理合成器缓存的精灵解码图/可复用画布（切换角色后旧精灵路径不再需要）
         self._compositor.clear_cache()
+        if self._part_compositor is not None:
+            self._part_compositor.clear_cache()
         # 切换角色时清理 preview 临时预览目录
         preview_dir = self._temp_dir / "preview"
         if preview_dir.exists():
@@ -1016,6 +1021,58 @@ class JsApi:
                 "data_url": data_url,
                 "size": pv_size,              # 实际显示的预览尺寸（随预览画质变化）
                 "full_size": list(img.size),  # 完整合成尺寸（导出用，原画质）
+            })
+        self._run_async(worker)
+        return True
+
+    def preview_part(self, name: str):
+        """单部件放大预览：把该部件画到“临时画布”上（事件: part_preview_ready）
+
+        使用合成逻辑放置精灵：临时画布尺寸沿用当前合成图（尚无合成图时按整角色计算），
+        因此该精灵呈现在它在角色中的真实位置，而不是屏幕/画面中央。
+        不套用 ClippingMask 裁剪（mask_mapping=None）：否则被裁剪的叠加层会被裁成空区域、完全看不到。
+        """
+        def worker():
+            data = self._character_data
+            if not data:
+                self._emit("part_preview_ready", {"ok": False, "name": name, "error": "no_data"})
+                return
+            parts = data.get("transform_data") or []
+            if not any(p.get("name") == name for p in parts):
+                self._emit("part_preview_ready", {"ok": False, "name": name, "error": "not_found"})
+                return
+
+            comp = self._part_compositor
+            if comp is None:
+                comp = SpriteCompositor(scale=self._compositor.scale)
+                self._part_compositor = comp
+
+            # 与主合成串行：画布尺寸取自共享的 _composite_image，避免读到合成中途的尺寸
+            with self._composite_lock:
+                size = (self._composite_image.size if self._composite_image is not None
+                        else comp.calc_canvas_size(parts))
+                try:
+                    img = comp.composite(
+                        parts,
+                        selected_names=[name],
+                        mask_mapping=None,
+                        canvas_size=size,
+                    )
+                except Exception as e:
+                    log("error", _("log.composite_failed", e=e))
+                    self._emit("part_preview_ready", {"ok": False, "name": name, "error": str(e)})
+                    return
+
+            if img is None:
+                self._emit("part_preview_ready", {"ok": False, "name": name, "error": "empty"})
+                return
+            data_url, pv_size = _pil_preview(img, max_side=self._preview_max_side())
+            self._emit("part_preview_ready", {
+                "ok": True,
+                "name": name,
+                "data_url": data_url,
+                "size": pv_size,               # 实际显示的预览尺寸（随预览画质变化）
+                "full_size": list(img.size),   # 临时画布完整尺寸
             })
         self._run_async(worker)
         return True

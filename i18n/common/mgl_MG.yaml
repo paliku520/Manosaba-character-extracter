@@ -1,6 +1,7 @@
 # fiXmArge（魔女语，架空语言）通用部分
 # 该语种为 manosaba 独有，此处存放「通用界面文案」的魔女语翻译
 # 缺失键会回退到中文（如 app.status.analyze_done，由用户自行补充）
+# log.* 的魔女语与英文一致（便于日志阅读）
 
 about:
   copyright: "Non-commercial · For learning"
@@ -236,6 +237,13 @@ parts:
   deselect_all: "Alte Ca-nay"
   deselect_group: "Ca-nay Alte"
   empty_hint: "Alte JIO on left for gDie mode"
+  lightbox_close: "FineNd"
+  lightbox_export: "KeI·tion"
+  lightbox_fit: "Sha-Rui Fit"
+  lightbox_hint: "Wheel Sha-Rui · Drag move · Alte Zelln / Esc — FineNd"
+  lightbox_loading: "Sha-Rui Toim..."
+  lightbox_zoom_in: "Sha-Rui +"
+  lightbox_zoom_out: "Sha-Rui −"
   no_preview: "Lai Nei Nii"
   no_selection_hint: "Alte one hA-k"
   preview_quality_label: "Sha-Rui"
@@ -256,6 +264,7 @@ preview:
   empty: "Nii sprites"
   export_all: "KeI·tion Alte hA-k"
   export_selected: "KeI·tion Alte"
+  lightbox_export_current: "KeI·tion ieyWOO"
   select_all: "Alte"
   selected_count: "Alte {count}/{total}"
 
