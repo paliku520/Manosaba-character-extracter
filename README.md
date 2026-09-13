@@ -96,7 +96,10 @@ cd electron && npm install             # Electron 依赖
 
 > 数据（`data`/`output`/`temp`/`logs`）始终**优先存放在程序所在目录**（安装目录或绿色版解压目录），仅当该目录不可写（如授权失败、杀毒软件拦截、只读盘）时才回退到 `%APPDATA%\Manosaba Character Extracter` 作为兜底。
 >
-> 默认安装到 `C:\Program Files\MCE` 时，安装程序已为普通用户授予该目录的写入与删除权限，因此数据仍直接生成在安装目录下。卸载时若检测到安装目录下存在数据（静默卸载除外），会弹窗提示将清除全部数据，选择「否」将中止卸载。
+> 默认安装到 `C:\Program Files\MCE` 时，安装程序已为普通用户授予该目录的写入与删除权限，因此数据仍直接生成在安装目录下。
+>
+> **覆盖安装 / 升级不会碰这些数据**（对齐 Inno Setup 的行为）：安装器在安装前会把 `data`/`output`/`temp`/`logs` 原样搬到安装目录同级的 `MCE-update-backup`，装完再搬回去（Rename，不复制数据）；卸载器也只删除自己写入的程序文件（`MCE.exe`、`resources`、`locales` 等白名单），安装目录里用户自己放的文件不会被删。
+> 卸载时若检测到安装目录下存在数据（静默卸载除外），会弹窗询问是否一并删除：选「是」一并删除、选「否」只卸载程序保留数据、选「取消」中止卸载。
 
 ### 输出结构
 
@@ -157,17 +160,6 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 
 ## 打包为 EXE
 
-### PyWebView 独立版
-```bash
-pip install pyinstaller
-python scripts\build_pywebview.py                          # 默认 onedir（启动快）
-python scripts\build_pywebview.py --onefile                # 单文件 exe
-python scripts\build_pywebview.py --name MyApp --icon icon.ico
-```
-
-- 自动注入版本信息（文件版本 / 产品名称等，降低杀软误报）；版本号自动取自 `src/version.py`；可选 `--company/--product/--description/--copyright`（默认用脚本顶部 `APP_*` 常量）、`--console false`
-- 图标需 `.ico` 格式；`--onefile` 启动较慢；更多参数见 `--help`
-
 ### Electron 应用
 ```bash
 python scripts\build_electron_backend.py   # 仅打后端 → dist/backend/
@@ -175,7 +167,7 @@ python scripts\build_electron.py            # 一键：后端 + 绿色版 zip + 
 ```
 
 - `build_electron.py` 可选参数：`--backend-only` / `--app-only` / `--zip-only` / `--installer-only` / `--no-clean` / `--clean-dist`
-- 可选 `--company/--product/--description/--copyright` 透传给后端 exe 版本信息（默认用脚本顶部 `APP_*` 常量）
+- 可选 `--company/--product/--description/--copyright` 透传给后端 exe 版本信息（默认用 `scripts/version_info.py` 顶部 `APP_*` 常量）
 - 版本号自动取自 `src/version.py`（产物名 `MCE-Setup-<版本>.exe` / `MCE-<版本>-win.zip` 与后端 exe 版本信息均自动同步，改版本只改这一处）
 - electron-builder 配置见 `electron/electron-builder.yml`（需先安装 electron 目录的 node_modules）
 - 更多参数见 `--help`

@@ -32,7 +32,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from scripts.build_electron_backend import run_pyinstaller as build_backend  # noqa: E402
-from scripts.build_pywebview import APP_COMPANY  # noqa: E402  公司名单一数据源（electron package.json author）
+from scripts.version_info import APP_COMPANY  # noqa: E402  公司名单一数据源（electron package.json author）
 
 ELECTRON_DIR = PROJECT_ROOT / "electron"
 ELECTRON_BUILDER_CLI = ELECTRON_DIR / "node_modules" / "electron-builder" / "out" / "cli" / "cli.js"
@@ -69,7 +69,7 @@ def read_src_version() -> str:
 
 def sync_electron_version(version: str) -> None:
     """把 src/version.py 的版本同步到 electron/package.json（及 package-lock.json），
-    并把 build_pywebview 的 APP_COMPANY 同步为 package.json 的 author（公司名）。
+    并把 version_info 的 APP_COMPANY 同步为 package.json 的 author（公司名）。
 
     electron-builder 生成 MCE.exe 版本信息的来源：
       - CompanyName    ← package.json author.name（必须为对象形式；缺失时
@@ -101,7 +101,7 @@ def sync_electron_version(version: str) -> None:
             print(f"[INFO] 已同步 {name} 版本: {old} -> {version}")
         except Exception as e:
             print(f"[WARN] 同步 {name} 版本失败: {e}")
-    # author（公司名）：与 build_pywebview.APP_COMPANY 单一数据源保持一致
+    # author（公司名）：与 scripts/version_info.py 的 APP_COMPANY 单一数据源保持一致
     pj = ELECTRON_DIR / "package.json"
     try:
         data = json.loads(pj.read_text(encoding="utf-8"))
@@ -208,7 +208,10 @@ def main() -> None:
     ok = True
 
     # ── 1. Electron 后端 ──
-    if not args.app_only:
+    # --app-only / --zip-only / --installer-only 都只打"应用壳层"：直接复用已有的
+    # dist/backend（与上面的用法说明一致），因此不要求安装 PyInstaller。
+    build_backend_too = not (args.app_only or args.zip_only or args.installer_only)
+    if build_backend_too:
         build_backend(
             company=args.company,
             product_name=args.product,
@@ -233,8 +236,12 @@ def main() -> None:
         backend_exe = PROJECT_ROOT / "dist" / "backend" / "backend.exe"
         if backend_exe.exists():
             print(f"    [OK] Electron 后端: {backend_exe}")
-        else:
+        elif build_backend_too:
             print(f"    [!] Electron 后端未生成: {backend_exe}")
+            ok = False
+        else:
+            # --zip-only / --installer-only 复用已有后端，缺了就直接提示先单独打
+            print(f"    [!] 缺少 Electron 后端: {backend_exe}（先跑 --backend-only）")
             ok = False
     if run_app:
         if not args.installer_only:

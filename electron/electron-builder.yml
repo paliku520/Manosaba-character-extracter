@@ -1,6 +1,6 @@
 appId: com.paliku520.manosaba-extracter
 productName: Manosaba Character Extracter
-# exe/安装器版本信息的 LegalCopyright（与 build_pywebview.py 的 APP_COPYRIGHT 一致，单一数据源）
+# exe/安装器版本信息的 LegalCopyright（与 scripts/version_info.py 的 APP_COPYRIGHT 一致，单一数据源）
 copyright: "Copyright (c) 2026 paliku520. Licensed under GPL-3.0."
 # 简写名 MCE：可执行文件（executableName）、绿色版 zip 与安装包（artifactName）
 executableName: MCE   # 主程序 exe 文件名（顶层配置项）

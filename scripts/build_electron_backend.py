@@ -20,7 +20,7 @@ from typing import Optional
 PROJECT_ROOT = Path(__file__).parent.parent.resolve()
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.build_pywebview import make_version_file  # noqa: E402  复用 exe 版本信息生成
+from scripts.version_info import make_version_file  # noqa: E402  版本信息单一数据源（scripts/version_info.py）
 
 # MCE 字符画（与 electron/main.js 的 MCE_BANNER 一致）
 MCE_BANNER = """███╗   ███╗ ██████╗███████╗
@@ -113,13 +113,13 @@ if __name__ == "__main__":
         formatter_class=_HelpFormatter,
     )
     parser.add_argument("--company", "--c", type=str, default=None,
-                        help="公司/开发者名称（默认用 build_pywebview 顶部 APP_COMPANY）")
+                        help="公司/开发者名称（默认用 scripts/version_info.py 顶部 APP_COMPANY）")
     parser.add_argument("--product", "--p", type=str, default=None,
                         help="产品名称（默认 'Manosaba Character Extracter Backend'）")
     parser.add_argument("--description", type=str, default=None,
                         help="文件说明（默认 'Manosaba 角色立绘提取工具 - Python 后端子进程'）")
     parser.add_argument("--copyright", type=str, default=None,
-                        help="版权信息（默认用 build_pywebview 顶部 APP_COPYRIGHT）")
+                        help="版权信息（默认用 scripts/version_info.py 顶部 APP_COPYRIGHT）")
     args = parser.parse_args()
 
     run_pyinstaller(

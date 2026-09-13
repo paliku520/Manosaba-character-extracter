@@ -96,7 +96,10 @@ After installation, the app reads/writes the following data under its **install 
 
 > Data (`data`/`output`/`temp`/`logs`) is always stored **preferentially in the program directory** (the install directory or the portable extraction directory); it only falls back to `%APPDATA%\Manosaba Character Extracter` when that directory is not writable (e.g. failed permission grant, antivirus interference, read-only drive).
 >
-> When installed to the default `C:\Program Files\MCE`, the installer grants normal users write and delete permission on that directory, so data (`data`/`output`/`temp`/`logs`) is still stored directly under the install directory. During uninstallation, if data folders are detected under the install directory (except in silent mode), a dialog warns that all data will be deleted; choosing "No" aborts the uninstall.
+> When installed to the default `C:\Program Files\MCE`, the installer grants normal users write and delete permission on that directory, so data (`data`/`output`/`temp`/`logs`) is still stored directly under the install directory.
+>
+> **Overwriting installs / upgrades never touch that data** (matching Inno Setup): before installing, the installer moves `data`/`output`/`temp`/`logs` into a sibling `MCE-update-backup` folder and moves them back afterwards (a rename — no data is copied); the uninstaller only ever deletes files it installed (`MCE.exe`, `resources`, `locales`, and other allow-listed entries), so files you placed in the install directory are never removed.
+> During uninstallation, if data folders are detected under the install directory (except in silent mode), a dialog asks whether to delete them as well: "Yes" deletes everything, "No" uninstalls the app but keeps your data, "Cancel" aborts the uninstall.
 
 ### Output Structure
 
@@ -157,17 +160,6 @@ This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENS
 
 ## Packaging as EXE
 
-### PyWebView Standalone
-```bash
-pip install pyinstaller
-python scripts\build_pywebview.py                          # Default onedir (fast startup)
-python scripts\build_pywebview.py --onefile                # Single-file exe
-python scripts\build_pywebview.py --name MyApp --icon icon.ico
-```
-
-- Version info auto-injected (file version / product name, etc., to reduce antivirus false positives); the version is read automatically from `src/version.py`; optional `--company/--product/--description/--copyright` (defaults to `APP_*` constants), `--console false`
-- Icons must be `.ico`; `--onefile` starts slower; see `--help` for more options
-
 ### Electron App
 ```bash
 python scripts\build_electron_backend.py   # Build only the Python backend → dist/backend/
@@ -175,7 +167,7 @@ python scripts\build_electron.py            # One-click: backend + portable zip 
 ```
 
 - `build_electron.py` options: `--backend-only` / `--app-only` / `--zip-only` / `--installer-only` / `--no-clean` / `--clean-dist`
-- Optional `--company/--product/--description/--copyright` to pass version info to the backend exe (defaults to `APP_*` constants at the top of the script)
+- Optional `--company/--product/--description/--copyright` to pass version info to the backend exe (defaults to the `APP_*` constants in `scripts/version_info.py`)
 - Version is read automatically from `src/version.py` (artifacts `MCE-Setup-<version>.exe` / `MCE-<version>-win.zip` and the backend exe version info stay in sync; change the version in one place only)
 - electron-builder config: `electron/electron-builder.yml` (requires electron/node_modules installed)
 - see `--help` for more options

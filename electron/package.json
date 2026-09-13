@@ -1,7 +1,7 @@
 {
   "name": "manosaba-extracter",
   "productName": "Manosaba Character Extracter",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "魔法少女的魔女审判 - 角色立绘提取与拼接工具 (Electron UI Shell)",
   "author": {
     "name": "paliku520（云野风云）"
@@ -11,7 +11,8 @@
     "start": "electron ."
   },
   "devDependencies": {
-    "electron": "^31.0.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^26.15.3"
   },
   "allowScripts": {
     "electron@31.7.7": true
