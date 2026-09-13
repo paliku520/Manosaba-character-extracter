@@ -79,7 +79,7 @@ cd electron && npm install             # Electron dependencies
 
 ### Settings
 
-Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Spoiler Notice**, **Preview Quality** (10–100%, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Spoiler Notice**, **Preview Quality** (10–100%, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 

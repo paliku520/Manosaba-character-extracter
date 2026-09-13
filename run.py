@@ -80,6 +80,7 @@ from src.settings import (
     get_output_dir,
     get_preview_quality,
     get_show_original_name,
+    get_show_release_notes,
     get_theme,
     save_settings,
 )
@@ -260,6 +261,7 @@ class JsApi:
         self._export_original_quality = get_export_original_quality()  # 导出原始画质（关闭时导出与预览一致）
         self._disable_animations = get_disable_animations()  # 是否禁用界面动画（低配 GPU 提速）
         self._auto_find_characters = get_auto_find_characters()  # 是否自动查找 characters 目录（False 时需手动指定 characters 目录）
+        self._show_release_notes = get_show_release_notes()  # 更新弹窗是否展示 Release 更新内容（默认开启）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
@@ -345,6 +347,7 @@ class JsApi:
             "export_original_quality": self._export_original_quality,
             "disable_animations": self._disable_animations,
             "auto_find_characters": self._auto_find_characters,
+            "show_release_notes": self._show_release_notes,
             "debug": self._debug_monitor,
         }
 
@@ -433,6 +436,13 @@ class JsApi:
         save_settings(auto_find_characters=self._auto_find_characters)
         log("info", _("log.auto_find_on") if self._auto_find_characters else _("log.auto_find_off"))
         return {"auto_find_characters": self._auto_find_characters}
+
+    def set_show_release_notes(self, enable: bool) -> dict:
+        """保存是否在更新弹窗中展示 Release 更新内容（默认开启；下次检查更新生效）"""
+        self._show_release_notes = bool(enable)
+        save_settings(show_release_notes=self._show_release_notes)
+        log("info", _("log.release_notes_on") if self._show_release_notes else _("log.release_notes_off"))
+        return {"show_release_notes": self._show_release_notes}
 
     def _preview_max_side(self) -> int:
         """预览 data URL 的最大边长（随预览画质缩放；100% → 1600px）"""

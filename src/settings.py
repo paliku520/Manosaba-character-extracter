@@ -125,6 +125,7 @@ def _default_settings() -> Dict[str, Any]:
             "export_original_quality": True,    # 导出原始画质图像（关闭时导出与预览画质一致）
             "disable_animations": False,        # 禁用界面动画（淡入/过渡，低配 GPU 提速）
             "auto_find_characters": True,       # 加载时自动定位 characters 目录（False 时需手动指定）
+            "show_release_notes": True,         # 更新弹窗中展示该版本的 Release 更新内容（默认开启）
         },
         "game": {m: dict(_DEFAULT_GAME_SECTION) for m in GAME_MODES},
     }
@@ -284,13 +285,14 @@ def save_settings(
     export_original_quality: Optional[bool] = None,
     disable_animations: Optional[bool] = None,
     auto_find_characters: Optional[bool] = None,
+    show_release_notes: Optional[bool] = None,
     mode: Optional[str] = None,
 ) -> None:
     """保存设置到新版嵌套配置（只更新传入的字段，保留其余已有字段）
 
     - global：theme / lang / export_count / show_original_name / no_spoiler_notice / mode /
       preview_quality / disable_hardware_accel / export_original_quality / disable_animations /
-      auto_find_characters
+      auto_find_characters / show_release_notes
     - game.<当前 mode>（manosaba）：accent / last_directory / output_dir
     """
     data = load_settings()
@@ -317,6 +319,8 @@ def save_settings(
         g["disable_animations"] = bool(disable_animations)
     if auto_find_characters is not None:
         g["auto_find_characters"] = bool(auto_find_characters)
+    if show_release_notes is not None:
+        g["show_release_notes"] = bool(show_release_notes)
 
     section = _game_section(data, _mode_from(data))
     if output_dir is not None:
@@ -393,6 +397,18 @@ def get_auto_find_characters(default: bool = True) -> bool:
     """
     settings = load_settings()
     raw = _global_section(settings).get("auto_find_characters")
+    if isinstance(raw, bool):
+        return raw
+    return default
+
+
+def get_show_release_notes(default: bool = True) -> bool:
+    """返回是否在更新弹窗中展示 Release 更新内容（global.show_release_notes）。
+
+    默认开启；关闭后检查更新只提示版本号，不展示更新内容（可在更新弹窗或设置中重新开启）。
+    """
+    settings = load_settings()
+    raw = _global_section(settings).get("show_release_notes")
     if isinstance(raw, bool):
         return raw
     return default
