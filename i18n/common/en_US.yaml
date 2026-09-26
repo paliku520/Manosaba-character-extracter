@@ -29,6 +29,7 @@ app:
   disclaimer: "This tool is a third-party unofficial tool and is not affiliated with the game official."
   click_to_copy: "Click to copy"
   copied: "Copied: {text}"
+  init_failed: "Initialization failed: {msg}"
   progress:
     loading_bundles: "Scanning and loading bundle files..."
   status:
@@ -256,7 +257,7 @@ parts:
   auto_update: "Auto Update"
   clear_preview: "Clear Preview"
   clip_importance: "ClippingMask parts include overlays (effects/outlines). Enable for original game look. (Quick-select then manual adjust for final result)"
-  clip_selected: "Selected {count} ClippingMask part(s)"
+  clip_selected: "Added {count} ClippingMask part(s)"
   composite_btn: "Generate Composite"
   deselect_all: "Deselect All"
   deselect_group: "Deselect"

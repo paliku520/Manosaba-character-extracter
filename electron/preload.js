@@ -55,6 +55,11 @@ window.__electron = {
   gpuInfo: () => ipcRenderer.invoke('sys:gpu'),
   // 拖拽导入：将拖入的 File 解析为磁盘绝对路径（Electron 29+ 标准 API）
   getPathForFile: (file) => webUtils.getPathForFile(file),
+  // 窗口最大化/还原（原生双击标题栏、Aero Snap 也会触发）→ 前端同步图标与缩放手柄
+  onMaximizedChanged: (cb) => {
+    if (typeof cb !== 'function') return;
+    ipcRenderer.on('win:maximized-changed', (_e, maximized) => cb(!!maximized));
+  },
   // 任务栏（Windows 原生）：读条期间显示进度，读条完成后黄色闪烁
   taskbar: {
     progress: (value) => ipcRenderer.invoke('taskbar:progress', value),

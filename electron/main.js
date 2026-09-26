@@ -433,6 +433,12 @@ function createWindow() {
   win.loadFile(webuiIndexHtml(), launchQueryOptions());
   win.once('ready-to-show', () => win.show());
   win.on('close', () => saveWindowState());   // 兜底：任何关闭路径都保存一次（幂等）
+  // 最大化/还原（含原生双击标题栏、Aero Snap）：通知前端切换标题栏图标并显隐缩放手柄
+  const sendMaximizedState = (maximized) => {
+    if (win && !win.isDestroyed()) win.webContents.send('win:maximized-changed', !!maximized);
+  };
+  win.on('maximize', () => sendMaximizedState(true));
+  win.on('unmaximize', () => sendMaximizedState(false));
   win.on('closed', () => {
     win = null;
   });

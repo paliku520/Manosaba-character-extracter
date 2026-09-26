@@ -164,6 +164,10 @@
           if (window.__electron && window.__electron.openLogConsole) window.__electron.openLogConsole();
         });
       }
+      // 原生最大化/还原（双击标题栏、Aero Snap）→ 同步标题栏图标与缩放手柄
+      if (window.__electron && window.__electron.onMaximizedChanged) {
+        window.__electron.onMaximizedChanged((maximized) => setMaxState(maximized));
+      }
     }
     // 无边框窗口边缘/角落缩放
     let resizeState = null;
@@ -326,6 +330,16 @@
 
   // ═════════════ 初始化 ═════════════
 
+  // 同步窗口最大化状态：主进程会按记忆的窗口状态在页面加载前就 maximize（前端收不到那次事件），
+  // 因此启动后主动查一次；之后的原生最大化/还原由 win:maximized-changed 事件推送。
+  async function syncWindowMaximized() {
+    if (!api()) return;
+    try {
+      const r = await api().window_is_maximized();
+      if (r && 'maximized' in r) setMaxState(!!r.maximized);
+    } catch (e) { /* ignore */ }
+  }
+
   // 启动剧透提示（勾选"不再提示"并点"继续"后不再弹出，持久化到 settings.json）
   function showSpoilerNotice() {
     if (App.info && App.info.no_spoiler) return;
@@ -423,6 +437,7 @@
       applyAnimations(!!info.disable_animations);   // 禁用界面动画（低配 GPU 提速）
       setSplashProgress(80);
       bindEvents();
+      syncWindowMaximized();   // 主进程可能已按记忆状态最大化：启动后同步图标/缩放手柄
       initTabIndicator();   // tab 指示条（active 下划线滑动动画）
       renderCharList();
       renderInfoPage();
@@ -437,7 +452,7 @@
       window.pywebview.api.check_update(true); // 静默检查更新
       hideSplash();
     } catch (e) {
-      toast('初始化失败: ' + e, 'error');
+      toast(t('app.init_failed', { msg: e }), 'error');
       hideSplash();
     }
   }

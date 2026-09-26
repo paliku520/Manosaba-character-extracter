@@ -31,6 +31,7 @@ app:
   disclaimer: "This tool is third-party, Nii oF game official."
   click_to_copy: "Alte to save"
   copied: "saved: {text}"
+  init_failed: "Baru: {msg}"
   progress:
     loading_bundles: "Loadeh Ge-mon..."
   status:

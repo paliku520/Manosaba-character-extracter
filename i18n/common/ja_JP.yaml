@@ -28,6 +28,7 @@ app:
   disclaimer: "本ツールはサードパーティ製の非公式ツールであり、ゲーム公式とは無関係です。"
   click_to_copy: "クリックでコピー"
   copied: "コピーしました: {text}"
+  init_failed: "初期化に失敗しました: {msg}"
   progress:
     loading_bundles: "バンドルファイルをスキャンして読み込み中..."
   status:
@@ -255,7 +256,7 @@ parts:
   auto_update: "自動更新"
   clear_preview: "プレビューをクリア"
   clip_importance: "ClippingMask パーツはエフェクト/輪郭などのオーバーレイです。有効にすると原作の見た目に近づきます。（まとめて選択後、最終調整は手動で）"
-  clip_selected: "ClippingMask パーツを {count} 個選択しました"
+  clip_selected: "ClippingMask パーツを {count} 個追加しました"
   composite_btn: "合成画像を生成"
   deselect_all: "すべて選択解除"
   deselect_group: "選択解除"

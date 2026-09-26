@@ -29,6 +29,7 @@ app:
   disclaimer: "本工具为第三方非官方工具，与游戏官方无关。"
   click_to_copy: "点击复制"
   copied: "已复制: {text}"
+  init_failed: "初始化失败：{msg}"
   progress:
     loading_bundles: "正在扫描并加载 bundle 文件..."
   status:
@@ -256,7 +257,7 @@ parts:
   auto_update: "自动更新"
   clear_preview: "清空预览"
   clip_importance: "ClippingMask 部件包含光效/轮廓等叠加层，开启后更接近原作效果。（快捷勾选后，最终效果以手动调整为准）"
-  clip_selected: "已勾选 {count} 个 ClippingMask 部件"
+  clip_selected: "已新增 {count} 个 ClippingMask 部件"
   composite_btn: "生成合成图像"
   deselect_all: "取消全选"
   deselect_group: "取消选择"

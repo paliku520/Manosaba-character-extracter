@@ -162,9 +162,9 @@
     api().get_preview_thumbnails();
   });
 
-  // 流式：每收到一张立即填充对应格子
-  on('preview_thumb', (t) => {
-    if (t && t.name && t.data_url) setPreviewThumb(t.name, t.data_url);
+  // 流式：每收到一张立即填充对应格子（形参勿用 t，避免遮蔽 i18n 的 t）
+  on('preview_thumb', (d) => {
+    if (d && d.name && d.data_url) setPreviewThumb(d.name, d.data_url);
   });
 
   on('preview_thumbs_ready', (map) => {

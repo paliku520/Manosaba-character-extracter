@@ -549,19 +549,19 @@
     if (MCE.spear.active) return;   // 长矛彩蛋锁定期间禁止勾选
     if (!App.characterData) return;
     const list = App.characterData.clipping_mask_parts || [];
-    let n = 0;
+    let added = 0;   // 仅统计本次新增（App.selected.add 幂等，重复点击不再重复提示）
     list.forEach((name) => {
       if (isExcludedClipMask(name)) return;   // HairClippingMask 留给用户手动勾选
+      if (!App.selected.has(name)) added++;
       App.selected.add(name);
       const el = App.partEls[name];
       if (el) el.cb.checked = true;
-      n++;
     });
-    if (n === 0) return;
+    if (added === 0) return;   // 无新增：状态已一致，不刷新预览/不提示
     console.log(t('log.js_selected', { count: App.selected.size, total: App.characterData.transform_data.length }));
     updateSelUI();
     if (App.autoUpdate) schedulePreview();
-    toast(t('parts.clip_selected', { count: n }), 'success');
+    toast(t('parts.clip_selected', { count: added }), 'success');
   }
 
   // 语言切换后刷新部件页头部（角色名 + 计数）
