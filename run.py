@@ -1,5 +1,5 @@
 ﻿"""
-魔法少女的魔女审判 - 角色立绘提取与拼接工具 (PyWebView 版)
+魔法少女的魔女审判 - 角色立绘提取与拼接工具（业务逻辑层）
 
 工作流程:
     1. 选择游戏目录 → 加载所有角色 bundle
@@ -8,38 +8,32 @@
        - 有组件 → 询问用户操作模式
     3. 拼接模式 → 选择部件 + 预览 + 保存合成图
 
-前端: webui/ (HTML/CSS/JS)，通过 js_api 桥接调用本模块。
+架构（唯一启动链路）:
+    start.bat → electron/main.js → spawn(backend.py) → JsApi（本模块）
+
+要点:
+    - 本模块是**纯业务模块**，不依赖任何 GUI 框架（无 pywebview / pythonnet / WinForms）。
+      窗口控制、文件对话框由 Electron 主进程承担（preload 白名单拦截，根本不会调用到这里）。
+    - 事件推送走 stdout 单行 JSON（`{"event": ..., "payload": ...}`），与
+      `backend.py` 的 JSON-RPC 响应共用同一管道，由 stdout 锁保证行级原子。
+    - 前端页面: webui/ (HTML/CSS/JS)，经 preload 暴露的 `window.pywebview.api` 调用本模块。
 """
 
-from __future__ import annotations  # 注解惰性求值：Electron 后端子进程（backend.py）无需真正导入 pywebview/pythonnet
+from __future__ import annotations
 
 import base64
 import io
 import json
 import os
+import queue
 import shutil
 import sys
 import threading
 import webbrowser
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-try:
-    import webview
-except ImportError:
-    webview = None  # type: ignore[assignment]  # Electron 模式（backend.py）不依赖 pywebview
-
-# 类型标注：PyWebView 模式为模块，Electron 模式为 None（Any 使两模式均可通过类型检查）
-webview: Any  # type: ignore[misc]
-
 from PIL import Image
-
-# pythonnet：PyWebView 模式访问 .NET（WinForms/WebView2）必需；Electron 模式不需要
-try:
-    import clr  # noqa: F401
-except ImportError:
-    clr = None  # Electron 模式（backend.py）不依赖 pythonnet
 
 from src.bundle_loader import BundleLoader
 from src.cache_manager import load_extracted_data, save_extracted_data
@@ -64,7 +58,7 @@ from src.i18n import (
     current_lang,
     set_lang,
 )
-from src.logtools import clear_logs, configure, flush_logs, log, log_raw
+from src.logtools import clear_logs, configure, log
 from src.resource_monitor import ResourceMonitor
 from src.settings import (
     ACCENT_NAMES,
@@ -74,8 +68,6 @@ from src.settings import (
     get_disable_hardware_accel,
     get_export_count,
     get_export_original_quality,
-    get_lang,
-    get_last_directory,
     get_no_spoiler,
     get_output_dir,
     get_preview_quality,
@@ -89,26 +81,90 @@ from src.version import __version__
 
 
 # ── 程序基础路径（兼容 PyInstaller 冻结环境） ──────────────
+# BASE_DIR = 业务数据（output/ temp/）的根目录。
+# backend.py 在受保护目录（Program Files 等）下会把 BASE_DIR 重定向到可写的 MCE_DATA_DIR。
 if getattr(sys, "frozen", False):
-    # 打包成 exe 后：exe 所在目录
-    BASE_DIR = Path(sys.executable).parent
-    # PyInstaller 解压目录（用于访问打包的数据文件）
-    MEI_DIR = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    BASE_DIR = Path(sys.executable).parent   # 打包成 exe 后：exe 所在目录
 else:
-    # 源码运行时：脚本所在目录
-    BASE_DIR = Path(__file__).parent
-    MEI_DIR = BASE_DIR
+    BASE_DIR = Path(__file__).parent         # 源码运行时：脚本所在目录
 
 # 日志文件：logs/ 目录，文件名含程序启动时间（每次启动一个新文件）
 LOG_FILE: Optional[Path] = None
 
-# 调试模式：设置环境变量 PYWEBVIEW_DEBUG=1 可打开开发者工具
-_DEBUG = os.environ.get("PYWEBVIEW_DEBUG", "") == "1"
+
+# ===================================================================
+# 事件输出（stdout JSON，与 backend.py 的 JSON-RPC 协议共用管道）
+# ===================================================================
+# 事件异步写出：调用方只入队，由后台 daemon 线程持锁写 stdout。
+# 避免 stdout 管道缓冲满（Electron 主进程渲染慢 → 不读管道）时阻塞业务线程
+# （表现为首次提取卡死、无日志）。
+_STDOUT_LOCK = threading.Lock()
+_EMIT_QUEUE: "queue.Queue[Optional[str]]" = queue.Queue()
+_EMIT_THREAD: Optional[threading.Thread] = None
+_EMIT_THREAD_LOCK = threading.Lock()
+
+
+def emit_event(event: str, payload: dict) -> None:
+    """推送事件：入队一行 JSON，由后台线程写 stdout（不阻塞调用线程）。"""
+    try:
+        line = json.dumps({"event": event, "payload": payload}, ensure_ascii=False)
+        _ensure_emit_thread()
+        _EMIT_QUEUE.put(line)
+    except Exception as e:
+        log("warning", f"[emit] {event} failed: {e}")
+
+
+def _ensure_emit_thread() -> None:
+    global _EMIT_THREAD
+    if _EMIT_THREAD is not None:
+        return
+    with _EMIT_THREAD_LOCK:
+        if _EMIT_THREAD is None:
+            _EMIT_THREAD = threading.Thread(target=_emit_worker, name="emit-writer", daemon=True)
+            _EMIT_THREAD.start()
+
+
+def _emit_worker() -> None:
+    """事件写线程：消费队列，持锁写 stdout（行级原子）"""
+    while True:
+        line = _EMIT_QUEUE.get()
+        if line is None:
+            return
+        _write_stdout_line(line)
+
+
+def flush_events(timeout: float = 2.0) -> None:
+    """退出前同步消费事件队列直到空（超时放弃，避免卡死退出流程）"""
+    import time as _t
+    deadline = _t.monotonic() + timeout
+    while _t.monotonic() < deadline:
+        try:
+            line = _EMIT_QUEUE.get(timeout=0.1)
+        except queue.Empty:
+            if _EMIT_QUEUE.empty():
+                return
+            continue
+        if line is not None:
+            _write_stdout_line(line)
+
+
+def write_response(rid: Any, obj: Dict) -> None:
+    """写出 JSON-RPC 响应行（backend.py 主循环使用；与事件共用 stdout 锁）"""
+    _write_stdout_line(json.dumps({"id": rid, **obj}, ensure_ascii=False, default=str))
+
+
+def _write_stdout_line(line: str) -> None:
+    try:
+        with _STDOUT_LOCK:
+            sys.stdout.write(line + "\n")
+            sys.stdout.flush()
+    except Exception:
+        pass
 
 
 # ── 控制台标题（跟随语言切换） ──────────────────────
 def set_console_title():
-    """设置控制台窗口标题，跟随当前语言"""
+    """设置后端控制台窗口标题，跟随当前语言（非 Windows 平台静默跳过）"""
     title = f"{_('console.title')} v{__version__}"
     try:
         import ctypes
@@ -196,55 +252,28 @@ def _sprite_full_data_url(path: Path, max_side: int = 512) -> Optional[str]:
 
 
 # ===================================================================
-# 资源定位（兼容 PyInstaller）
-# ===================================================================
-
-def _find_icon() -> Optional[str]:
-    """查找应用图标文件路径（assets/ 目录）"""
-    for p in [
-        MEI_DIR / "icon.ico",                     # 打包后：--add-data 放到 _MEIPASS 根
-        MEI_DIR / "assets" / "icon.ico",
-        BASE_DIR / "assets" / "icon.ico",
-        Path(__file__).parent / "assets" / "icon.ico",
-    ]:
-        if p.exists():
-            return str(p)
-    return None
-
-
-def _get_webui_url() -> str:
-    """返回前端 index.html 的 file:// URL"""
-    for p in [
-        MEI_DIR / "webui" / "index.html",
-        BASE_DIR / "webui" / "index.html",
-        Path(__file__).parent / "webui" / "index.html",
-    ]:
-        if p.exists():
-            return p.as_uri()
-    raise FileNotFoundError("webui/index.html not found")
-
-
-# ===================================================================
-# JS ↔ Python 桥接 API（js_api）
+# JS ↔ Python 桥接 API
 # ===================================================================
 
 class JsApi:
-    """暴露给前端 (pywebview.api.*) 的所有方法。
+    """暴露给前端的全部方法（前端经 `window.pywebview.api.<method>(...)` 调用）。
 
     约定:
-      - 快操作（getter / 设置 / 文件对话框）为同步方法，直接返回结果。
-      - 耗时操作启动后台线程，通过 window.__pywebview.events.<事件> 推送进度与结果。
+      - 快操作（getter / 设置）为同步方法，直接返回结果（JSON-RPC result）。
+      - 耗时操作启动后台线程，通过 `emit_event` 推送进度与结果
+        （前端 `window.__pywebview.events.<事件>` 接收）。
+      - 窗口控制 / 文件对话框由 Electron 主进程承担（preload 白名单拦截），
+        不存在于本类中。
     """
 
     def __init__(self, output_dir: Optional[Path] = None):
-        self._window: Optional[Any] = None
         self._loader = BundleLoader()
         self._compositor = SpriteCompositor(scale=100.0)
         # 单部件放大预览用的“临时画布”合成器（与主合成器分离：各自持有画布，
         # 避免单部件预览把主预览共享的大画布清空重画）
         self._part_compositor: Optional[SpriteCompositor] = None
 
-        # 内部状态（均为私有，避免被 js_api 递归暴露到前端）
+        # 内部状态（均为私有，避免被 JSON-RPC 递归暴露到前端）
         self._bundles: Dict[str, str] = {}            # {角色名: bundle路径}
         self._character_data: Optional[Dict] = None   # 当前角色的提取数据
         self._composite_image: Optional[Image.Image] = None
@@ -266,7 +295,6 @@ class JsApi:
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
         self._monitor: Optional[ResourceMonitor] = None  # 资源占用监视线程（调试模式开启时创建）
-        self._base_title: str = ""              # 窗口基础标题（调试模式时附加资源占用信息）
         self._char_gen = 0                      # 角色加载代号：递增以中断旧加载
         self._char_busy = False                 # 是否正在加载角色/导出（读条中禁止切换）
         self._work_lock = threading.Lock()      # 提取类任务互斥锁：避免并发写 temp/（旧任务取消清理与新任务写入竞争）
@@ -277,47 +305,12 @@ class JsApi:
     # ── 事件推送 ──────────────────────────────────────────
 
     def _emit(self, event: str, payload: dict):
-        """向前端推送事件: window.__pywebview.events.<event>(payload)"""
-        if self._window is None:
-            return
-        try:
-            js = json.dumps(payload, ensure_ascii=False).replace("</", "<\\/")
-            self._window.evaluate_js(
-                "window.__pywebview && window.__pywebview.events && "
-                f"window.__pywebview.events.{event} && "
-                f"window.__pywebview.events.{event}({js})"
-            )
-        except Exception as e:
-            log("warning", f"[webview] emit {event} failed: {e}")
+        """推送到前端 `window.__pywebview.events.<event>(payload)`（经 stdout 协议）"""
+        emit_event(event, payload)
 
     @staticmethod
     def _run_async(fn):
         threading.Thread(target=fn, daemon=True).start()
-
-    def _on_gui_thread(self, fn):
-        """在 WinForms GUI 线程执行 fn 并返回结果。
-
-        pywebview 的 js_api 方法都在独立线程中执行，而 WinForms 的
-        create_file_dialog 不允许跨线程访问控件，因此需要借助
-        Control.Invoke 把调用投递回 GUI 线程。若投递失败则直接调用（保守回退）。
-        """
-        if self._window is None:
-            return fn()
-        try:
-            from webview.platforms import winforms as _wf
-            view = _wf.BrowserView.instances.get(self._window.uid)
-            if view is not None and hasattr(view, "Invoke"):
-                from System import Action  # type: ignore[reportMissingImports]
-                box = {}
-
-                def _wrapper():
-                    box["r"] = fn()
-
-                view.Invoke(Action(_wrapper))
-                return box.get("r")
-        except Exception as e:
-            log("warning", f"[webview] GUI thread invoke failed: {e}")
-        return fn()
 
     # ── 应用信息 / 语言 ────────────────────────────────────
 
@@ -352,19 +345,12 @@ class JsApi:
         }
 
     def set_lang(self, code: str) -> dict:
-        """切换语言并持久化，返回新翻译表（同时更新窗口标题）"""
+        """切换语言并持久化，返回新翻译表（同时更新控制台标题）"""
         if code in LANGUAGE_CODES:
             set_lang(code)
             save_settings(lang=code)
             log("info", _("log.lang_changed", code=code))
             set_console_title()
-            # 同步更新主窗口标题（create_window 时标题固定，需手动 set_title）
-            self._base_title = f"{_('app.title')} v{__version__}"
-            if self._window is not None:
-                try:
-                    self._window.set_title(self._base_title)
-                except Exception as e:
-                    log("warning", f"set window title failed: {e}")
         return {
             "current_lang": current_lang(),
             "lang_names": {c: _(f"lang.{c}") for c in LANGUAGE_CODES},
@@ -457,8 +443,8 @@ class JsApi:
     def set_debug(self, enable: bool) -> dict:
         """开启/关闭调试模式（仅本次运行有效，不持久化）。
 
-        开启后：输出 debug 日志 + 后台线程每 5 秒采集内存/CPU/窗口分辨率，
-        推送 res_monitor 事件供前端状态栏显示。
+        开启后：输出 debug 日志 + 后台线程每 5 秒采集内存/CPU，推送 res_monitor 事件
+        供前端状态栏/标题栏显示（窗口分辨率由 Electron 侧在前端展示，后端不再采集）。
         """
         enable = bool(enable)
         if enable == self._debug_monitor:
@@ -467,10 +453,7 @@ class JsApi:
         if enable:
             configure(level="debug")
             log("info", _("log.debug_on"))
-            self._monitor = ResourceMonitor(
-                emit=self._on_res_monitor_payload,
-                window_size=self._window_size,
-            )
+            self._monitor = ResourceMonitor(emit=self._on_res_monitor_payload)
             self._monitor.start()
         else:
             if self._monitor is not None:
@@ -478,92 +461,23 @@ class JsApi:
             self._monitor = None
             configure(level="info")
             log("info", _("log.debug_off"))
-            # 恢复标题栏（去掉资源占用信息）
-            try:
-                if self._window is not None:
-                    self._window.set_title(self._base_title)
-            except Exception:
-                pass
         return {"debug": self._debug_monitor}
 
     def _on_res_monitor_payload(self, payload: dict):
-        """资源占用采集回调：记录 debug 日志、推送 res_monitor 事件，并同步到窗口标题栏"""
-        win = _("log.resource_win", width=payload["width"], height=payload["height"]) if "width" in payload else ""
-        log("debug", _("log.resource_usage", mem=payload["mem_mb"], cpu=payload["cpu"], win=win))
-        self._emit("res_monitor", payload)
-        # 同步到标题栏（含窗口分辨率，文案跟随当前语言）
-        try:
-            if self._window is not None:
-                self._window.set_title(
-                    self._base_title + _("log.resource_title", mem=payload["mem_mb"], cpu=payload["cpu"], win=win)
-                )
-        except Exception:
-            pass
+        """资源占用采集回调：记录 debug 日志并推送 res_monitor 事件。
 
-    def _window_size(self):
-        """获取当前窗口尺寸 (w, h)；失败返回 None（跨线程访问控件需投递 GUI 线程）"""
-        window = self._window
-        if window is None:
-            return None
-        try:
-            return self._on_gui_thread(
-                lambda: (int(getattr(window, "width", 0)), int(getattr(window, "height", 0)))
-            )
-        except Exception:
-            return None
+        只上报内存 / CPU（进程级指标）；窗口分辨率与 FPS 由前端自行采集，
+        无需跨进程获取窗口句柄。
+        """
+        log("debug", _("log.resource_usage", mem=payload["mem_mb"], cpu=payload["cpu"]))
+        self._emit("res_monitor", payload)
 
     # ── 目录 / 设置 ────────────────────────────────────────
 
-    def select_directory(self) -> Optional[str]:
-        """打开文件夹选择对话框；初始目录使用 settings.json 中记忆的上次路径"""
-        window = self._window
-        if window is None:
-            return None
-        initial = get_last_directory() or str(Path.home())
-        if not Path(initial).exists():
-            initial = str(Path.home())
-
-        def do_dialog():
-            # 原生对话框必须在 GUI 线程；js_api 方法运行在子线程，
-            # 故由 _on_gui_thread 投递到 GUI 线程后调用。
-            from webview.platforms import winforms as _wf
-            return _wf.create_file_dialog(
-                webview.FileDialog.FOLDER, initial, False, "", (), window.uid
-            )
-
-        result = self._on_gui_thread(do_dialog)
-        chosen = None
-        if isinstance(result, str) and result:
-            chosen = result
-        elif isinstance(result, (tuple, list)) and result:
-            chosen = result[0]
-        if chosen:
-            # 记忆本次选择到 settings.json，供下次启动使用
-            save_settings(last_directory=chosen)
-        return chosen
-
-    def select_output_dir(self) -> Optional[str]:
-        """打开输出目录选择对话框（不修改 last_directory 记忆）"""
-        window = self._window
-        if window is None:
-            return None
-        initial = str(self._output_dir)
-        if not Path(initial).exists():
-            initial = str(Path.home())
-
-        def do_dialog():
-            from webview.platforms import winforms as _wf
-            return _wf.create_file_dialog(
-                webview.FileDialog.FOLDER, initial, False, "", (), window.uid
-            )
-
-        result = self._on_gui_thread(do_dialog)
-        chosen = None
-        if isinstance(result, str) and result:
-            chosen = result
-        elif isinstance(result, (tuple, list)) and result:
-            chosen = result[0]
-        return chosen
+    # 说明：文件/文件夹选择对话框由 Electron 主进程承担（preload 白名单拦截
+    # `select_directory` / `select_output_dir` → `dialog:folder*`），因此本类不再提供
+    # 这两个方法。若前端调用它们，会得到 "no such method" 错误 —— 这是刻意的显式失败，
+    # 避免两套对话框实现并存后行为漂移。
 
     def set_output_dir(self, path: str) -> dict:
         """保存并应用输出目录"""
@@ -631,9 +545,9 @@ class JsApi:
             if result["success"]:
                 self._bundles = result["bundles"]
                 self._char_has_component = result.get("components", {})
-                # 记忆本次加载的目录（settings.json 为权威）——覆盖按钮/拖拽两种入口。
-                # Electron 模式下 select_directory 由 preload 拦截走原生对话框（不经本进程），
-                # 因此只能在统一的 load_directory 入口保存，才能保证 WebView/Electron 两模式一致。
+                # 记忆本次加载的目录（settings.json 为权威）——覆盖“选择目录”/“拖拽导入”两种入口。
+                # 目录选择对话框由 Electron 主进程承担（不经本进程），
+                # 因此只能在统一的 load_directory 入口保存，才能保证两种入口行为一致。
                 save_settings(last_directory=path)
                 log("info", _("log.load_complete", count=result["count"]))
             else:
@@ -1156,186 +1070,6 @@ class JsApi:
         self._run_async(worker)
         return True
 
-    def quit_app(self) -> dict:
-        """退出程序（关闭主窗口触发退出流程）"""
-        try:
-            if self._window is not None:
-                self._window.destroy()
-        except Exception as e:
-            log("warning", f"quit_app failed: {e}")
-        return {"ok": True}
-
-    # ── 无边框标题栏窗口控制（frameless）──────────────────
-
-    def window_minimize(self) -> dict:
-        """最小化窗口（标题栏最小化按钮）"""
-        try:
-            if self._window is not None:
-                self._window.minimize()
-        except Exception as e:
-            log("warning", f"window_minimize failed: {e}")
-        return {"ok": True}
-
-    def window_maximize(self) -> dict:
-        """最大化/还原切换：最大化到工作区（不覆盖任务栏），还原恢复原位置大小"""
-        hwnd = self._get_hwnd()
-        if not hwnd:
-            return {"ok": False}
-        try:
-            if getattr(self, "_win_max", False):
-                restore = getattr(self, "_win_restore", None)
-                if restore:
-                    self._win_set(hwnd, *restore)
-                self._win_max = False
-            else:
-                self._win_restore = self._win_rect(hwnd)
-                self._win_set(hwnd, *self._work_area())
-                self._win_max = True
-        except Exception as e:
-            log("warning", f"window_maximize failed: {e}")
-        return {"ok": True, "maximized": getattr(self, "_win_max", False)}
-
-    def window_drag_start(self, screen_x: int, screen_y: int) -> dict:
-        """开始拖动标题栏：若处于最大化状态则还原为原大小，并使标题栏贴合鼠标位置"""
-        hwnd = self._get_hwnd()
-        if not hwnd:
-            return {"ok": False}
-        try:
-            if getattr(self, "_win_max", False):
-                restore = getattr(self, "_win_restore", None)
-                rect = self._win_rect(hwnd)
-                if restore and rect:
-                    _, _, rw, rh = restore
-                    scale = self._system_scale()
-                    # 前端 screen 坐标为逻辑像素 → 转物理像素（与 GetWindowRect 单位一致）
-                    sx_p = int(screen_x * scale)
-                    sy_p = int(screen_y * scale)
-                    # 鼠标在当前（最大化）窗口内的物理偏移；横偏移限制在还原宽度内、纵偏移限制在标题栏高度内
-                    off_x = sx_p - rect[0]
-                    off_y = sy_p - rect[1]
-                    title_h = int(36 * scale)
-                    off_x = max(0, min(off_x, max(rw - 1, 0)))
-                    off_y = max(0, min(off_y, title_h))
-                    # 还原窗口左上角 = 鼠标位置 - 鼠标在窗口内的偏移（贴合鼠标）
-                    self._win_set(hwnd, sx_p - off_x, sy_p - off_y, rw, rh)
-                    self._win_max = False
-        except Exception as e:
-            log("warning", f"window_drag_start failed: {e}")
-        return {"ok": True, "maximized": getattr(self, "_win_max", False)}
-
-    def window_move(self, dx: int, dy: int) -> dict:
-        """按增量移动窗口（前端 screen 坐标为逻辑像素，需 ×DPI 转为物理像素）"""
-        hwnd = self._get_hwnd()
-        if not hwnd:
-            return {"ok": False}
-        try:
-            r = self._win_rect(hwnd)
-            if r:
-                scale = self._system_scale()
-                self._win_set(hwnd, r[0] + int(dx * scale), r[1] + int(dy * scale), r[2], r[3])
-        except Exception as e:
-            log("warning", f"window_move failed: {e}")
-        return {"ok": True}
-
-    def window_resize(self, direction: str, dx: int, dy: int) -> dict:
-        """按方向调整窗口大小（边缘/角落缩放）。
-        direction 为 l/r/t/b 组合（如 'l'、'r'、'tl'、'br'），增量单位为物理像素。
-        以「固定边不动」推导新位置，尺寸达到最小值后相应边保持不动，避免窗口偏移。
-        """
-        hwnd = self._get_hwnd()
-        if not hwnd:
-            return {"ok": False}
-        try:
-            r = self._win_rect(hwnd)
-            if not r:
-                return {"ok": False}
-            ox, oy, ow, oh = r
-            dx, dy = int(dx), int(dy)
-            # 计算新尺寸
-            nw, nh = ow, oh
-            if "l" in direction:
-                nw = ow - dx
-            if "r" in direction:
-                nw = ow + dx
-            if "t" in direction:
-                nh = oh - dy
-            if "b" in direction:
-                nh = oh + dy
-            # 最小尺寸（物理像素 ≈ 逻辑 960x640 × 系统缩放）
-            scale = self._system_scale()
-            min_w, min_h = int(960 * scale), int(640 * scale)
-            nw = max(nw, min_w)
-            nh = max(nh, min_h)
-            # 计算新位置：固定对边，缩放边移动
-            nx, ny = ox, oy
-            if "l" in direction:
-                nx = ox + (ow - nw)   # 右边固定：左边 = 原左 + (原宽 - 新宽)
-            if "t" in direction:
-                ny = oy + (oh - nh)   # 下边固定：上边 = 原上 + (原高 - 新高)
-            self._win_set(hwnd, nx, ny, nw, nh)
-        except Exception as e:
-            log("warning", f"window_resize failed: {e}")
-        return {"ok": True}
-
-    # ── Win32 窗口操作辅助 ─────────────────────────────
-
-    def _get_hwnd(self) -> Optional[int]:
-        """获取主窗口句柄（WinForms 控件需在 GUI 线程访问，仅首次获取后缓存）"""
-        if getattr(self, "_hwnd", None):
-            return self._hwnd
-
-        def _g() -> Optional[int]:
-            w = self._window
-            native = getattr(w, "native", None) if w is not None else None
-            if native is None:
-                return None
-            handle = getattr(native, "Handle", None)
-            # pythonnet 的 IntPtr 不能直接 int()，需先 ToInt64()
-            return int(handle.ToInt64()) if handle is not None else None
-
-        try:
-            hwnd = self._on_gui_thread(_g)
-        except Exception as e:
-            log("warning", f"get hwnd failed: {e}")
-            hwnd = None
-        self._hwnd = hwnd
-        return hwnd
-
-    @staticmethod
-    def _win_rect(hwnd: int) -> Optional[tuple]:
-        """获取窗口位置与大小（物理像素）"""
-        import ctypes
-        from ctypes import wintypes
-        r = wintypes.RECT()
-        if ctypes.windll.user32.GetWindowRect(hwnd, ctypes.byref(r)):
-            return r.left, r.top, r.right - r.left, r.bottom - r.top
-        return None
-
-    @staticmethod
-    def _win_set(hwnd: int, x: int, y: int, w: int, h: int) -> None:
-        """设置窗口位置与大小（SetWindowPos，跨线程安全）"""
-        import ctypes
-        SWP_NOZORDER = 0x0004
-        ctypes.windll.user32.SetWindowPos(hwnd, 0, int(x), int(y), int(w), int(h), SWP_NOZORDER)
-
-    @staticmethod
-    def _work_area() -> tuple:
-        """主显示器工作区（物理像素，不含任务栏）：(left, top, width, height)"""
-        import ctypes
-        from ctypes import wintypes
-        rect = wintypes.RECT()
-        ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
-        return rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top
-
-    @staticmethod
-    def _system_scale() -> float:
-        """系统 DPI 缩放系数（物理像素 / 逻辑像素）"""
-        try:
-            import ctypes
-            return ctypes.windll.user32.GetDpiForSystem() / 96.0
-        except Exception:
-            return 1.0
-
     def check_update(self, silent: bool = False):
         """检查更新（事件: update_result）"""
         def worker():
@@ -1368,10 +1102,9 @@ class JsApi:
 
 
 # ===================================================================
-# 入口
+# 无启动入口（设计如此）
 # ===================================================================
-# 说明：PyWebView 启动入口已移除（2026-08-23）。
-# 本模块现作为 Electron 后端（backend.py）的业务逻辑复用（JsApi / 工具函数），
-# 不再提供 `python run.py` 启动窗口的能力。启动请使用 start.bat（Electron 模式）
-# 或打包后的 MCE.exe。
+# 本模块只是业务逻辑层，不提供 `python run.py` 启动方式。
+# 唯一启动链路：start.bat → electron/main.js → spawn(backend.py) → JsApi
+# 打包版：MCE.exe → resources/backend/backend.exe
 # ===================================================================

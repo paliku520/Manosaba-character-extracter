@@ -8,7 +8,8 @@
       （随后由 electron-builder 作为 extraResources 放进 resources/backend/）
 
 注意:
-    - 排除 webview / pythonnet（clr）：Electron 模式后端不需要，避免打包体积与坑
+    - run.py 为纯业务模块（不导入任何 GUI 框架）；下列 --exclude-module 仅作防御，
+      防止间接依赖意外把 pywebview / pythonnet 拉进包体
     - UnityPy 等依赖通过 --collect-all 确保完整打包
     - 不打包 webui/（前端由 Electron 负责打包）
 """
@@ -67,7 +68,8 @@ def run_pyinstaller(
         "--collect-all", "archspec",     # 收集 archspec JSON 数据文件
         # 打包翻译文件 i18n/（后端从 _MEIPASS 读取）
         "--add-data", f"{PROJECT_ROOT / 'i18n'};i18n",
-        # 排除 pywebview / pythonnet（Electron 模式不需要）
+        # 防御性排除：业务代码已不导入这些模块（GUI 全部由 Electron 承担），
+        # 此处仅防止间接依赖把它们带进包体
         "--exclude-module", "webview",
         "--exclude-module", "clr",
         "--exclude-module", "pythonnet",

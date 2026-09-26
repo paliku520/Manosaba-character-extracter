@@ -3,36 +3,35 @@
 前端 window.pywebview.api.<method>(...) → Electron 主进程 → 本进程 stdin → 处理后 stdout 响应。
 事件推送: {"event": <name>, "payload": {...}} 由 Electron 主进程转发给前端 window.__pywebview.events。
 
-复用 run.py 的 JsApi（业务逻辑零复制），仅替换 pywebview 相关实现：
-  - _emit           → stdout 事件行
-  - _on_gui_thread  → 直接执行（对话框由 Electron 主进程接管，preload 已拦截）
-  - 窗口控制方法     → 由 Electron 主进程处理（preload 白名单拦截，不经过本进程）
+本模块只做三件事（业务逻辑全部在 run.JsApi，零复制、无猴子补丁）：
+  1. 重定向业务数据目录（output/ temp/ logs/）到可写位置
+  2. 配置日志到 stderr（stdout 专供 JSON 协议）
+  3. 读取 stdin JSON 行 → 调用 JsApi 方法 → 写 stdout 响应
+
+协议实现（emit_event / write_response / flush_events）位于 run.py，
+与业务代码同处一个模块，避免两边各写一份 stdout 锁与事件队列。
 """
 
 import json
 import os
-import queue
 import shutil
 import sys
-import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # 数据目录重定向（Electron 打包后 backend 位于 resources/ 不可写；必须在 import run（→ settings）之前设置）
 _DATA_DIR = os.environ.get("MCE_DATA_DIR")
 if _DATA_DIR:
     os.environ["MCE_DATA_DIR"] = str(Path(_DATA_DIR))
 
-import run  # noqa: E402  复用 run.py 的 JsApi 与模块级工具函数
-from run import JsApi  # noqa: E402
+import run  # noqa: E402  复用 run.py 的 JsApi、事件协议与模块级工具函数
+from run import JsApi, flush_events, write_response  # noqa: E402
 from src.logtools import configure, log  # noqa: E402
 
-# 业务数据目录（output/ temp/ logs/）同样重定向到数据目录
+# 业务数据目录（output/ temp/）重定向到数据目录（BASE_DIR 是唯一入口，见 run.py）
 if _DATA_DIR:
     run.BASE_DIR = Path(_DATA_DIR)
-    run.MEI_DIR = Path(_DATA_DIR)
 
 # 日志目录：优先跟随 MCE_DATA_DIR（main.js 已探测为可写目录）。
 # 打包安装到 Program Files 等受保护目录时，exe 所在目录（resources/backend）对普通用户不可写，
@@ -43,81 +42,6 @@ _LOG_BASE = (
     if _DATA_DIR
     else (Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent)
 )
-
-
-# stdout 写入锁（emit 后台线程与主线程响应共用，防止 JSON 行撕裂）
-_STDOUT_LOCK = threading.Lock()
-
-# 事件异步输出：worker 只入队，由后台 daemon 线程写 stdout。
-# 避免 stdout 管道缓冲满（Electron 主进程 console.log 到 cmd 终端渲染慢 → 不读管道）时
-# 阻塞 worker 线程（表现为首次提取卡死、无日志）。
-_EMIT_QUEUE: "queue.Queue[Optional[str]]" = queue.Queue()
-_EMIT_THREAD: Optional[threading.Thread] = None
-_EMIT_LOCK = threading.Lock()
-
-
-def _emit_worker() -> None:
-    """事件写线程：消费队列，持锁写 stdout（行级原子）"""
-    while True:
-        line = _EMIT_QUEUE.get()
-        if line is None:
-            return
-        try:
-            with _STDOUT_LOCK:
-                sys.stdout.write(line + "\n")
-                sys.stdout.flush()
-        except Exception:
-            pass
-
-
-def _ensure_emit() -> None:
-    global _EMIT_THREAD
-    if _EMIT_THREAD is not None:
-        return
-    with _EMIT_LOCK:
-        if _EMIT_THREAD is None:
-            _EMIT_THREAD = threading.Thread(target=_emit_worker, name="emit-writer", daemon=True)
-            _EMIT_THREAD.start()
-
-
-def _flush_emit(timeout: float = 2.0) -> None:
-    """退出前同步消费事件队列直到空"""
-    import time as _t
-    deadline = _t.monotonic() + timeout
-    while _t.monotonic() < deadline:
-        try:
-            line = _EMIT_QUEUE.get(timeout=0.1)
-        except queue.Empty:
-            if _EMIT_QUEUE.empty():
-                return
-            continue
-        try:
-            with _STDOUT_LOCK:
-                if line is not None:
-                    sys.stdout.write(line + "\n")
-                    sys.stdout.flush()
-        except Exception:
-            pass
-
-
-def _emit(self, event: str, payload: dict):
-    """事件推送：入队后由后台线程写一行 JSON 到 stdout（不阻塞调用线程）"""
-    try:
-        line = json.dumps({"event": event, "payload": payload}, ensure_ascii=False)
-        _ensure_emit()
-        _EMIT_QUEUE.put(line)
-    except Exception as e:
-        log("warning", f"[backend] emit {event} failed: {e}")
-
-
-def _on_gui_thread(self, fn):
-    """Electron 模式下无需 WinForms GUI 线程，直接执行"""
-    return fn()
-
-
-# 打补丁：替换 pywebview 相关实现
-JsApi._emit = _emit
-JsApi._on_gui_thread = staticmethod(_on_gui_thread)
 
 
 def _startup_logs():
@@ -279,32 +203,18 @@ def main():
             method = req.get("method")
             args = req.get("args") or []
             fn = getattr(api, method, None)
-            if fn is None:
-                with _STDOUT_LOCK:
-                    sys.stdout.write(
-                        json.dumps({"id": rid, "error": f"no such method: {method}"}) + "\n"
-                    )
-                    sys.stdout.flush()
+            if not callable(fn):
+                write_response(rid, {"error": f"no such method: {method}"})
                 continue
-            result = fn(*args)
-            with _STDOUT_LOCK:
-                sys.stdout.write(
-                    json.dumps({"id": rid, "result": result}, ensure_ascii=False, default=str)
-                    + "\n"
-                )
-                sys.stdout.flush()
+            write_response(rid, {"result": fn(*args)})
         except Exception as e:
             traceback.print_exc(file=sys.stderr)
             sys.stderr.flush()
-            with _STDOUT_LOCK:
-                sys.stdout.write(
-                    json.dumps({"id": rid, "error": f"{type(e).__name__}: {e}"}) + "\n"
-                )
-                sys.stdout.flush()
+            write_response(rid, {"error": f"{type(e).__name__}: {e}"})
 
     # stdin EOF（Electron 主进程窗口关闭/退出时关闭管道）→ 优雅退出清理
     _shutdown_logs()
-    _flush_emit()
+    flush_events()
     from src.logtools import flush_logs
     flush_logs()
 

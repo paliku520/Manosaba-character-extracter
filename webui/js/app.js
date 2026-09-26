@@ -1,6 +1,6 @@
 /* ============================================================
- * app.js — Manosaba Character Extracter 前端主逻辑 (PyWebView)
- * 通过 window.pywebview.api 调用 Python 后端，
+ * app.js — Manosaba Character Extracter 前端主逻辑
+ * 通过 preload 暴露的 window.pywebview.api 调用 Python 后端（backend.py），
  * 后端通过 window.__pywebview.events.<事件> 推送结果。
  * ============================================================ */
 (function () {
@@ -2622,15 +2622,16 @@
     el.hidden = false;
   }
 
-  // 调试模式：后端内存/CPU/窗口占用 → 标题栏
+  // 调试模式：后端内存/CPU → 标题栏（窗口分辨率与 FPS 由前端自行采集）
   on('res_monitor', (p) => {
     App._res.mem = p.mem_mb;
     App._res.cpu = p.cpu;
-    App._res.win = (p && p.width) ? t('log.resource_win', { width: p.width, height: p.height }) : '';
     _updateResTitle();
   });
 
-  // FPS：前端 requestAnimationFrame 实时帧率（轻量，始终运行；非调试时隐藏显示）
+  // FPS + 窗口分辨率：前端 requestAnimationFrame 实时帧率（轻量，始终运行；非调试时隐藏显示）
+  // 窗口尺寸直接读 window.outerWidth/outerHeight（CSS 像素，与主进程 DIP 口径一致），
+  // 无需经后端获取窗口句柄。
   let _fpsAccum = 0, _fpsLast = performance.now();
   (function _fpsLoop() {
     _fpsAccum++;
@@ -2639,6 +2640,9 @@
       App._res.fps = Math.round((_fpsAccum * 1000) / (now - _fpsLast));
       _fpsAccum = 0;
       _fpsLast = now;
+      const w = window.outerWidth || window.innerWidth;
+      const h = window.outerHeight || window.innerHeight;
+      App._res.win = t('log.resource_win', { width: w, height: h });
       _updateResTitle();
     }
     requestAnimationFrame(_fpsLoop);
@@ -3357,15 +3361,9 @@
   // ═════════════ 事件绑定 ═════════════
 
   function bindEvents() {
-    // 运行模式：Electron = 自绘无边框标题栏；PyWebView 原生窗口 = 隐藏自绘标题栏/缩放手柄（用系统标题栏）
-    if (!window.__ELECTRON__) {
-      const tb = $('#titlebar');
-      if (tb) tb.style.display = 'none';
-      const rh = $('#resize-handles');
-      if (rh) rh.style.display = 'none';
-    }
+    // Electron 无边框窗口：自绘标题栏 + 8 个缩放手柄（窗口控制在主进程侧实现）
     // 无边框标题栏：窗口控制（拖动/双击最大化/Aero Snap 由 Electron 原生处理）
-    if (window.__ELECTRON__ && $('#titlebar')) {
+    if ($('#titlebar')) {
       $('#tb-min').addEventListener('click', () => api() && api().window_minimize());
       $('#tb-max').addEventListener('click', async () => {
         if (!api()) return;
@@ -3593,12 +3591,13 @@
 
   async function init() {
     if (!window.pywebview || !window.pywebview.api) {
+      // 唯一启动链路：start.bat → electron/main.js → backend.py。
+      // 因此走到这里只可能是直接双击 index.html 打开了页面（无 preload 桥）。
       const el = document.createElement('div');
       el.className = 'no-bridge';
       el.innerHTML =
         '<h2>' + t('app.subtitle') + '</h2>' +
-        '<p>本界面需要 PyWebView 环境。请通过 <code>python run.py</code> 启动应用（将使用系统 WebView2 渲染）。' +
-        '在普通浏览器中打开时无法访问 Python 后端。</p>';
+        '<p>' + t('app.no_bridge_hint') + '</p>';
       document.body.appendChild(el);
       return;
     }
@@ -3657,10 +3656,8 @@
     }
   }
 
-  if (window.pywebview) {
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-    else init();
-  } else {
-    window.addEventListener('pywebviewready', init);
-  }
+  // 启动：preload 在页面脚本之前注入 window.pywebview，因此直接等 DOM 就绪即可
+  // （不再需要等待 pywebview 的 ready 事件）
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();

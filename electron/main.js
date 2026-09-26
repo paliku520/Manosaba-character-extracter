@@ -214,8 +214,8 @@ function ensureSettingsFile() {
   } catch {}
 }
 /* ── 历史加载路径记忆（settings.json last_directory） ── */
-// 与 Python settings.py 共用 data/settings.json，last_directory 为权威数据源（PyWebView 版
-// JsApi.select_directory 的记忆逻辑在 Electron 下被 preload 白名单拦截，故在主进程实现等价功能）：
+// 目录选择对话框归主进程所有（preload 白名单把 select_directory 拦截为 dialog:folder），
+// 与 Python settings.py 共用 data/settings.json；last_directory 为两侧共同读取的权威数据源：
 // 打开游戏目录对话框时以上次路径为初始位置，用户选择后写回。
 function getLastDirectory() {
   try {
@@ -635,7 +635,7 @@ ipcMain.handle('dialog:folder', async () => {
   return r.filePaths[0];
 });
 
-// 文件夹选择对话框（输出目录）：不修改 last_directory 记忆（与 PyWebView 版 select_output_dir 语义一致）
+// 文件夹选择对话框（输出目录）：不修改 last_directory 记忆（与游戏目录对话框语义区分）
 ipcMain.handle('dialog:folderOutput', async () => {
   const r = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   return r.canceled ? null : r.filePaths[0];
@@ -703,7 +703,6 @@ function stopBackendAndQuit() {
 app.whenReady().then(() => {
   // 移除默认应用菜单（日志控制台等窗口不显示 File/Edit/View/Window/Help 菜单栏）
   Menu.setApplicationMenu(null);
-  ensureSettingsFile();   // 首次启动/损坏时先确保 data/settings.json 存在且合法（否则窗口状态无法持久化）
   ensureSettingsFile();   // 首次启动/损坏时先确保 data/settings.json 存在且合法（否则窗口状态无法持久化）
   startPython();
   createWindow();

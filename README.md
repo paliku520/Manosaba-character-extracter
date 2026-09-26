@@ -115,18 +115,24 @@ temp/                    # 精灵缓存（可清除，重复角色加速加载�
 ## 项目结构
 
 ```
-├── run.py             # JsApi 桥接与核心逻辑（合成/预览/设置；被 backend.py 复用）
-├── backend.py         # Electron 模式 Python 后端子进程（stdio JSON-RPC）
+├── run.py             # 业务逻辑层（JsApi：合成/预览/设置/提取；无任何 GUI 依赖）
+├── backend.py         # stdio JSON-RPC 后端进程（唯一入口，复用 run.py 的 JsApi）
 ├── electron/          # Electron 界面壳
-│   ├── main.js        #   主进程：无边框窗口 + Python 子进程桥接 + 窗口控制
-│   ├── preload.js     #   桥接层：模拟 pywebview API，前端零改动
+│   ├── main.js        #   主进程：无边框窗口 + 窗口控制 + 原生对话框 + Python 子进程桥接
+│   ├── preload.js     #   桥接层：window.pywebview.api / __pywebview.events / __electron
 │   └── package.json
-├── webui/             # 前端（index.html + css/ + js/，纯本地无 CDN，两模式共用）
+├── webui/             # 前端（index.html + css/ + js/，纯本地无 CDN）
 ├── src/               # 核心模块（加载、合成、导出、缓存、i18n、设置等）
 ├── scripts/           # PyInstaller 打包脚本
 ├── output/            # 输出目录（程序生成）
 └── temp/              # 精灵缓存（程序生成）
 ```
+
+> **唯一启动链路**：`start.bat` → `electron/main.js` → `spawn(backend.py)` → `run.JsApi`。
+> 职责边界：**Electron 主进程**负责窗口与系统原生 UI（窗口控制、目录选择对话框、任务栏），
+> **Python 后端**负责全部业务逻辑与图像处理。二者以 stdin/stdout 单行 JSON 通信；
+> 事件为 `{"event": ..., "payload": ...}`，响应为 `{"id": ..., "result"|"error": ...}`。
+> 后端不持有窗口引用，也不存在第二套 GUI 实现。
 
 技术栈：[UnityPy](https://github.com/K0lb3/UnityPy)（bundle 解析）、Pillow（图像处理）、[Electron](https://www.electronjs.org/)（无边框 UI 壳，Chromium 渲染 + 原生 Aero Snap）。
 

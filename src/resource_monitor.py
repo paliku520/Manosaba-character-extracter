@@ -1,8 +1,9 @@
 """
 资源占用监视模块（调试模式用）
 
-后台线程定期采集当前进程的内存 / CPU / 窗口分辨率，通过回调推送给上层
-（run.py 的 JsApi 会转发为 res_monitor 事件并在状态栏显示）。
+后台线程定期采集当前进程的内存 / CPU，通过回调推送给上层
+（run.py 的 JsApi 会转发为 res_monitor 事件，前端在标题栏显示）。
+窗口分辨率 / FPS 由前端自行采集，本模块不涉及窗口句柄。
 
 仅使用标准库（ctypes + time + threading），无额外依赖。
 """
@@ -10,7 +11,7 @@
 import os
 import threading
 import time
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional
 
 
 def process_memory_mb() -> float:
@@ -56,23 +57,20 @@ def process_memory_mb() -> float:
 
 
 class ResourceMonitor:
-    """后台线程定期采集内存 / CPU / 窗口分辨率，通过回调推送。
+    """后台线程定期采集内存 / CPU，通过回调推送。
 
     Args:
         emit: 回调（接收 payload: dict），每次采集完成调用一次。
-              payload 含 mem_mb / cpu，若窗口尺寸可得则含 width / height。
-        window_size: 可选回调（返回 (w, h) 或 None），用于在 GUI 线程安全获取窗口尺寸。
+              payload 含 mem_mb / cpu。
         interval: 采集间隔（秒）。
     """
 
     def __init__(
         self,
         emit: Callable[[Dict], None],
-        window_size: Optional[Callable[[], Optional[Tuple[int, int]]]] = None,
         interval: float = 5.0,
     ):
         self._emit = emit
-        self._window_size = window_size
         self._interval = interval
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -106,10 +104,6 @@ class ResourceMonitor:
                 prev_cpu, prev_wall = cur_cpu, cur_wall
 
                 payload: Dict = {"mem_mb": round(mem_mb, 1), "cpu": round(cpu, 1)}
-                if self._window_size:
-                    size = self._window_size()
-                    if size:
-                        payload["width"], payload["height"] = size
                 self._emit(payload)
             except Exception:
                 pass

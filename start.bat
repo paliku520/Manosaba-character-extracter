@@ -1,20 +1,16 @@
 @echo off
-rem launcher - ASCII only (avoid cmd encoding issues)
+rem MCE launcher - ASCII only (avoid cmd encoding issues)
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 rem Usage: start.bat [help]
+rem Only one launch path exists: Electron shell + Python backend subprocess.
 
-set MODE=%~1
-if "%MODE%"=="" set MODE=electron
-if /i "%MODE%"=="-h" set MODE=help
-if /i "%MODE%"=="/?" set MODE=help
-if /i "%MODE%"=="help" goto :help
-if /i "%MODE%"=="electron" goto :electron
-goto :help
+if /i "%~1"=="-h" goto :help
+if /i "%~1"=="/?" goto :help
+if /i "%~1"=="help" goto :help
 
-:electron
 echo.
 echo  [MCE] Starting Electron mode...
 echo.
@@ -42,7 +38,7 @@ goto :end
 echo.
 echo  MCE launcher (Electron)
 echo  ===========================
-echo    start.bat           Electron mode (default, frameless + Aero Snap)
+echo    start.bat           Electron mode (frameless + Aero Snap)
 echo    start.bat help      Show this help
 echo.
 goto :end

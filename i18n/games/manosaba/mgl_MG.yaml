@@ -1,7 +1,8 @@
 # 魔裁専有 fiXmArge（manosaba 魔女語）
 # 角色名 / 主题色 等专有名词的魔女语翻译（fiXmArge 为 manosaba 独有语种）
 # char.* 与 settings.accent_* 的魔女语与英文一致（专有名词不翻译）
-
+# log.* 和 console.* 的魔女语与英文一致（便于日志阅读）
+# 具体翻译方法可以参考md文档:_fiXmArge_Language.md
 about:
   app_name: "Manosaba - eXi' Toim"
   description: "Toim to eXi' and gDie JIO MEif from Manosaba."
@@ -15,8 +16,6 @@ dialog:
   spoiler_msg: "Toim has Alte sinruits. Finish Manosaba first for gDie."
 
 console:
-  exit_msg: "Program exited.\n\nNote: Console closing delay is normal (WebView2 cleanup usually takes 1-3 seconds). Please wait for it to disappear automatically.\n\nWARNING: Closing this console directly may interrupt tasks or cause exceptions.\n\nThank you for using the Manosaba Sprite Tool!"
-  startup_msg: "Welcome to the Manosaba Sprite Tool!\nThis console shows runtime logs.\n\nTip: Do not close this console casually, or the program will exit immediately.\nTo quit, click the close button on the top-right of the main window."
   startup_msg_electron: "Welcome to the Manosaba Sprite Tool!\nThis window is the log console, used to show runtime logs.\n\nTip: Closing this window will not exit the program.\nTo quit, click the close button on the top-right of the main window."
   title: "Manosaba - eXi' Toim - console"
 

@@ -115,18 +115,25 @@ temp/                  # Sprite cache (clearable, speeds up re-loading)
 ## Project Structure
 
 ```
-├── run.py             # JsApi bridge & core logic (compositing/preview/settings; reused by backend.py)
-├── backend.py         # Electron mode Python backend child process (stdio JSON-RPC)
+├── run.py             # Business logic layer (JsApi: compositing/preview/settings; no GUI dependency)
+├── backend.py         # stdio JSON-RPC backend process (the only entry, reuses run.py's JsApi)
 ├── electron/          # Electron UI shell
-│   ├── main.js        #   main process: frameless window + Python child bridge + window control
-│   ├── preload.js     #   bridge layer: emulates the pywebview API, zero frontend changes
+│   ├── main.js        #   main process: frameless window + window control + native dialogs + Python child bridge
+│   ├── preload.js     #   bridge layer: window.pywebview.api / __pywebview.events / __electron
 │   └── package.json
-├── webui/             # Frontend (index.html + css/ + js/, fully local, no CDN, shared by both modes)
+├── webui/             # Frontend (index.html + css/ + js/, fully local, no CDN)
 ├── src/               # Core modules (loading, compositing, export, cache, i18n, settings, etc.)
 ├── scripts/           # PyInstaller packaging scripts
 ├── output/            # Output directory (generated at runtime)
 └── temp/              # Sprite cache (generated at runtime)
 ```
+
+> **Single launch path**: `start.bat` → `electron/main.js` → `spawn(backend.py)` → `run.JsApi`.
+> Responsibility split: the **Electron main process** owns the window and all OS-native UI (window
+> control, directory pickers, taskbar); the **Python backend** owns all business logic and image
+> processing. They talk over stdin/stdout in one-JSON-per-line form: events are
+> `{"event": ..., "payload": ...}`, responses are `{"id": ..., "result"|"error": ...}`.
+> The backend holds no window reference and there is no second GUI implementation.
 
 Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [Electron](https://www.electronjs.org/) (frameless UI shell, Chromium rendering + native Aero Snap).
 

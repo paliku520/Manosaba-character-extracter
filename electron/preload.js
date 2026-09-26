@@ -1,12 +1,15 @@
-/* Manosaba Character Extracter — preload：模拟 pywebview 前端接口，兼容现有 webui/ 代码
+/* Manosaba Character Extracter — preload：前端 ↔ 后端桥接层
  *
- * 提供（与 pywebview 等价）：
- *   - window.pywebview.api.<method>(...args)   → Promise
- *   - window.__pywebview.events.<event>(payload)   ← 后端事件推送
- *   - pywebviewready 事件
+ * 对外暴露（全项目统一的桥接命名，前端/控制台页面都按此调用）：
+ *   - window.pywebview.api.<method>(...args)      → Promise（主进程/后端）
+ *   - window.__pywebview.events.<event>(payload)  ← 后端事件推送
+ *   - window.__electron.<...>                     ← Electron 专属能力
  *
- * 窗口控制 / 对话框方法由主进程直接处理（白名单），其余方法走 Python 后端。
- * 注意：contextIsolation:false，直接写入 window（前端可能重建 __pywebview.events 对象）。
+ * 分工：
+ *   - MAIN_ONLY 白名单（窗口控制 / 对话框 / 退出）→ 主进程直接处理，不经 Python
+ *   - 其余方法 → invoke('api') → 主进程转发给 Python 后端（backend.py）
+ *
+ * 注意：contextIsolation:false，直接写入 window（前端会重建 __pywebview.events 对象）。
  */
 
 const { ipcRenderer, webUtils } = require('electron');
@@ -14,10 +17,7 @@ const { ipcRenderer, webUtils } = require('electron');
 window.__pywebview = window.__pywebview || {};
 window.__pywebview.events = window.__pywebview.events || {};
 
-// 运行模式标记：Electron（自绘无边框标题栏）；PyWebView 原生窗口模式无此标记
-window.__ELECTRON__ = true;
-
-// 主进程直接处理（不经 Python）
+// 主进程直接处理（不经 Python）：与 electron/main.js 的 ipcMain.handle 一一对应
 const MAIN_ONLY = {
   window_minimize: () => ipcRenderer.invoke('win:minimize'),
   window_maximize: () => ipcRenderer.invoke('win:maximize'),
@@ -113,9 +113,4 @@ ipcRenderer.on('py-event', (_e, msg) => {
       console.error('[preload] event handler error', err);
     }
   }
-});
-
-// 兼容 pywebview 就绪事件
-window.addEventListener('DOMContentLoaded', () => {
-  window.dispatchEvent(new Event('pywebviewready'));
 });
