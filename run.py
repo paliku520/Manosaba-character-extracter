@@ -59,6 +59,12 @@ from src.i18n import (
     set_lang,
 )
 from src.logtools import clear_logs, configure, log
+try:
+    # 文件管理器打开/定位（复用并聚焦资源管理器窗口）
+    from src.shell_open import open_folder, reveal
+except Exception:          # 极端情况（如打包遗漏该模块）：置空 → 调用处退回原实现 os.startfile
+    open_folder = None     # type: ignore[assignment]
+    reveal = None          # type: ignore[assignment]
 from src.resource_monitor import ResourceMonitor
 from src.settings import (
     ACCENT_NAMES,
@@ -78,6 +84,29 @@ from src.settings import (
 )
 from src.updater import check_for_update
 from src.version import __version__
+
+
+# ── 在文件管理器中打开 / 定位路径（含兜底）──────────────────
+def _open_in_file_manager(path: Path) -> None:
+    """在文件管理器中打开/定位路径。
+
+    优先走 src.shell_open 的增强实现（目录：复用并聚焦已打开的窗口；文件：打开所在目录并选中该文件）；
+    增强实现不可用或抛错时，退回**原实现**（os.startfile 交给系统打开）。
+    """
+    try:
+        if open_folder is None:                     # 兜底 1：增强模块不可用
+            os.startfile(str(path))
+        elif path.is_file() and reveal is not None:
+            reveal(path)
+        else:
+            open_folder(path)
+        return
+    except Exception as e:
+        log("warning", f"open path failed: {e}")
+    try:                                            # 兜底 2：增强实现抛错 → 原实现
+        os.startfile(str(path))
+    except Exception as e:
+        log("warning", f"open path failed: {e}")
 
 
 # ── 程序基础路径（兼容 PyInstaller 冻结环境） ──────────────
@@ -490,21 +519,15 @@ class JsApi:
         return {"output_dir": str(self._output_dir)}
 
     def open_output(self):
-        """打开输出文件夹"""
+        """打开输出文件夹（已在资源管理器中打开时复用并聚焦该窗口，不重复开窗）"""
         self._output_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            os.startfile(str(self._output_dir))
-        except Exception as e:
-            log("warning", f"open output failed: {e}")
+        _open_in_file_manager(self._output_dir)
 
     def open_path(self, path: str):
-        """在资源管理器中打开指定路径"""
+        """在资源管理器中打开指定路径（目录：打开并聚焦；文件：打开所在目录并选中该文件）"""
         if not path:
             return
-        try:
-            os.startfile(str(path))
-        except Exception as e:
-            log("warning", f"open path failed: {e}")
+        _open_in_file_manager(Path(path))
 
     def open_url(self, url: str):
         """在系统浏览器打开链接"""

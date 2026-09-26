@@ -259,8 +259,8 @@
       App.exportCount = r.export_count; // 保存合成图也计入累计导出
       refreshExportCount();
     }
-    // 打开输出目录：打开文件所在目录（而非文件本身）
-    offerOpen(t('dialog.save_success_title'), t('dialog.save_success_msg', { path: r.path }), r.dir || r.path);
+    // 打开输出目录：打开文件所在目录并在资源管理器中定位该文件（后端 open_path 对文件走 reveal）
+    offerOpen(t('dialog.save_success_title'), t('dialog.save_success_msg', { path: r.path }), r.path || r.dir);
   });
 
   on('cache_cleared', (r) => {
