@@ -175,6 +175,25 @@
     } catch (e) { /* 后端未就绪：保留内置兜底文案 */ }
   }
 
+  /* ── 外观同步（主窗口 → 本窗口，经主进程广播） ─────────── */
+
+  // 主窗口修改主题/主题色/语言/动画后，主进程广播 app:appearance → 本窗口立即应用，
+  // 无需关闭重开（子窗口创建时的 query 参数只代表当时的外观）。
+  function applyAppearance(a) {
+    if (!a) return;
+    const root = document.documentElement;
+    if (a.theme) root.dataset.theme = a.theme;
+    if (a.accent) root.dataset.accent = a.accent;
+    document.body.classList.toggle('no-anim', !!a.disableAnimations);
+    // 语言变化：先用内置兜底文案立即切换（后端不可用也不至于停在旧语言），
+    // 再经 loadI18n() 拉取后端翻译表覆盖（含刷新 data-i18n 文案与窗口标题）
+    if (a.lang && a.lang !== root.lang) {
+      root.lang = a.lang;
+      if (window.I18N) window.I18N.set(FALLBACK[a.lang] || FALLBACK.zh_CN, a.lang, null);
+      loadI18n();
+    }
+  }
+
   /* ── 日志行解析 / 渲染 ─────────────────────────────── */
 
   function normLevel(raw) {
@@ -480,5 +499,8 @@
   refresh();
   // 先订阅（preload 会按序回放订阅前缓存的事件），再拉取翻译表
   if (consoleApi) consoleApi.onEvent(handleEvent);
+  // 外观订阅：preload 会在订阅时回放最后一次广播，保证打开较慢也不漏掉主窗口的改动
+  const appearanceApi = (window.__electron && window.__electron.appearance) || null;
+  if (appearanceApi && appearanceApi.onUpdate) appearanceApi.onUpdate(applyAppearance);
   loadI18n();
 })();

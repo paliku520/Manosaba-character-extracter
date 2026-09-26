@@ -77,7 +77,28 @@ window.__electron = {
     clear: () => ipcRenderer.invoke('log:clear'),
     save: (text) => ipcRenderer.invoke('log:save', text),
   },
+  // 外观同步：主窗口主题/主题色/语言/动画变更时广播给其它窗口（日志控制台等）
+  //   broadcast(data)  主窗口调用，交给主进程转发给其余窗口
+  //   onUpdate(cb)     子窗口订阅；若订阅前已收到过广播，立即回放最后一次
+  appearance: {
+    broadcast: (data) => ipcRenderer.invoke('app:broadcastAppearance', data),
+    onUpdate: (cb) => {
+      if (typeof cb !== 'function') return;
+      appearanceSubscribers.push(cb);
+      if (appearanceLast) cb(appearanceLast);
+    },
+  },
 };
+
+// 外观同步（主窗口 → 子窗口）：preload 先于页面脚本运行，保留最后一次广播，
+// 供晚订阅的页面（如打开较慢的日志控制台）订阅时立即对齐外观。
+const appearanceSubscribers = [];
+let appearanceLast = null;
+
+ipcRenderer.on('app:appearance', (_e, data) => {
+  appearanceLast = data || null;
+  for (let i = 0; i < appearanceSubscribers.length; i++) appearanceSubscribers[i](appearanceLast);
+});
 
 // 日志控制台窗口：主进程先发 log:init（字符画 + 历史日志），随后逐条发 log-line。
 // 页面脚本可能在首条日志到达之后才订阅，因此此处先入队、订阅时按到达顺序回放，

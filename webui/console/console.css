@@ -199,3 +199,11 @@ mark {
 #c-header, #c-toolbar, #c-statusbar, .c-jump {
   -webkit-user-select: none; user-select: none;
 }
+
+/* 跟随主窗口「禁用界面动画」设置（主进程广播 app:appearance → body.no-anim）：状态瞬间切换 */
+body.no-anim *,
+body.no-anim *::before,
+body.no-anim *::after {
+  transition: none !important;
+  animation: none !important;
+}

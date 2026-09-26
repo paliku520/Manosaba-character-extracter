@@ -533,6 +533,25 @@ ipcMain.handle('win:restart', () => {
   return { ok: true };
 });
 
+// 外观广播（主窗口 → 其它窗口）：主窗口主题/主题色/语言/动画变更后转发给日志控制台等子窗口，
+// 让它们第一时间应用（不必关掉重开）。不回发给来源窗口，避免重复应用。
+ipcMain.handle('app:broadcastAppearance', (e, payload) => {
+  const src = (payload && typeof payload === 'object') ? payload : {};
+  const data = {
+    theme: (src.theme === 'light' || src.theme === 'dark') ? src.theme : undefined,
+    accent: typeof src.accent === 'string' ? src.accent : undefined,
+    lang: typeof src.lang === 'string' ? src.lang : undefined,
+    disableAnimations: !!src.disableAnimations,
+  };
+  let count = 0;
+  for (const w of BrowserWindow.getAllWindows()) {
+    if (w.isDestroyed() || w.webContents === e.sender) continue;
+    w.webContents.send('app:appearance', data);
+    count += 1;
+  }
+  return { ok: true, count };
+});
+
 // 采集 GPU 信息（名称 / 显存，best-effort；Electron 不直接暴露实时显存占用，故提供总显存）
 async function gpuInfoData() {
   try {

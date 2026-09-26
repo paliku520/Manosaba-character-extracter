@@ -42,11 +42,33 @@
     if (theme) document.documentElement.dataset.theme = theme;
     const acc = accent || 'default';
     document.documentElement.dataset.accent = acc;
+    broadcastAppearance();   // 广播给其它窗口（日志控制台等），让它们立即应用
   }
 
   // 禁用/启用界面动画（低配 GPU 提速；纯前端 CSS，立即生效）
   function applyAnimations(disable) {
     document.body.classList.toggle('no-anim', !!disable);
+    broadcastAppearance();
+  }
+
+  // ═════════════ 外观广播（主窗口 → 其它窗口） ═════════════
+  // 主窗口是外观（主题/主题色/语言/动画）的唯一权威；变更后经 Electron 主进程
+  // （ipc 'app:broadcastAppearance'）转发给日志控制台等子窗口，使其第一时间同步，
+  // 无需关闭重开。非 Electron 环境（PyWebView）无子窗口，静默忽略。
+  function currentAppearance() {
+    const root = document.documentElement;
+    return {
+      theme: root.dataset.theme || 'dark',
+      accent: root.dataset.accent || 'default',
+      lang: (App.info && App.info.current_lang) || root.lang || 'zh_CN',
+      disableAnimations: document.body.classList.contains('no-anim'),
+    };
+  }
+
+  function broadcastAppearance() {
+    const a = window.__electron && window.__electron.appearance;
+    if (!a || !a.broadcast) return;
+    try { a.broadcast(currentAppearance()); } catch (e) { /* 广播失败不影响主窗口自身外观 */ }
   }
 
   // ═════════════ 设置窗口 ═════════════
@@ -561,6 +583,7 @@
         window.I18N.set(r.translations, r.current_lang, r.lang_names);
         App.info.current_lang = r.current_lang;
         App.info.lang_names = r.lang_names;
+        broadcastAppearance();   // 语言也属于外观：通知其它窗口切换文案
         // 各界面独立刷新（某一步异常不中断其余），错误经 log_js 输出到日志便于定位
         const steps = [
           ['refreshSettingsModal', refreshSettingsModal],
