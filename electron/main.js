@@ -145,6 +145,29 @@ function defaultWindowSize() {
   return { width: w, height: h };
 }
 
+// 写入 settings.json（统一入口）。
+// 为什么不用 fs.writeFileSync：Windows 上 CreateFile(CREATE_ALWAYS) 打开“已存在且带隐藏属性”
+// 的文件会返回 ERROR_ACCESS_DENIED（Node 报 EPERM），而本文件由 Python 侧
+// （src/settings._apply_config_attrs）刻意设为隐藏，因此 writeFileSync 必失败（且会被 catch 吞掉，
+// 表现为窗口大小 / 上次目录等设置无法持久化）。
+// 这里改用 “r+ 打开 + 截断 + 覆写”：不重新创建文件，保留隐藏属性，与 Python 侧行为一致；
+// 文件不存在（首次启动）时才退化为普通写入（此时无隐藏属性，可正常创建）。
+function writeSettingsFile(file, text) {
+  try {
+    const fd = fs.openSync(file, 'r+');
+    try {
+      fs.ftruncateSync(fd, 0);
+      const buf = Buffer.from(text, 'utf8');
+      if (buf.length) fs.writeSync(fd, buf, 0, buf.length, 0);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (e) {
+    if (e && e.code === 'ENOENT') { fs.writeFileSync(file, text, 'utf8'); return; }
+    throw e;
+  }
+}
+
 function readWindowState() {
   try {
     const s = JSON.parse(fs.readFileSync(settingsFilePath(), 'utf8'));
@@ -177,8 +200,10 @@ function saveWindowState() {
     if (typeof data !== 'object' || data === null) data = {};
     if (typeof data.global !== 'object' || data.global === null) data.global = {};
     data.global.window = state;   // 新版嵌套结构：window 存于 global
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
-  } catch {}
+    writeSettingsFile(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    try { pushLog('[main] saveWindowState failed: ' + (e && e.message)); } catch {}
+  }
 }
 
 // 启动时确保 data/ 目录与 settings.json 存在且合法（每次启动调用一次）：
@@ -209,7 +234,7 @@ function ensureSettingsFile() {
     if (typeof data !== 'object' || data === null) {
       const bak = file + '.bak';
       if (!fs.existsSync(bak)) fs.renameSync(file, bak);
-      fs.writeFileSync(file, '{}\n', 'utf8');
+      writeSettingsFile(file, '{}\n');
     }
   } catch {}
 }
@@ -239,8 +264,10 @@ function saveLastDirectory(dir) {
     if (typeof data.game !== 'object' || data.game === null) data.game = {};
     if (typeof data.game[mode] !== 'object' || data.game[mode] === null) data.game[mode] = {};
     data.game[mode].last_directory = dir;   // 新版 game.<mode>.last_directory
-    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf8');
-  } catch {}
+    writeSettingsFile(file, JSON.stringify(data, null, 2));
+  } catch (e) {
+    try { pushLog('[main] saveLastDirectory failed: ' + (e && e.message)); } catch {}
+  }
 }
 
 function startPython() {
@@ -519,6 +546,51 @@ ipcMain.handle('log:save', async (_e, text) => {
   if (r.canceled || !r.filePath) return { ok: false, canceled: true };
   try {
     fs.writeFileSync(r.filePath, String(text == null ? '' : text), 'utf8');
+    return { ok: true, path: r.filePath };
+  } catch (e) {
+    return { ok: false, error: String((e && e.message) || e) };
+  }
+});
+
+// 预设导入：原生打开对话框选 .json 并读取内容（主进程读盘，避免前端拿不到路径/内容）
+const PRESET_FILE_MAX = 2 * 1024 * 1024;   // 2MB 上限（正常预设 < 2KB）
+ipcMain.handle('preset:importFile', async () => {
+  const r = await dialog.showOpenDialog(win, {
+    title: 'Import preset',
+    filters: [
+      { name: 'JSON', extensions: ['json'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+    properties: ['openFile'],
+  });
+  if (r.canceled || !r.filePaths || !r.filePaths.length) return { cancelled: true };
+  const filePath = r.filePaths[0];
+  try {
+    if (fs.statSync(filePath).size > PRESET_FILE_MAX) return { error: 'too_large' };
+    return {
+      path: filePath,
+      name: path.basename(filePath),
+      text: fs.readFileSync(filePath, 'utf8'),
+    };
+  } catch (e) {
+    return { error: String((e && e.message) || e) };
+  }
+});
+
+// 预设导出：原生保存对话框写 UTF-8 文本
+ipcMain.handle('preset:exportFile', async (_e, payload) => {
+  const p = (payload && typeof payload === 'object') ? payload : {};
+  const r = await dialog.showSaveDialog(win, {
+    title: 'Export preset',
+    defaultPath: String(p.defaultName || 'preset.json'),
+    filters: [
+      { name: 'JSON', extensions: ['json'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (r.canceled || !r.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(r.filePath, String(p.text == null ? '' : p.text), 'utf8');
     return { ok: true, path: r.filePath };
   } catch (e) {
     return { ok: false, error: String((e && e.message) || e) };

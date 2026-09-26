@@ -43,6 +43,7 @@ from src.compositor import (
     has_component_data,
 )
 from src.export_manager import save_composite
+from src import preset_store
 from src.worker_client import (
     LoadCancelledInWorker,
     WorkerTimeoutError,
@@ -74,7 +75,9 @@ from src.settings import (
     get_disable_hardware_accel,
     get_export_count,
     get_export_original_quality,
+    get_mode,
     get_no_spoiler,
+    GAME_MODES,
     get_output_dir,
     get_preview_quality,
     get_show_original_name,
@@ -280,6 +283,14 @@ def _sprite_full_data_url(path: Path, max_side: int = 512) -> Optional[str]:
         return None
 
 
+def _to_int(v: object, default: int = 0) -> int:
+    """宽松转 int（预设代码 / 文件里的排序值可能是字符串）"""
+    try:
+        return int(v)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
 # ===================================================================
 # JS ↔ Python 桥接 API
 # ===================================================================
@@ -331,6 +342,15 @@ class JsApi:
         self._composite_gen = 0                  # 合成代号：新请求递增，旧请求被取代（防抖/最新优先）
         self._char_has_component: Dict[str, bool] = {}  # 加载目录时缓存的角色组件状态（避免点击时重复解析 bundle）
 
+        # 内置预设镜像：启动时即把 builtin/presets（打包版为包内 builtin_presets）写回
+        # data/presets，误删 / 损坏的「Default」在此自动恢复
+        try:
+            healed = preset_store.ensure_builtins()
+            if healed:
+                log("info", f"[preset] 已恢复 {healed} 个内置预设")
+        except Exception as e:
+            log("warning", f"[preset] 内置预设镜像失败: {e}")
+
     # ── 事件推送 ──────────────────────────────────────────
 
     def _emit(self, event: str, payload: dict):
@@ -354,6 +374,8 @@ class JsApi:
             "version": __version__,
             "langs": LANGUAGE_CODES,
             "current_lang": current_lang(),
+            "mode": get_mode(),
+            "modes": list(GAME_MODES),
             "lang_names": {code: _(f"lang.{code}") for code in LANGUAGE_CODES},
             "translations": self._translations(current_lang()),
             "output_dir": str(self._output_dir),
@@ -895,13 +917,196 @@ class JsApi:
         clipping_parts = sorted(
             (data.get("mask_mapping") or {}).get("clipping_masks", {}).keys()
         )
+        # 用户预设（data/presets/<角色>/）：随角色数据一并下发，前端下拉直接渲染
+        name = data.get("character_name", "")
         return {
-            "name": data.get("character_name", ""),
+            "name": name,
             "count": len(transform),
             "transform_data": transform,
             "hierarchy": data.get("hierarchy", []),
             "clipping_mask_parts": clipping_parts,
+            "presets": preset_store.list_presets(name) if name else [],
         }
+
+    # ── 用户预设（记录部件 sorting_order，用户自行保存 / 删除）────
+
+    def list_presets(self, name: str) -> dict:
+        """列出某角色的预设（{name, presets: [...]}），供前端下拉渲染"""
+        return {"name": name, "presets": preset_store.list_presets(name)}
+
+    def save_preset(
+        self,
+        name: str,
+        preset_name: str,
+        selected_names: Optional[List[str]] = None,
+        sketch_text: str = "",
+        sketch_size: int = 56,
+        sketch_align: str = "center",
+    ) -> dict:
+        """把当前选中的部件（记录 sorting_order）与素描本参数保存为预设。
+
+        预设存于 data/presets/<角色>/<预设名>.json，由用户自行保存 / 删除；
+        应用（恢复勾选）在前端按 sorting_order 匹配完成，后端只负责持久化。
+        """
+        data = self._character_data
+        if not data or data.get("character_name") != name:
+            data = load_extracted_data(self._temp_dir, name)
+        parts: List[Dict] = []
+        if data:
+            wanted = set(selected_names or [])
+            parts = [
+                {"name": p["name"], "sorting_order": p.get("sorting_order", 0)}
+                for p in data.get("transform_data", [])
+                if p["name"] in wanted
+            ]
+            parts.sort(key=lambda p: (p["sorting_order"], p["name"]))
+        try:
+            entry = preset_store.save_preset(name, preset_name, parts, {
+                "text": sketch_text, "size": sketch_size, "align": sketch_align,
+            })
+        except preset_store.BuiltinPresetError:
+            # 内置预设名受保护：不可覆盖 / 不可同名新建
+            log("info", f"[preset] 拒绝覆盖内置预设 {name}/{preset_name}")
+            return {"success": False, "error": "builtin",
+                    "presets": preset_store.list_presets(name)}
+        except Exception as e:
+            log("warning", f"[preset] 保存预设失败 {name}/{preset_name}: {e}")
+            return {"success": False, "error": str(e),
+                    "presets": preset_store.list_presets(name)}
+        log("info", f"[preset] 已保存预设 {name}/{entry['name']}（{len(parts)} 个部件）")
+        return {"success": True, "preset": entry,
+                "presets": preset_store.list_presets(name)}
+
+    def delete_preset(self, name: str, preset_name: str) -> dict:
+        """删除指定预设（前端确认后调用）"""
+        try:
+            ok = preset_store.delete_preset(name, preset_name)
+        except preset_store.BuiltinPresetError:
+            # 内置预设不可删除
+            log("info", f"[preset] 拒绝删除内置预设 {name}/{preset_name}")
+            return {"success": False, "error": "builtin",
+                    "presets": preset_store.list_presets(name)}
+        except Exception as e:
+            log("warning", f"[preset] 删除预设失败 {name}/{preset_name}: {e}")
+            return {"success": False, "error": str(e),
+                    "presets": preset_store.list_presets(name)}
+        if ok:
+            log("info", f"[preset] 已删除预设 {name}/{preset_name}")
+        return {"success": ok, "presets": preset_store.list_presets(name)}
+
+    def import_preset(
+        self,
+        character: str,
+        preset_name: str,
+        orders: Optional[List] = None,
+        parts: Optional[List[Dict]] = None,
+        game: str = "",
+        overwrite: bool = False,
+    ) -> dict:
+        """导入预设（代码导入传 orders=[排序值…]；文件导入传 parts=[{name, sorting_order}]）。
+
+        规则:
+        - 只能导入到**当前已加载**的角色；代码/文件里的角色标识不一致 → error=character_mismatch
+        - 标识校验：游戏标识缺失/未知/不符 → no_game / unknown_game / game_mismatch；
+          角色标识缺失/未知/不符 → no_character_id / unknown_character / character_mismatch
+        - 预设名校验（空/超长/含 <>:"/\\|?* / 结尾点空格）→ error=bad_name；
+          与其他预设搭成同一文件（大小写扭名等）→ error=name_conflict
+        - 部件匹配：带 name 时优先按名字（更精确，排序值仅兜底），否则按 sorting_order
+          取该排序下的**全部**部件；匹配不到的条目计入 skipped，全不中 → error=no_match
+        - 内置预设名禁止导入（error=builtin）；已存在同名用户预设且未确认覆盖 → error=exists
+        """
+        current = (self._character_data or {}).get("character_name", "")
+        presets_now = preset_store.list_presets(current) if current else []
+
+        def fail(code: str, **extra) -> dict:
+            return {"success": False, "error": code, "presets": presets_now, **extra}
+
+        # ── 游戏标识：缺失 / 未知作品 / 与当前作品不符 ──
+        game = (game or "").strip()
+        if not game:
+            return fail("no_game")
+        if game.lower() not in [g.lower() for g in GAME_MODES]:
+            return fail("unknown_game", game=game)
+        if game.lower() != get_mode().lower():
+            return fail("game_mismatch", game=game)
+
+        # ── 角色标识：缺失 / 未知角色 / 与当前角色不符（忽略大小写比较）──
+        character = (character or "").strip()
+        if not character:
+            return fail("no_character_id")
+        known_chars = [k.lower() for k in (self._bundles or {})]
+        if known_chars and character.lower() not in known_chars:
+            return fail("unknown_character", character=character)
+        if not current:
+            return fail("no_character")
+        if character.lower() != current.lower():
+            return fail("character_mismatch", character=character, current=current)
+
+        td = self._character_data.get("transform_data", [])
+        by_name = {p["name"]: p for p in td}
+        by_order: Dict[int, List[Dict]] = {}
+        for p in td:
+            by_order.setdefault(_to_int(p.get("sorting_order", 0)), []).append(p)
+
+        picked: Dict[str, Dict] = {}    # 部件名 → {name, sorting_order}（天然去重）
+        skipped: List = []
+        for item in (parts or []):
+            item = item if isinstance(item, dict) else {}
+            name = str(item.get("name") or "")
+            order = item.get("sorting_order", item.get("order"))
+            hit = by_name.get(name)
+            if hit is None and order is not None:
+                cands = by_order.get(_to_int(order), [])
+                hit = cands[0] if cands else None
+            if hit is None:
+                skipped.append(name or _to_int(order))
+                continue
+            picked[hit["name"]] = {"name": hit["name"],
+                                   "sorting_order": _to_int(hit.get("sorting_order", 0))}
+        for order in (orders or []):
+            cands = by_order.get(_to_int(order), [])
+            if not cands:
+                skipped.append(_to_int(order))
+                continue
+            for c in cands:
+                picked[c["name"]] = {"name": c["name"],
+                                     "sorting_order": _to_int(c.get("sorting_order", 0))}
+        if not picked:
+            return {"success": False, "error": "no_match",
+                    "presets": preset_store.list_presets(current)}
+
+        entries = sorted(picked.values(), key=lambda p: (p["sorting_order"], p["name"]))
+        # 预设名校验（与其他入口一致；不合法不落盘）
+        try:
+            target = preset_store.validate_preset_name(preset_name)
+        except preset_store.PresetNameError as e:
+            log("info", f"[preset] 拒绝导入非法预设名 {current}/{preset_name!r}: {e}")
+            return fail("name_conflict" if str(e) == "conflict" else "bad_name",
+                        name=(preset_name or "").strip())
+        if not overwrite:
+            existing = next((p for p in preset_store.list_presets(current)
+                             if p["name"] == target), None)
+            if existing is not None:
+                return {"success": False,
+                        "error": "builtin" if existing.get("builtin") else "exists",
+                        "name": target, "presets": preset_store.list_presets(current)}
+        try:
+            entry = preset_store.save_preset(current, target, entries, None)
+        except preset_store.BuiltinPresetError:
+            log("info", f"[preset] 拒绝导入内置预设名 {current}/{target}")
+            return {"success": False, "error": "builtin", "name": target,
+                    "presets": preset_store.list_presets(current)}
+        except preset_store.PresetNameError as e:
+            log("info", f"[preset] 拒绝导入非法预设名 {current}/{target}: {e}")
+            return fail("name_conflict" if str(e) == "conflict" else "bad_name", name=target)
+        except Exception as e:
+            log("warning", f"[preset] 导入预设失败 {current}/{target}: {e}")
+            return {"success": False, "error": "failed", "message": str(e),
+                    "presets": preset_store.list_presets(current)}
+        log("info", f"[preset] 已导入预设 {current}/{entry['name']}"
+                    f"（{len(entries)} 个部件，跳过 {len(skipped)}）")
+        return {"success": True, "preset": entry, "count": len(entries),
+                "skipped": skipped, "presets": preset_store.list_presets(current)}
 
     def get_thumbnails(self):
         """为当前角色所有部件生成缩略图 data URL（事件: thumbnails_ready）"""

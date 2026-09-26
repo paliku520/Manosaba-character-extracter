@@ -209,15 +209,25 @@
                   <span class="ch-q" aria-hidden="true">?</span>
                 </span>
               </div>
+              <div class="parts-preset-bar" hidden>
+                <div id="preset-slot" class="preset-slot" data-i18n-title="parts.preset_select_hint"></div>
+                <div class="preset-actions">
+                  <button type="button" id="btn-preset-save" class="btn sm" data-i18n="parts.preset_save">保存预设</button>
+                  <button type="button" id="btn-preset-import" class="btn sm" data-i18n="parts.preset_import">导入</button>
+                  <button type="button" id="btn-preset-export" class="btn sm" disabled data-i18n="parts.preset_export">导出</button>
+                  <button type="button" id="btn-preset-delete" class="btn sm ghost" disabled data-i18n="parts.preset_delete">删除</button>
+                </div>
+              </div>
               <div class="parts-search-wrap">
                 <svg viewBox="0 0 24 24" width="15" height="15"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <input id="parts-search" class="search" type="text" data-i18n-placeholder="parts.search_hint" placeholder="搜索部件…">
               </div>
             </div>
             <div id="parts-list" class="parts-list"></div>
-            <div id="parts-empty" class="empty-state" hidden>
+            <div id="parts-empty" class="empty-state">
               <div class="empty-icon"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div>
-              <p data-i18n="parts.empty_hint">请先在左侧选择一个角色进入拼接模式</p>
+              <p id="parts-empty-hint" data-i18n="parts.empty_hint">请先在左侧选择一个角色进入拼接模式</p>
+              <p id="parts-loading-hint" data-i18n="parts.loading_hint" hidden>正在读取角色数据…</p>
             </div>
           </div>
 

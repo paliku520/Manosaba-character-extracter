@@ -1,0 +1,77 @@
+{
+  "character_name": "anan",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "HeadBase",
+      "sorting_order": 19
+    },
+    {
+      "name": "Mouth_Normal_Closed",
+      "sorting_order": 32
+    },
+    {
+      "name": "Eyes_Normal_Open01",
+      "sorting_order": 52
+    },
+    {
+      "name": "ClippingMask_Facial_Normal02",
+      "sorting_order": 61
+    },
+    {
+      "name": "ClippingMask_Facial_Multiply",
+      "sorting_order": 62
+    },
+    {
+      "name": "ClippingMask_Facial_Normal01",
+      "sorting_order": 63
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 75
+    },
+    {
+      "name": "Option_ArmR01_02_Front",
+      "sorting_order": 81
+    },
+    {
+      "name": "Option_ArmR01_01_Back",
+      "sorting_order": 83
+    },
+    {
+      "name": "Option_ArmR01_01_Front",
+      "sorting_order": 84
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 93
+    },
+    {
+      "name": "ClippingMask_Root_Multiply",
+      "sorting_order": 111
+    },
+    {
+      "name": "ClippingMask_Root_Softlight02",
+      "sorting_order": 112
+    },
+    {
+      "name": "ClippingMask_Root_Softlight01",
+      "sorting_order": 113
+    },
+    {
+      "name": "ClippingMask_Root_Overlay",
+      "sorting_order": 114
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:05:25",
+  "builtin": true
+}

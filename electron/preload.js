@@ -77,6 +77,11 @@ window.__electron = {
     clear: () => ipcRenderer.invoke('log:clear'),
     save: (text) => ipcRenderer.invoke('log:save', text),
   },
+  // 预设导入 / 导出（原生文件对话框 + 主进程读写）
+  preset: {
+    importFile: () => ipcRenderer.invoke('preset:importFile'),
+    exportFile: (defaultName, text) => ipcRenderer.invoke('preset:exportFile', { defaultName, text }),
+  },
   // 外观同步：主窗口主题/主题色/语言/动画变更时广播给其它窗口（日志控制台等）
   //   broadcast(data)  主窗口调用，交给主进程转发给其余窗口
   //   onUpdate(cb)     子窗口订阅；若订阅前已收到过广播，立即回放最后一次

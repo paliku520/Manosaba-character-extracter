@@ -1,0 +1,57 @@
+{
+  "character_name": "hiro",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "OptionB_Head01",
+      "sorting_order": 3
+    },
+    {
+      "name": "HeadBase01",
+      "sorting_order": 52
+    },
+    {
+      "name": "Cheeks01_Normal",
+      "sorting_order": 54
+    },
+    {
+      "name": "Mouth01_Normal_Closed",
+      "sorting_order": 70
+    },
+    {
+      "name": "Eyes01_Normal_Open",
+      "sorting_order": 89
+    },
+    {
+      "name": "HairClippingMask01",
+      "sorting_order": 97
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 114
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 128
+    },
+    {
+      "name": "Blending02",
+      "sorting_order": 130
+    },
+    {
+      "name": "Blending01",
+      "sorting_order": 131
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:09:13",
+  "builtin": true
+}

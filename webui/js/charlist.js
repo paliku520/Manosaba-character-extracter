@@ -101,12 +101,23 @@
     api().load_directory(path);
   }
 
-  // ── 拖拽导入：把游戏目录文件夹拖入窗口即可加载 ──
+  // ── 拖拽导入 ──────────────────────────────────────────
+  // 可拖入两类内容：游戏目录【文件夹】→ 加载游戏目录；预设【.json】→ 打开导入模态并预填。
+  //
+  // 关键：dragenter / dragover / drop 必须在【捕获阶段】无条件 preventDefault。
+  //   - 不 preventDefault 时，系统会显示"禁止"光标，且 drop 事件根本不会派发到页面
+  //     （外部表现就是：拖拽完全失效，任何文件都放不进窗口）。
+  //   - 必须用捕获阶段：模态内部可能 stopPropagation（预设导入模态就是这样），
+  //     窗口级监听若在冒泡阶段会被拦掉，从而漏掉 preventDefault。
+  // "是否接管这次拖放"（显示遮罩 / 处理 drop）再单独由 hasFiles + 模态状态决定。
   function setupDragDrop() {
     const overlay = $('#drop-overlay');
     const overlayText = $('#drop-overlay-text');
     let depth = 0;  // dragenter/dragleave 成对计数，避免子元素进出误隐藏
     const hasFiles = (e) => !!(e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files'));
+    // 有模态窗口打开时，拖放目标交给模态内部（如预设导入模态的 .json 拖入），
+    // 窗口级只兜底 preventDefault，不做视觉/行为接管。
+    const modalOpen = () => !!document.querySelector('#modal-root .modal-backdrop');
     const show = () => {
       if (overlay) {
         if (overlayText) overlayText.textContent = t('left.drop_overlay');
@@ -115,56 +126,66 @@
     };
     const hide = () => { if (overlay) overlay.hidden = true; };
 
-    window.addEventListener('dragenter', (e) => {
+    document.addEventListener('dragenter', (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
+      if (modalOpen()) return;
       depth++;
       show();
-    });
-    window.addEventListener('dragover', (e) => {
+    }, true);
+    document.addEventListener('dragover', (e) => {
       if (!hasFiles(e)) return;
-      e.preventDefault();  // 阻止浏览器打开文件
+      e.preventDefault();  // 阻止浏览器/系统把文件当"导航目标"（不阻止 = 禁止光标 + 收不到 drop）
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-    });
-    window.addEventListener('dragleave', (e) => {
-      if (!hasFiles(e)) return;
+    }, true);
+    document.addEventListener('dragleave', (e) => {
+      if (!hasFiles(e) || modalOpen()) return;
       depth = Math.max(0, depth - 1);
-      if (depth === 0) hide();
-    });
-    window.addEventListener('drop', (e) => {
+      if (depth === 0 || !e.relatedTarget) hide();   // relatedTarget 为空 = 已离开窗口
+    }, true);
+    document.addEventListener('dragend', () => { depth = 0; hide(); }, true);
+    document.addEventListener('drop', (e) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
+      if (modalOpen()) return;   // 模态内的拖放目标自行处理
       depth = 0;
       hide();
       handleDrop(e);
-    });
+    }, true);
   }
 
   function handleDrop(e) {
     const item = e.dataTransfer.items && e.dataTransfer.items[0];
     const file = e.dataTransfer.files && e.dataTransfer.files[0];
     if (!file) return;
-    // 只接受文件夹
+    // 拖入文件夹 → 加载游戏目录
     let isDir = false;
     if (item && item.webkitGetAsEntry) {
       const entry = item.webkitGetAsEntry();
       isDir = !!(entry && entry.isDirectory);
     }
-    if (!isDir) {
-      toast(t('left.drop_not_folder'), 'warning');
+    if (isDir) {
+      const path = resolveFilePath(file);
+      if (!path) { toast(t('left.drop_unsupported'), 'warning'); return; }
+      loadDir(path);
       return;
     }
-    // 获取绝对路径：Electron 用 webUtils.getPathForFile，旧版 Electron 回退 file.path
+    // 拖入预设 .json → 直接打开导入模态并预填（需已加载角色数据）
+    if (/\.json$/i.test(file.name || '') && App.characterData && MCE.importPresetFile) {
+      MCE.importPresetFile(file);
+      return;
+    }
+    toast(t('left.drop_not_folder'), 'warning');
+  }
+
+  // 拖入文件的磁盘绝对路径：Electron 用 webUtils.getPathForFile（旧版 Electron 回退 file.path）
+  function resolveFilePath(file) {
     let path = null;
     if (window.__electron && window.__electron.getPathForFile) {
       try { path = window.__electron.getPathForFile(file); } catch (err) { path = null; }
     }
     if (!path && typeof file.path === 'string') path = file.path;
-    if (!path) {
-      toast(t('left.drop_unsupported'), 'warning');
-      return;
-    }
-    loadDir(path);
+    return path || null;
   }
 
   async function onCharClick(name) {
@@ -185,7 +206,7 @@
     App.previewThumbs = {};
     App.previewSel.clear();
     App.sketchText = '';   // 切换角色时清空素描本自定义文字
-    clearPartsUI();
+    clearPartsUI('loading');   // 角色加载中：占位提示显示“正在读取角色数据”（不再误显示“请选择角色”）
     clearPreview();
     renderCharList();
     setStatus(t('app.status.analyzing', { name }), true);

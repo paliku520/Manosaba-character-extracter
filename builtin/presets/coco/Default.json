@@ -1,0 +1,57 @@
+{
+  "character_name": "coco",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "Mouth_Normal_Open",
+      "sorting_order": 23
+    },
+    {
+      "name": "Eyes_Normal_Open",
+      "sorting_order": 41
+    },
+    {
+      "name": "ClippingMask_Eyes_Normal",
+      "sorting_order": 43
+    },
+    {
+      "name": "Cheeks_Normal",
+      "sorting_order": 45
+    },
+    {
+      "name": "Hair_Multiply",
+      "sorting_order": 52
+    },
+    {
+      "name": "Hair_Normal",
+      "sorting_order": 53
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 65
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 79
+    },
+    {
+      "name": "ClippingMask_Root_Softlight",
+      "sorting_order": 81
+    },
+    {
+      "name": "ClippingMask_Root_Overlay",
+      "sorting_order": 82
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:06:59",
+  "builtin": true
+}

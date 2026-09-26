@@ -19,6 +19,8 @@
   const toast = (...a) => MCE.toast(...a);
   const btn = (...a) => MCE.btn(...a);
   const showModal = (...a) => MCE.showModal(...a);
+  const confirmDialog = (...a) => MCE.confirmDialog(...a);
+  const createDropdown = (...a) => MCE.createDropdown(...a);
   const setTipText = (...a) => MCE.setTipText(...a);
   const copyText = (...a) => MCE.copyText(...a);
   const switchTab = (...a) => MCE.switchTab(...a);
@@ -26,12 +28,31 @@
   const openPartLightbox = (...a) => MCE.openPartLightbox(...a);
   const clearPreview = (...a) => MCE.clearPreview(...a);
   const schedulePreview = (...a) => MCE.schedulePreview(...a);
+  const doComposite = (...a) => MCE.doComposite(...a);
 
-  function clearPartsUI() {
+  // 部件区下方占位提示：select=请选择角色 / loading=正在读取角色数据 / none=隐藏
+  function setPartsPlaceholder(state) {
+    const box = $('#parts-empty');
+    if (box) box.hidden = state === 'none';
+    const sel = $('#parts-empty-hint');
+    if (sel) sel.hidden = state !== 'select';
+    const load = $('#parts-loading-hint');
+    if (load) load.hidden = state !== 'loading';
+  }
+
+  // 预设栏仅在「已加载含组件数据的角色」后展示
+  function showPresetBar(show) {
+    const bar = document.querySelector('.parts-preset-bar');
+    if (bar) bar.hidden = !show;
+  }
+
+  function clearPartsUI(placeholder) {
     spearTeardown();        // 切换角色/清缓存时解除长矛彩蛋状态（防御性）
     teardownPartsEaster();  // 切换角色时移除 nanoka 部件卡彩蛋
+    resetPresetBar();       // 重置预设下拉（新角色数据到达后由 renderParts 重新填充）
+    showPresetBar(false);   // 角色数据就绪前不展示预设栏
+    setPartsPlaceholder(placeholder === 'loading' ? 'loading' : 'select');
     $('#parts-list').innerHTML = '';
-    $('#parts-empty').hidden = false;
     $('#parts-name').textContent = '—';
     $('#parts-count').textContent = '';
     $('#sel-count').textContent = '0';
@@ -106,7 +127,9 @@
     list.innerHTML = '';
     $('#parts-name').textContent = charDisplayName(data.name);
     $('#parts-count').textContent = data.count + ' ' + t('parts.total');
-    $('#parts-empty').hidden = true;
+    setPartsPlaceholder('none');   // 数据已就绪：隐藏下方占位提示
+    showPresetBar(true);           // 拼接模式（含组件数据）才展示预设栏
+    renderPresetOptions('');   // 填充预设下拉（后端随角色数据下发 presets）
 
     const groups = {};
     data.transform_data.forEach((p) => {
@@ -486,6 +509,7 @@
 
   function updateSelUI() {
     $('#sel-count').textContent = App.selected.size;
+    updatePresetButtons();
     updateSketchInput();
     const ul = $('#selected-list');
     ul.innerHTML = '';
@@ -564,16 +588,688 @@
     toast(t('parts.clip_selected', { count: added }), 'success');
   }
 
+  // ── 用户预设（记录部件的 sorting_order，随时一键恢复）──────
+  // 预设由用户自行保存 / 删除，存放在 data/presets/<角色>/<预设名>.json；
+  // 应用时按 sorting_order 在当前部件表里匹配勾选（同一 order 命中多条时优先取
+  // 预设里记录的同名部件），并恢复素描本文字参数。
+
+  function presetList() {
+    const d = App.characterData;
+    return (d && Array.isArray(d.presets)) ? d.presets : [];
+  }
+
+  // 当前预设下拉实例（自绘下拉，选项变化时整体重建）
+  let _presetDropdown = null;
+
+  function presetList() {
+    const d = App.characterData;
+    return (d && Array.isArray(d.presets)) ? d.presets : [];
+  }
+
+  function currentPresetName() {
+    return _presetDropdown ? _presetDropdown.value : '';
+  }
+
+  // 预设选项文案（下拉条目 / 按钮气泡共用）；内置预设附标记
+  function presetOptionLabel(name) {
+    const p = presetList().find((x) => x.name === name);
+    if (!p) return t('parts.preset_placeholder');
+    const label = t('parts.preset_option', { name: p.name, count: (p.parts || []).length });
+    return p.builtin ? label + t('parts.preset_builtin_suffix') : label;
+  }
+
+  // 触发按钮宽度有限（过长省略号）：悬停展示完整名称（统一 .ui-tip 气泡）；无预设时不挂提示
+  function syncPresetTip() {
+    if (!_presetDropdown) return;
+    const trigger = _presetDropdown.el.querySelector('.color-picker-btn');
+    if (!trigger) return;
+    const hasPresets = presetList().length > 0;
+    setTipText(trigger, hasPresets ? presetOptionLabel(currentPresetName()) : '');
+  }
+
+  // 重置预设栏（切换角色 / 清空部件页）
+  function resetPresetBar() {
+    if (_presetDropdown) { _presetDropdown.el.remove(); _presetDropdown = null; }
+    const save = $('#btn-preset-save');
+    if (save) save.disabled = true;
+    const del = $('#btn-preset-delete');
+    if (del) del.disabled = true;
+  }
+
+  // 预设下拉：自绘（与设置/预览画质同款，不用原生 select）：只列出真实预设；
+  // 未选择时按钮显示占位文案（列表里不再放多余的“预设…”条目）；
+  // 选项集合随保存/删除变化，因此每次整体重建；keep 指定要保留的选中项。
+  function renderPresetOptions(keep) {
+    const slot = $('#preset-slot');
+    if (!slot) return;
+    const prev = (keep === undefined) ? currentPresetName() : keep;
+    const options = presetList().map((p) => ({ value: p.name, label: presetOptionLabel(p.name) }));
+    const next = options.some((o) => o.value === prev) ? prev : '';
+    if (_presetDropdown) _presetDropdown.el.remove();
+    _presetDropdown = createDropdown({
+      options,
+      value: next,
+      placeholder: t('parts.preset_placeholder'),
+    });
+    _presetDropdown.onChange = (v) => { onPresetSelect(v); syncPresetTip(); };
+    const trigger = _presetDropdown.el.querySelector('.color-picker-btn');
+    if (trigger) trigger.disabled = options.length === 0;   // 无预设：点开也是空列表
+    slot.appendChild(_presetDropdown.el);
+    syncPresetTip();
+    updatePresetButtons();
+  }
+
+  // ── 标识名 / 预设名校验（与后端 preset_store.validate_preset_name 一致，先在前端拦一道）──
+  const PRESET_NAME_MAX = 40;
+  const PRESET_NAME_BAD_CHARS = /[<>:"/\\|?*\u0000-\u001f]/;
+
+  // 返回错误说明（'' = 合法）：empty / too_long / invalid_chars / trailing_dot_space
+  function checkPresetName(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return 'empty';
+    if (raw.length > PRESET_NAME_MAX) return 'too_long';
+    if (PRESET_NAME_BAD_CHARS.test(raw)) return 'invalid_chars';
+    if (/[. ]$/.test(raw)) return 'trailing_dot_space';
+    return '';
+  }
+
+  // 后端预设错误码 → 文案（保存 / 导入共用；未知错误回退到 fallbackKey）
+  function presetErrorText(r, name, fallbackKey) {
+    const err = (r && r.error) || '';
+    switch (err) {
+      case 'builtin': return t('parts.preset_builtin_name', { name });
+      case 'bad_name': return t('parts.preset_name_invalid');
+      case 'name_conflict': return t('parts.preset_name_conflict', { name });
+      case 'game_mismatch': return t('parts.preset_import_game_mismatch', { name: (r && r.game) || '' });
+      case 'no_game':
+      case 'unknown_game': return t('parts.preset_import_bad_game', { name: (r && r.game) || '' });
+      case 'character_mismatch': return t('parts.preset_import_char_mismatch', { name: (r && r.character) || '' });
+      case 'no_character_id':
+      case 'unknown_character': return t('parts.preset_import_bad_character', { name: (r && r.character) || '' });
+      case 'no_match': return t('parts.preset_import_no_match');
+      default: return t(fallbackKey);
+    }
+  }
+
+  // 当前（或指定）预设是否为内置：内置不可删除 / 不可覆盖
+  function isBuiltinSelected(name) {
+    const target = (name === undefined) ? currentPresetName() : name;
+    return presetList().some((p) => p.name === target && p.builtin);
+  }
+
+  function updatePresetButtons() {
+    const locked = isBuiltinSelected();
+    const del = $('#btn-preset-delete');
+    if (del) {
+      del.disabled = !currentPresetName() || locked;
+      setTipText(del, locked ? t('parts.preset_builtin_readonly') : '');
+    }
+    const save = $('#btn-preset-save');
+    if (save) save.disabled = !App.characterData || App.selected.size === 0;
+    const exp = $('#btn-preset-export');
+    if (exp) exp.disabled = !currentPresetName();
+  }
+
+  // 恢复预设里的素描本参数（仅 Anan 素描模式有意义；同步滑块/分段/摘要）
+  function restoreSketch(sk) {
+    if (typeof sk.text === 'string') App.sketchText = sk.text;
+    const size = Number(sk.size);
+    if (size) App.sketchSize = size;
+    if (sk.align) App.sketchAlign = sk.align;
+    const slider = $('#sketch-size');
+    if (slider) slider.value = String(App.sketchSize || 56);
+    syncSketchSizeLabel();
+    syncSketchAlign();
+    syncSketchSummary();
+  }
+
+  // 应用预设：按 sorting_order 恢复勾选，并恢复素描本参数；返回选中数量
+  function applyPreset(preset) {
+    if (!App.characterData || !preset) return 0;
+    const byOrder = {};
+    App.characterData.transform_data.forEach((p) => {
+      (byOrder[p.sorting_order] = byOrder[p.sorting_order] || []).push(p.name);
+    });
+    App.selected.clear();
+    (preset.parts || []).forEach((e) => {
+      const names = byOrder[e.sorting_order];
+      if (!names || !names.length) return;   // 该 order 在当前数据里不存在（脏预设）→ 跳过
+      const picked = names.indexOf(e.name) >= 0 ? [e.name] : names;
+      picked.forEach((n) => App.selected.add(n));
+    });
+    Object.keys(App.partEls).forEach((name) => {
+      App.partEls[name].cb.checked = App.selected.has(name);
+    });
+    restoreSketch(preset.sketch || {});
+    console.log(t('log.js_selected', { count: App.selected.size, total: App.characterData.transform_data.length }));
+    updateSelUI();
+    return App.selected.size;
+  }
+
+  // 下拉切换：选中即应用并刷新预览
+  function onPresetSelect(name) {
+    updatePresetButtons();
+    if (!name) return;
+    const preset = presetList().find((p) => p.name === name);
+    if (!preset) return;
+    const n = applyPreset(preset);
+    if (n === 0) { toast(t('parts.preset_empty'), 'warning'); return; }
+    toast(t('parts.preset_applied', { name, count: n }), 'success');
+    if (App.autoUpdate) schedulePreview();
+    else doComposite();
+  }
+
+  // 保存预设：弹窗输入名称 → 选中的部件（含 sorting_order）+ 素描本参数写入后端
+  function savePreset() {
+    if (!App.characterData) return;
+    if (App.selected.size === 0) { toast(t('parts.preset_need_selection'), 'warning'); return; }
+    const input = document.createElement('input');
+    input.className = 'preset-name-input';
+    input.type = 'text';
+    input.maxLength = 40;
+    input.placeholder = t('parts.preset_name_hint');
+    input.value = currentPresetName() || '';
+    const footer = document.createElement('div');
+    const no = btn(t('dialog.cancel'), 'btn sm', () => close());
+    const yes = btn(t('dialog.ok'), 'btn sm primary', async () => {
+      const pname = input.value.trim();
+      if (checkPresetName(pname)) {
+        toast(t('parts.preset_name_invalid'), 'warning');
+        input.focus();
+        return;
+      }
+      if (isBuiltinSelected(pname)) {
+        // 内置预设：禁止同名新建 / 覆盖
+        toast(t('parts.preset_builtin_name', { name: pname }), 'warning');
+        return;
+      }
+      if (presetList().some((p) => p.name === pname)) {
+        const ok = await confirmDialog(
+          t('parts.preset_overwrite_title'),
+          t('parts.preset_overwrite_msg', { name: pname })
+        );
+        if (!ok) return;
+      }
+      close();
+      const r = await api().save_preset(
+        App.characterData.name, pname, Array.from(App.selected),
+        sketchTextArg(), sketchSizeArg(), sketchAlignArg()
+      );
+      if (!r || !r.success) {
+        const known = r && ['builtin', 'bad_name', 'name_conflict'].indexOf(r.error) >= 0;
+        toast(known ? presetErrorText(r, pname, 'parts.preset_save_failed')
+                    : t('parts.preset_save_failed'), 'error');
+        if (r && r.presets) {
+          App.characterData.presets = r.presets;
+          renderPresetOptions(currentPresetName());
+        }
+        return;
+      }
+      App.characterData.presets = r.presets || [];
+      renderPresetOptions(pname);
+      toast(t('parts.preset_saved', { name: pname, count: App.selected.size }), 'success');
+    });
+    footer.appendChild(no); footer.appendChild(yes);
+    const { close } = showModal({ titleKey: 'parts.preset_name_title', body: input, footer });
+    setTimeout(() => { input.focus(); input.select(); }, 60);
+  }
+
+  // 删除当前选中的预设（确认后删除）
+  async function deletePreset() {
+    const pname = currentPresetName();
+    if (!pname || !App.characterData) return;
+    if (isBuiltinSelected(pname)) {
+      toast(t('parts.preset_builtin_readonly'), 'warning');
+      return;
+    }
+    const ok = await confirmDialog(
+      t('parts.preset_delete_title'),
+      t('parts.preset_delete_msg', { name: pname })
+    );
+    if (!ok) return;
+    const r = await api().delete_preset(App.characterData.name, pname);
+    if (!r || !r.success) {
+      toast(r && r.error === 'builtin'
+        ? t('parts.preset_builtin_readonly')
+        : t('parts.preset_delete_failed'), 'error');
+      if (r && r.presets) { App.characterData.presets = r.presets; renderPresetOptions(''); }
+      return;
+    }
+    App.characterData.presets = r.presets || [];
+    renderPresetOptions('');
+    toast(t('parts.preset_deleted', { name: pname }), 'success');
+  }
+
+  // ── 预设导入 / 导出（模态窗口）─────────────────────────
+  // 代码格式: <游戏标识>,<角色标识>,<排序值>…   例: manosaba,hiro,1,52,97,130
+  // 文件格式: 本工具导出的预设 .json（character_name / name / parts[{name, sorting_order}] / sketch）
+
+  function presetGame() {
+    return (App.info && App.info.mode) || 'manosaba';
+  }
+
+  // 预设 → 代码文本（排序值升序，便于阅读与对比）
+  function presetToCode(preset) {
+    const orders = (preset.parts || [])
+      .map((p) => Number(p.sorting_order) || 0)
+      .sort((a, b) => a - b);
+    return [presetGame(), App.characterData.name].concat(orders).join(',');
+  }
+
+  // 代码文本 → {game, character, orders}；逗号/空白分隔均可，格式不对返回 null
+  function parsePresetCode(text) {
+    const segs = String(text || '').replace(/^\uFEFF/, '').trim().split(/[\s,]+/).filter(Boolean);
+    if (segs.length < 2) return null;
+    const orders = segs.slice(2).map((s) => Number(s));
+    if (orders.some((n) => !Number.isFinite(n))) return null;
+    return { game: segs[0], character: segs[1], orders: orders.map((n) => Math.trunc(n)) };
+  }
+
+  // 预设 → JSON 文本（与 data/presets 里的文件同构；带 game 标识便于导入时校验）
+  function presetToJson(preset) {
+    return JSON.stringify({
+      game: presetGame(),
+      character_name: App.characterData.name,
+      name: preset.name,
+      parts: (preset.parts || []).map((p) => ({ name: p.name, sorting_order: p.sorting_order })),
+      sketch: preset.sketch || { text: '', size: 56, align: 'center' },
+      updated: preset.updated || '',
+    }, null, 2);
+  }
+
+  // JSON 文本 → {game, character, name, parts}；解析失败/无部件返回 null
+  function parsePresetJson(text) {
+    // 去掉 UTF-8 BOM：记事本等编辑器保存的 .json 会带 \uFEFF，否则 JSON.parse 直接抛错
+    const src = String(text || '').replace(/^\uFEFF/, '').trim();
+    let raw = null;
+    try { raw = JSON.parse(src); } catch (e) { return null; }
+    if (!raw || typeof raw !== 'object') return null;
+    const parts = (Array.isArray(raw.parts) ? raw.parts : [])
+      .filter((p) => p && p.name)
+      .map((p) => ({ name: String(p.name), sorting_order: Number(p.sorting_order) || 0 }));
+    if (!parts.length) return null;
+    return {
+      game: String(raw.game || raw.mode || ''),
+      character: String(raw.character_name || raw.character || ''),
+      name: String(raw.name || ''),
+      parts,
+    };
+  }
+
+  function readFileText(file) {
+    return new Promise((resolve) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(String(fr.result || ''));
+      fr.onerror = () => resolve(null);
+      fr.readAsText(file, 'utf-8');
+    });
+  }
+
+  // 选 .json：Electron 走原生对话框（主进程读盘），浏览器退回 <input type=file>
+  function pickPresetFile() {
+    const ep = window.__electron && window.__electron.preset;
+    if (ep && ep.importFile) return ep.importFile();
+    return new Promise((resolve) => {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.json,application/json';
+      inp.addEventListener('change', () => {
+        const f = inp.files && inp.files[0];
+        if (!f) { resolve({ cancelled: true }); return; }
+        readFileText(f).then((text) => resolve(
+          text === null ? { error: 'read_failed' } : { name: f.name, text }
+        ));
+      });
+      inp.click();
+    });
+  }
+
+  // 保存文本文件：Electron 走原生保存对话框，浏览器退回 Blob 下载
+  async function saveTextFile(defaultName, text) {
+    const ep = window.__electron && window.__electron.preset;
+    if (ep && ep.exportFile) return ep.exportFile(defaultName, text);
+    try {
+      const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = defaultName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return { ok: true, path: '' };
+    } catch (e) {
+      return { ok: false, error: String(e) };
+    }
+  }
+
+  // 执行导入 + 应用结果（已确认标识与当前角色一致）
+  // 返回 'ok' | 'cancel'（用户取消了覆盖确认）| 'fail'——调用方据此决定是否关闭模态
+  async function runPresetImport(job) {
+    const run = (overwrite) => api().import_preset(
+      App.characterData.name, job.pname, job.orders, job.parts, job.game, overwrite
+    );
+    let r = await run(false);
+    if (r && r.error === 'exists') {
+      const yes = await confirmDialog(t('parts.preset_overwrite_title'),
+                                      t('parts.preset_import_exists', { name: job.pname }));
+      if (!yes) return 'cancel';
+      r = await run(true);
+    }
+    if (!r || !r.success) {
+      toast(presetErrorText(r, job.pname, 'parts.preset_import_failed'), 'error');
+      if (r && r.presets) {
+        App.characterData.presets = r.presets;
+        renderPresetOptions(currentPresetName());
+      }
+      return 'fail';
+    }
+    App.characterData.presets = r.presets || [];
+    const imported = (r.preset && r.preset.name) || job.pname;
+    renderPresetOptions(imported);
+    toast(t('parts.preset_imported', {
+      name: imported, count: r.count || 0, skipped: ((r.skipped || []).length),
+    }), 'success');
+    return 'ok';
+  }
+
+  // 导入模态：两个标签页（文件 / 代码）+ 预设名输入
+  // initial：可选 {name, text}——由窗口级拖入 .json 时预填（见 importPresetFile）。
+  // 这里做形状校验，避免事件对象之类的真值被当成文件内容而弹出假的"JSON 格式不正确"。
+  function importPreset(initial) {
+    if (!App.characterData) return;
+    const initialFile = (initial && typeof initial.text === 'string') ? initial : null;
+    const state = { mode: 'file', fileName: '', fileParsed: null };
+
+    const body = document.createElement('div');
+    body.className = 'preset-modal';
+    const tabs = document.createElement('div');
+    tabs.className = 'preset-tabs';
+    const tabFile = btn(t('parts.preset_tab_file'), 'preset-tab active', () => setMode('file'));
+    const tabCode = btn(t('parts.preset_tab_code'), 'preset-tab', () => setMode('code'));
+    tabs.appendChild(tabFile);
+    tabs.appendChild(tabCode);
+
+    // 文件面板：「选择 / 拖入」单按钮 + 状态行
+    const filePane = document.createElement('div');
+    filePane.className = 'preset-pane';
+    // 按钮本身即拖放卡片：点击 = 系统文件选择框，拖入 = 直接预填；虚线区域，拖拽经过时高亮
+    // （实际落点仍是整个模态，拖到哪都能放）
+    const dropCard = document.createElement('button');
+    dropCard.type = 'button';
+    dropCard.className = 'preset-drop-card';
+    dropCard.innerHTML =
+      '<svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">' +
+      '<path d="M12 15V4m0 0 3.5 3.5M12 4 8.5 7.5M4.5 14.5V18a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3.5"' +
+      ' fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const dropTitle = document.createElement('span');
+    dropTitle.className = 'preset-drop-title';
+    dropTitle.textContent = t('parts.preset_import_choose');
+    const dropSub = document.createElement('span');
+    dropSub.className = 'preset-drop-sub';
+    dropSub.textContent = t('parts.preset_import_file_hint');
+    dropCard.appendChild(dropTitle);
+    dropCard.appendChild(dropSub);
+    dropCard.addEventListener('click', () => chooseFile());
+    const fileStatus = document.createElement('div');
+    fileStatus.className = 'preset-file-status';
+    fileStatus.textContent = t('parts.preset_import_no_file');
+    filePane.appendChild(dropCard);
+    filePane.appendChild(fileStatus);
+
+    // 代码面板：<游戏标识>,<角色标识>,<排序值>…
+    const codePane = document.createElement('div');
+    codePane.className = 'preset-pane';
+    codePane.hidden = true;
+    const codeHint = document.createElement('p');
+    codeHint.className = 'hint';
+    codeHint.textContent = t('parts.preset_import_code_hint');
+    const codeArea = document.createElement('textarea');
+    codeArea.className = 'preset-textarea';
+    codeArea.rows = 4;
+    codeArea.spellcheck = false;
+    codeArea.placeholder = t('parts.preset_import_code_placeholder');
+    codePane.appendChild(codeHint);
+    codePane.appendChild(codeArea);
+
+    // 预设名（文件导入时会被文件里的名字预填）
+    const nameRow = document.createElement('div');
+    nameRow.className = 'preset-name-row';
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = t('parts.preset_import_name');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'preset-name-input';
+    nameInput.maxLength = 40;
+    nameInput.value = t('parts.preset_import_default_name');
+    nameRow.appendChild(nameLabel);
+    nameRow.appendChild(nameInput);
+
+    body.appendChild(tabs);
+    body.appendChild(filePane);
+    body.appendChild(codePane);
+    body.appendChild(nameRow);
+
+    const footer = document.createElement('div');
+    const cancel = btn(t('dialog.cancel'), 'btn sm', () => close());
+    const okBtn = btn(t('dialog.ok'), 'btn sm primary', () => doImport());
+    footer.appendChild(cancel);
+    footer.appendChild(okBtn);
+
+    const { close, backdrop } = showModal({ titleKey: 'parts.preset_import_title', body, footer });
+
+    function setMode(mode) {
+      state.mode = mode;
+      const isFile = mode === 'file';
+      tabFile.classList.toggle('active', isFile);
+      tabCode.classList.toggle('active', !isFile);
+      filePane.hidden = !isFile;
+      codePane.hidden = isFile;
+      if (!isFile) setTimeout(() => codeArea.focus(), 40);
+    }
+
+    function applyFile(res) {
+      if (!res || res.cancelled) return;
+      const parsed = parsePresetJson(res.text);
+      if (!parsed) { toast(t('parts.preset_import_bad_file'), 'error'); return; }
+      state.fileName = res.name || '';
+      state.fileParsed = parsed;
+      if (parsed.name) nameInput.value = parsed.name;
+      const mismatch = !!parsed.character && parsed.character !== App.characterData.name;
+      fileStatus.textContent = t('parts.preset_import_loaded',
+        { name: state.fileName, count: parsed.parts.length })
+        + (mismatch ? ' · ' + t('parts.preset_import_char_mismatch', { name: parsed.character }) : '');
+      fileStatus.classList.toggle('ok', !mismatch);
+    }
+
+    async function chooseFile() {
+      const res = await pickPresetFile();
+      if (res && res.error) { toast(t('parts.preset_import_bad_file'), 'error'); return; }
+      applyFile(res);
+    }
+
+    // 拖入 .json 也能导入：整个模态遮罩层都可放下（头/底/四周均可），卡片只负责高亮反馈
+    // stopPropagation 必要：否则窗口级的「拖入游戏目录」会抢走这次拖放并弹文件夹遮罩
+    const dropZone = backdrop || body;
+    const markDrop = (on) => dropCard.classList.toggle('drop', on);
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (state.mode !== 'file') setMode('file');   // 在「代码」页拖入时自动切回文件页
+      markDrop(true);
+    });
+    dropZone.addEventListener('dragleave', (e) => {
+      e.stopPropagation();
+      if (e.target === dropZone) markDrop(false);
+    });
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      markDrop(false);
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if (!f) return;
+      setMode('file');
+      applyFile({ name: f.name, text: await readFileText(f) });
+    });
+
+    // 窗口级拖入的 .json（charlist.js 转交）：打开模态即预填，省去再点一次「选择 JSON 文件」
+    if (initialFile) { setMode('file'); applyFile(initialFile); }
+
+    async function doImport() {
+      const pname = nameInput.value.trim();
+      if (!pname) { toast(t('parts.preset_import_need_name'), 'warning'); return; }
+      if (checkPresetName(pname)) {
+        toast(t('parts.preset_name_invalid'), 'warning');
+        nameInput.focus();
+        return;
+      }
+      let orders = null;
+      let parts = null;
+      let game = '';
+      let character = '';
+      if (state.mode === 'code') {
+        const parsed = parsePresetCode(codeArea.value);
+        if (!parsed || !parsed.orders.length) {
+          toast(t('parts.preset_import_bad_code'), 'warning');
+          return;
+        }
+        game = parsed.game;
+        character = parsed.character;
+        orders = parsed.orders;
+      } else {
+        if (!state.fileParsed) { toast(t('parts.preset_import_need_file'), 'warning'); return; }
+        // 旧文件可能没有 game 字段：视为当前作品（角色标识仍严格校验）
+        game = state.fileParsed.game || presetGame();
+        character = state.fileParsed.character;
+        parts = state.fileParsed.parts;
+      }
+
+      // ── 标识名匹配：游戏 / 角色必须与当前会话一致；不合法立即拦下 ──
+      // （不自动跳转角色：未知角色/作品一律不触发加载或分析，避免误操作）
+      const modes = ((App.info && App.info.modes) || [presetGame()]).map((m) => String(m).toLowerCase());
+      if (!game) {
+        toast(t('parts.preset_import_bad_game', { name: '' }), 'warning');
+        return;
+      }
+      if (modes.indexOf(game.toLowerCase()) < 0) {
+        toast(t('parts.preset_import_bad_game', { name: game }), 'warning');
+        return;
+      }
+      if (game.toLowerCase() !== presetGame().toLowerCase()) {
+        toast(t('parts.preset_import_game_mismatch', { name: game }), 'warning');
+        return;
+      }
+      const knownChars = Object.keys(App.bundles || {});
+      const matched = knownChars.filter((n) => n.toLowerCase() === String(character).toLowerCase())[0] || '';
+      if (!character) {
+        toast(t('parts.preset_import_bad_character', { name: '' }), 'warning');
+        return;
+      }
+      if (knownChars.length && !matched) {
+        toast(t('parts.preset_import_bad_character', { name: character }), 'warning');
+        return;
+      }
+      const current = App.characterData.name || '';
+      if ((matched || character).toLowerCase() !== current.toLowerCase()) {
+        toast(t('parts.preset_import_char_mismatch', { name: matched || character }), 'warning');
+        return;
+      }
+      // 仅成功时关闭导入模态：取消覆盖确认 / 各种报错都保留输入，方便改完重试
+      if (await runPresetImport({ pname, orders, parts, game, character }) === 'ok') close();
+    }
+  }
+
+  // 把「拖入窗口的预设 .json」转成导入模态的预填内容（读盘失败按文件格式错误提示）
+  async function importPresetFile(file) {
+    if (!App.characterData || !file) return;
+    const text = await readFileText(file);
+    if (text === null) { toast(t('parts.preset_import_bad_file'), 'error'); return; }
+    importPreset({ name: file.name || '', text });
+  }
+
+  // 导出模态：两个标签页（文件 / 代码），内容可复制；文件页可另存为 .json
+  function exportPreset() {
+    if (!App.characterData) return;
+    const preset = presetList().find((p) => p.name === currentPresetName());
+    if (!preset) { toast(t('parts.preset_export_need_select'), 'warning'); return; }
+    const jsonText = presetToJson(preset);
+    const codeText = presetToCode(preset);
+
+    const body = document.createElement('div');
+    body.className = 'preset-modal';
+    const tabs = document.createElement('div');
+    tabs.className = 'preset-tabs';
+    const tabFile = btn(t('parts.preset_tab_file'), 'preset-tab active', () => setMode('file'));
+    const tabCode = btn(t('parts.preset_tab_code'), 'preset-tab', () => setMode('code'));
+    tabs.appendChild(tabFile);
+    tabs.appendChild(tabCode);
+
+    // 通用面板：提示 + 只读文本框 + 操作按钮行
+    function makePane(hintText, text, actions) {
+      const pane = document.createElement('div');
+      pane.className = 'preset-pane';
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.textContent = hintText;
+      const area = document.createElement('textarea');
+      area.className = 'preset-textarea';
+      area.rows = 8;
+      area.readOnly = true;
+      area.spellcheck = false;
+      area.value = text;
+      const row = document.createElement('div');
+      row.className = 'preset-tab-actions';
+      actions.forEach((a) => row.appendChild(a));
+      pane.appendChild(hint);
+      pane.appendChild(area);
+      pane.appendChild(row);
+      return pane;
+    }
+
+    const saveBtn = btn(t('parts.preset_export_save'), 'btn sm primary', async () => {
+      const r = await saveTextFile(App.characterData.name + '_' + preset.name + '.json', jsonText);
+      if (!r || (r.ok !== true && !r.canceled && !r.cancelled)) {
+        toast(t('parts.preset_export_failed'), 'error');
+        return;
+      }
+      if (r.ok && r.path) toast(t('parts.preset_export_saved', { path: r.path }), 'success');
+    });
+    // JSON 面板只保留「保存为文件」：文本本身可手动选中复制，不再单独放复制按钮
+    const filePane = makePane(t('parts.preset_export_json_hint'), jsonText, [saveBtn]);
+    const codePane = makePane(t('parts.preset_export_code_hint'), codeText, [
+      btn(t('parts.preset_export_copy'), 'btn sm', () => copyText(codeText)),
+    ]);
+    codePane.hidden = true;
+
+    body.appendChild(tabs);
+    body.appendChild(filePane);
+    body.appendChild(codePane);
+
+    const footer = document.createElement('div');
+    footer.appendChild(btn(t('parts.lightbox_close'), 'btn sm', () => close()));
+    const { close } = showModal({ titleKey: 'parts.preset_export_title', body, footer });
+
+    function setMode(mode) {
+      const isFile = mode === 'file';
+      tabFile.classList.toggle('active', isFile);
+      tabCode.classList.toggle('active', !isFile);
+      filePane.hidden = !isFile;
+      codePane.hidden = isFile;
+    }
+  }
+
   // 语言切换后刷新部件页头部（角色名 + 计数）
   function refreshPartsHeader() {
     if (!App.characterData) return;
     $('#parts-name').textContent = charDisplayName(App.characterData.name);
     $('#parts-count').textContent = App.characterData.count + ' ' + t('parts.total');
+    renderPresetOptions();   // 语言切换后刷新预设下拉文案（占位项 / 条目）
     setupPartsEaster();  // 语言切换后按当前语言/角色刷新部件卡彩蛋状态
   }
 
   // ── 导出 ────────────────────────────────────────────────
   MCE.clearPartsUI = clearPartsUI;
+  MCE.setPartsPlaceholder = setPartsPlaceholder;
   MCE.naturalCmp = naturalCmp;
   MCE.partPrefix = partPrefix;
   MCE.sortParts = sortParts;
@@ -598,6 +1294,13 @@
   MCE.sketchAlignArg = sketchAlignArg;
   MCE.updateSelUI = updateSelUI;
   MCE.selectAll = selectAll;
+  MCE.onPresetSelect = onPresetSelect;
+  MCE.savePreset = savePreset;
+  MCE.deletePreset = deletePreset;
+  MCE.importPreset = importPreset;
+  MCE.importPresetFile = importPresetFile;
+  MCE.exportPreset = exportPreset;
+  MCE.renderPresetOptions = renderPresetOptions;
   MCE.deselectGroup = deselectGroup;
   MCE.isExcludedClipMask = isExcludedClipMask;
   MCE.selectClipMaskParts = selectClipMaskParts;

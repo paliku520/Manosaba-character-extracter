@@ -1,0 +1,49 @@
+{
+  "character_name": "margo",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "Cheeks_Normal",
+      "sorting_order": 15
+    },
+    {
+      "name": "Mouth_Normal_Closed",
+      "sorting_order": 26
+    },
+    {
+      "name": "Eyes_Normal_Open",
+      "sorting_order": 42
+    },
+    {
+      "name": "ClippingMask_Facial_Normal03",
+      "sorting_order": 49
+    },
+    {
+      "name": "ClippingMask_Facial_Multiply",
+      "sorting_order": 50
+    },
+    {
+      "name": "ClippingMask_Facial_Normal01",
+      "sorting_order": 52
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 59
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 65
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:11:39",
+  "builtin": true
+}

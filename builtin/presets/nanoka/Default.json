@@ -1,0 +1,69 @@
+{
+  "character_name": "nanoka",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body01",
+      "sorting_order": 1
+    },
+    {
+      "name": "OptionB_Body01",
+      "sorting_order": 3
+    },
+    {
+      "name": "HeadBase01",
+      "sorting_order": 10
+    },
+    {
+      "name": "Cheeks01_Normal",
+      "sorting_order": 12
+    },
+    {
+      "name": "Mouth01_Normal_Closed01",
+      "sorting_order": 24
+    },
+    {
+      "name": "Eyes01_Normal_Open01",
+      "sorting_order": 47
+    },
+    {
+      "name": "ClippingMask_Facial01_02",
+      "sorting_order": 54
+    },
+    {
+      "name": "ClippingMask_Facial01_01",
+      "sorting_order": 55
+    },
+    {
+      "name": "FacialLineDrawing01",
+      "sorting_order": 56
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 69
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 81
+    },
+    {
+      "name": "ClippingMask_Angle01_03",
+      "sorting_order": 83
+    },
+    {
+      "name": "ClippingMask_Angle01_02",
+      "sorting_order": 84
+    },
+    {
+      "name": "ClippingMask_Angle01_01",
+      "sorting_order": 85
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:18:46",
+  "builtin": true
+}

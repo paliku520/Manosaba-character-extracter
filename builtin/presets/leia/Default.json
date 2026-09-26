@@ -1,0 +1,61 @@
+{
+  "character_name": "leia",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "Normal",
+      "sorting_order": 11
+    },
+    {
+      "name": "Mouth_Normal_Closed",
+      "sorting_order": 27
+    },
+    {
+      "name": "Eyes_Normal_Open01",
+      "sorting_order": 48
+    },
+    {
+      "name": "ClippingMask_Facial_Normal02",
+      "sorting_order": 56
+    },
+    {
+      "name": "ClippingMask_Facial_Multiply",
+      "sorting_order": 57
+    },
+    {
+      "name": "ClippingMask_Facial_Normal01",
+      "sorting_order": 58
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 69
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 78
+    },
+    {
+      "name": "ClippingMask_Root_Softlight",
+      "sorting_order": 82
+    },
+    {
+      "name": "ClippingMask_Root_Overlay02",
+      "sorting_order": 83
+    },
+    {
+      "name": "ClippingMask_Root_Overlay01",
+      "sorting_order": 84
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:10:43",
+  "builtin": true
+}

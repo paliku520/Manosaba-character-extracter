@@ -127,6 +127,10 @@
   const filterParts = (...a) => MCE.filterParts(...a);
   const selectAll = (...a) => MCE.selectAll(...a);
   const selectClipMaskParts = (...a) => MCE.selectClipMaskParts(...a);
+  const savePreset = (...a) => MCE.savePreset(...a);
+  const deletePreset = (...a) => MCE.deletePreset(...a);
+  const importPreset = (...a) => MCE.importPreset(...a);
+  const exportPreset = (...a) => MCE.exportPreset(...a);
   const openSketchModal = (...a) => MCE.openSketchModal(...a);
   const syncSketchSizeLabel = (...a) => MCE.syncSketchSizeLabel(...a);
   const isAnanSketchMode = (...a) => MCE.isAnanSketchMode(...a);
@@ -227,6 +231,19 @@
     });
 
     $('#btn-composite').addEventListener('click', doComposite);
+
+    // 用户预设：下拉由 parts.js 动态构建（自绘下拉），这里只绑保存 / 导入 / 导出 / 删除按钮
+    const btnPresetSave = $('#btn-preset-save');
+    if (btnPresetSave) btnPresetSave.addEventListener('click', savePreset);
+    const btnPresetImport = $('#btn-preset-import');
+    // 必须包一层：importPreset(initial) 的第一个参数是「拖入的文件内容」，
+    // 直接把函数交给 addEventListener 会把 MouseEvent 当文件传进去（弹出假的"JSON 格式不正确"）
+    if (btnPresetImport) btnPresetImport.addEventListener('click', () => importPreset());
+    const btnPresetExport = $('#btn-preset-export');
+    if (btnPresetExport) btnPresetExport.addEventListener('click', exportPreset);
+    const btnPresetDelete = $('#btn-preset-delete');
+    if (btnPresetDelete) btnPresetDelete.addEventListener('click', deletePreset);
+
     $('#btn-save').addEventListener('click', () => { if (App.characterData) api().save_composite(); });
     $('#btn-clear-preview').addEventListener('click', clearPreview);
     $('#auto-update').addEventListener('change', (e) => {

@@ -147,7 +147,7 @@ def _worker_main() -> None:
                 _send({"event": "progress", "payload": {"current": cur, "total": total}})
 
             bp = str(args["bundle_path"])
-            out = str(args["output_dir"])
+            out = str(args.get("output_dir") or "")
             if kind == "extract_character":
                 result = extract_character_data(Path(bp), Path(out), progress_callback=_cb)
             elif kind == "extract_sprites":

@@ -38,6 +38,7 @@
   const renderParts = (...a) => MCE.renderParts(...a);
   const updateSelUI = (...a) => MCE.updateSelUI(...a);
   const clearPartsUI = (...a) => MCE.clearPartsUI(...a);
+  const setPartsPlaceholder = (...a) => MCE.setPartsPlaceholder(...a);
   const renderHierarchy = (...a) => MCE.renderHierarchy(...a);
   const renderPreviewGrid = (...a) => MCE.renderPreviewGrid(...a);
   const showSpritePreviewProgress = (...a) => MCE.showSpritePreviewProgress(...a);
@@ -226,6 +227,7 @@
     setErrorStatus();
     setStatus(t('app.status.analyze_failed'));
     toast(t('dialog.process_error_msg', { msg: r.message }), 'error');
+    setPartsPlaceholder('select');   // 加载失败：退回“请选择角色”提示（此时无可展示数据）
   });
 
   on('thumbnails_ready', (map) => {

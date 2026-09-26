@@ -436,7 +436,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .parts-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .parts-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.parts-toolbar-actions { display: flex; align-items: center; gap: 6px; }
+.parts-toolbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; row-gap: 6px; }
 /* 顶部工具栏图标按钮：短标签防换行；长操作（快速勾选 ClippingMask）做成纯图标 + 悬停说明 */
 .parts-toolbar-actions .btn { white-space: nowrap; }
 .parts-toolbar-actions .btn svg { flex-shrink: 0; }
@@ -482,6 +482,91 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 .parts-search-wrap { position: relative; flex: 1 1 100%; display: flex; align-items: center; margin-top: 2px; }
 .parts-search-wrap svg { position: absolute; left: 10px; color: var(--text-faint); pointer-events: none; }
 .parts-search-wrap .search { width: 100%; padding-left: 32px; }
+
+/* 预设栏：作为部件工具栏（同一卡片）内的独立一行（搜索框上方），避免悬浮在外的割裂感；
+   窄窗口下允许换行（操作按钮可落到下一行右对齐），不再横向溢出卡片 */
+.parts-preset-bar {
+  /* 独占一行：用 width:100% + flex:1 1 auto（而非 flex-basis:100%，后者在
+     换行 flex 容器里会变成硬下限，窄宽时把卡片撑破） */
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;   /* 允许被压到内容最小宽以下，避免撑宽工具栏卡片 */
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px; row-gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.parts-preset-bar[hidden] { display: none; } /* 覆盖 display:flex，让 hidden 生效（角色数据就绪前不展示） */
+.parts-preset-bar .btn { white-space: nowrap; }
+/* 操作按钮自身也可换行（极端窄宽时上下排列），避免把整行撑出卡片 */
+.preset-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 1 auto; flex-wrap: wrap; }
+/* flex-basis 控制理想宽度、min-width:0 允许被压缩到可用宽度（过长名称靠省略号 + 悬停气泡） */
+.preset-slot { flex: 1 1 140px; min-width: 0; max-width: 240px; display: flex; }
+.preset-slot .color-picker { flex: 1 1 auto; min-width: 0; }
+/* 边框权重与同行搜索框 .search 一致（都是工具栏卡片内的控件，不用更重的 --border-strong） */
+.preset-slot .color-picker-btn { height: 31px; padding: 0 10px; font-size: 12px; border-color: var(--border); }
+.preset-slot .color-picker-btn:hover { border-color: var(--text-faint); }
+.preset-slot .color-picker-btn:disabled { opacity: .6; cursor: default; }
+.preset-slot .color-picker-btn:disabled:hover { border-color: var(--border); }
+.preset-slot .cp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preset-name-input {
+  width: 100%; box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--bg-panel); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  font-size: 13px; font-family: var(--font);
+}
+.preset-name-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── 预设导入 / 导出模态 ── */
+.preset-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+.preset-tab {
+  padding: 5px 12px; font-size: 12px; font-family: inherit;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--bg-panel); color: var(--text-dim); cursor: pointer;
+}
+.preset-tab:hover { border-color: var(--text-faint); color: var(--text); }
+.preset-tab.active {
+  background: var(--accent-soft); color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.preset-pane { display: flex; flex-direction: column; gap: 8px; }
+.preset-pane[hidden] { display: none; }
+.preset-pane .hint { margin: 0; font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+/* 预设文本框：允许手动拉高，但必须限高——否则拉得比模态还高时右下角的拖拽手柄会跑出可视区，无法再拉回来 */
+.preset-textarea {
+  width: 100%; box-sizing: border-box; min-height: 92px; max-height: 45vh;
+  padding: 8px 10px; background: var(--bg-panel); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  font-size: 12px; font-family: var(--mono); resize: vertical; outline: none;
+}
+.preset-textarea:focus { border-color: var(--accent); }
+.preset-file-status { font-size: 12px; color: var(--text-dim); font-family: var(--mono); min-height: 18px; overflow-wrap: anywhere; }
+.preset-file-status.ok { color: var(--accent); }
+.preset-name-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.preset-name-row label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.preset-name-row .preset-name-input { flex: 1 1 auto; width: auto; min-width: 0; }
+.preset-tab-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* 「选择 / 拖入」单按钮卡片：点击=选文件，拖拽经过时高亮（实际落点仍是整个模态） */
+.preset-drop-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px; padding: 14px 12px; width: 100%; box-sizing: border-box;
+  font-family: inherit; font-size: 12.5px; line-height: 1.4;
+  color: var(--text); background: transparent;
+  border: 1px dashed var(--border-strong); border-radius: 10px;
+  cursor: pointer; text-align: center;
+  transition: border-color .12s ease, background .12s ease;
+  -webkit-user-select: none; user-select: none;
+}
+.preset-drop-card svg { display: block; color: var(--text-faint); transition: color .12s ease; }
+.preset-drop-card:hover { border-color: var(--text-faint); background: var(--bg-elev); }
+.preset-drop-card:hover svg { color: var(--text-dim); }
+.preset-drop-card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.preset-drop-card.drop { border-color: var(--accent); background: var(--accent-soft); }
+.preset-drop-card.drop svg, .preset-drop-card.drop .preset-drop-title { color: var(--accent); }
+.preset-drop-card.drop .preset-drop-sub { color: var(--accent); opacity: .85; }
+.preset-drop-title { font-size: 12.5px; }
+.preset-drop-sub { font-size: 11px; color: var(--text-faint); }
 
 .pill {
   font-size: 11px; padding: 2px 9px; border-radius: 20px;
@@ -643,7 +728,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 /* 行2：导出原始画质（左）… 预览画质（右） */
 .pv-settings {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; min-width: 0;
+  gap: 10px; row-gap: 6px; min-width: 0; flex-wrap: wrap;
 }
 .pv-settings .pq-wrap { margin-left: 0; flex: 0 0 auto; }
 /* 统一控件高度：预览区的按钮 / 滑杆 / 下拉固定为 32px，消除参差感 */
@@ -911,6 +996,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 #drop-overlay .drop-overlay-inner {
   display: flex; flex-direction: column; align-items: center; gap: 14px;
   color: var(--accent); font-size: 18px; font-weight: 600;
+  max-width: 78%; text-align: center; line-height: 1.5;
   -webkit-user-select: none; user-select: none;
 }
 
@@ -1048,7 +1134,7 @@ select.input {
 }
 .color-picker-list {
   position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
-  max-height: 220px; overflow-y: auto; padding: 4px;
+  max-height: 220px; overflow-y: auto; overflow-x: hidden; padding: 4px;
   background: var(--bg-elev); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); box-shadow: var(--shadow);
   display: block; opacity: 0; visibility: hidden;
@@ -1064,6 +1150,8 @@ select.input {
   padding: 6px 8px; background: transparent; border: none; border-radius: 6px;
   color: var(--text); font-size: 13px; cursor: pointer; text-align: left;
 }
+/* 选项名过长时换行完整显示（不断词也可断开），避免横向溢出被截断 */
+.color-picker-item .cp-name { min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
 .color-picker-item:hover { background: var(--bg-active); }  /* 深色模式下与列表底(--bg-elev)形成明显对比 */
 .color-picker-item.selected { background: var(--accent-soft); }
 
@@ -1442,6 +1530,14 @@ body.no-anim .about-bg-layer { transition: opacity .6s ease !important; }
   .part-alpha { display: none; }
   .preview-toolbar { padding: 6px 10px; }
   .preview-scroll { margin: 0 10px 10px; }
+}
+/* 很窄窗口（窗口最小宽 520px）：左右两栏改为上下排布，
+   否则部件栏会被预览列的最小宽度挤到 0 宽、工具栏元素冲出卡片 */
+@media (max-width: 860px) {
+  .parts-layout { flex-direction: column; overflow-y: auto; }
+  .parts-col, .preview-col { flex: 1 1 auto; min-width: 0; min-height: 0; }
+  .parts-list { min-height: 110px; }
+  .preview-scroll { min-height: 150px; }
 }
 /* 矮窗口高度：压缩工具栏与已选列表占用的竖向空间，提升可用预览面积 */
 @media (max-height: 760px) {

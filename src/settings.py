@@ -44,32 +44,43 @@ def _get_config_file() -> Path:
     return _get_config_dir() / "settings.json"
 
 
+def get_presets_dir() -> Path:
+    """返回预设目录（data/presets/，与 settings.json 同级）。
+
+    存放用户自建预设：data/presets/<角色>/<预设名>.json（每个预设单独一个文件）。
+    刻意与 temp/ 缓存解耦：清除缓存 / 重新提取不会丢失。
+    """
+    return _get_config_dir() / "presets"
+
+
 # 配置文件路径
 CONFIG_FILE = _get_config_file()
 
 
-def _hide_config_dir() -> None:
-    """Windows 上给配置目录设置隐藏属性（普通用户看不到；目录隐藏不影响内部文件读写）"""
+def _set_file_attrs(path: Path, attrs: int) -> None:
+    """Windows 上设置文件 / 目录属性（非 Windows 静默跳过）"""
     if sys.platform != "win32":
         return
     try:
         import ctypes
-        # FILE_ATTRIBUTE_HIDDEN = 0x2（仅隐藏目录，文件本身保持普通属性以正常读写）
-        ctypes.windll.kernel32.SetFileAttributesW(str(CONFIG_FILE.parent), 0x2)
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), attrs)
     except Exception:
         pass
 
 
 def _normalize_config_file() -> None:
     """Windows 上确保配置文件为普通属性（清除隐藏/系统，避免写入被拒）"""
-    if sys.platform != "win32":
-        return
-    try:
-        import ctypes
-        # FILE_ATTRIBUTE_NORMAL = 0x80
-        ctypes.windll.kernel32.SetFileAttributesW(str(CONFIG_FILE), 0x80)
-    except Exception:
-        pass
+    _set_file_attrs(CONFIG_FILE, 0x80)      # FILE_ATTRIBUTE_NORMAL
+
+
+def _apply_config_attrs() -> None:
+    """隐藏 settings.json 自身；同时确保 data/ 目录可见。
+
+    data/ 目录特意保持可见（历史版本曾隐藏整个目录）：data/presets/ 需要用户能直接
+    看到、备份与提交；settings.json 仍隐藏，避免普通用户误改。
+    """
+    _set_file_attrs(CONFIG_FILE, 0x2)           # FILE_ATTRIBUTE_HIDDEN（仅文件）
+    _set_file_attrs(CONFIG_FILE.parent, 0x80)   # FILE_ATTRIBUTE_NORMAL（清掉旧的目录隐藏）
 
 
 def _migrate_legacy() -> None:
@@ -82,7 +93,7 @@ def _migrate_legacy() -> None:
             CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
             old.replace(CONFIG_FILE)
             _normalize_config_file()
-            _hide_config_dir()
+            _apply_config_attrs()
             log("info", f"Migrated settings: {old.name} -> {CONFIG_FILE}")
         else:
             old.unlink()  # 新文件已存在，移除旧文件避免混淆
@@ -132,12 +143,12 @@ def _default_settings() -> Dict[str, Any]:
 
 
 def _write_settings(data: Dict[str, Any]) -> None:
-    """写入新版嵌套结构到配置文件（写前确保目录/文件可写并保持 data/ 隐藏）"""
+    """写入新版嵌套结构到配置文件（写前确保目录/文件可写，写入后恢复 settings.json 隐藏）"""
     try:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         _normalize_config_file()   # 写前清除文件隐藏/系统属性，确保可写
         CONFIG_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
-        _hide_config_dir()
+        _apply_config_attrs()
     except OSError as e:
         log("warning", _("log.settings_save_failed", e=e))
 
@@ -245,14 +256,14 @@ def load_settings() -> Dict[str, Any]:
             data, changed = _default_settings(), True
         if changed:
             _write_settings(data)
-        _hide_config_dir()
+        _apply_config_attrs()
         return data
     except Exception as e:
         log("warning", f"Failed to load settings: {e}")
         _repair_config()
         data = _default_settings()
         _write_settings(data)
-        _hide_config_dir()
+        _apply_config_attrs()
         return data
 
 
@@ -265,7 +276,7 @@ def _repair_config() -> None:
             CONFIG_FILE.replace(bak)
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
         CONFIG_FILE.write_text(json.dumps({}, indent=2, ensure_ascii=False), encoding="utf-8")
-        _hide_config_dir()
+        _apply_config_attrs()
         log("info", _("log.settings_repaired", path=str(bak)))
     except OSError as e:
         log("warning", f"Failed to repair settings: {e}")

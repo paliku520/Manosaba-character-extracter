@@ -123,12 +123,18 @@
     backdrop.appendChild(modal);
     $('#modal-root').appendChild(backdrop);
 
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      // 仅最上层模态响应 Esc：嵌套模态（如导入 → 覆盖确认）不会一起被关掉
+      const root = $('#modal-root');
+      if (root && root.lastElementChild !== backdrop) return;
+      close();
+    };
     const close = () => { backdrop.remove(); document.removeEventListener('keydown', onKey); };
     document.addEventListener('keydown', onKey);
     // 点击模态外部不关闭，需通过按钮 / ✕ / Esc 显式操作
     x.addEventListener('click', close);
-    return { close, bodyEl, footerEl };
+    return { close, bodyEl, footerEl, backdrop, modal };
   }
 
   function btn(text, cls, onClick) {
@@ -266,7 +272,8 @@
   });
 
   // 通用自绘下拉（软件风格，替代原生 <select>；复用 color-picker 样式与互斥逻辑）
-  function createDropdown({ options, value }) {
+  // placeholder: 未选择（当前值不在选项里）时按钮显示的文案，避免空标签
+  function createDropdown({ options, value, placeholder }) {
     const wrap = document.createElement('div');
     wrap.className = 'color-picker';
     const btn = document.createElement('button');
@@ -317,7 +324,13 @@
       el: wrap,
       get value() { return current; },
       set value(v) {
-        if (!(v in items)) return;
+        if (!(v in items)) {
+          // 未选择状态：按钮显示占位文案（不再留空），并清掉列表选中高亮
+          current = v;
+          label.textContent = placeholder || '';
+          Object.keys(items).forEach((k) => items[k].classList.remove('selected'));
+          return;
+        }
         current = v;
         label.textContent = labelFor(v);
         Object.keys(items).forEach((k) => items[k].classList.toggle('selected', k === v));
@@ -327,17 +340,24 @@
       positionList() {
         const rect = btn.getBoundingClientRect();
         const gap = 4;
+        // 列表宽度不锁死按钮宽度：内容更长时按内容放宽（上限 320px / 视口内），
+        // 避免长选项名（如预设名）被硬挤进窄按钮宽度里截断
+        const maxW = Math.max(rect.width, Math.min(320, window.innerWidth - 2 * gap));
+        list.style.position = 'fixed';
+        list.style.right = 'auto';
+        list.style.width = 'auto';
+        list.style.minWidth = rect.width + 'px';
+        list.style.maxWidth = maxW + 'px';
+        const listW = Math.min(maxW, Math.max(rect.width, list.offsetWidth || rect.width));
+        const left = Math.max(gap, Math.min(rect.left, window.innerWidth - listW - gap));
         const listH = list.offsetHeight || 0;
         const spaceBelow = window.innerHeight - rect.bottom - gap;
         let top = rect.bottom + gap;
         if (spaceBelow < listH && rect.top - gap > spaceBelow) {
           top = Math.max(gap, rect.top - listH - gap); // 底部空间不足时向上展开
         }
-        list.style.position = 'fixed';
-        list.style.left = rect.left + 'px';
+        list.style.left = left + 'px';
         list.style.top = top + 'px';
-        list.style.right = 'auto';
-        list.style.width = rect.width + 'px';
         list.style.maxHeight = Math.min(220, window.innerHeight - 2 * gap) + 'px';
       },
       openList() {
@@ -366,7 +386,7 @@
           const nm = items[k].querySelector('.cp-name');
           if (nm) nm.textContent = getLabel(k);
         });
-        label.textContent = getLabel(current);
+        label.textContent = (current in items) ? getLabel(current) : (placeholder || '');
       },
     };
     btn.addEventListener('click', (e) => {

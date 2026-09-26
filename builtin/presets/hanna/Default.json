@@ -1,0 +1,61 @@
+{
+  "character_name": "hanna",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "HairB01",
+      "sorting_order": 2
+    },
+    {
+      "name": "Body",
+      "sorting_order": 4
+    },
+    {
+      "name": "HeadBase01",
+      "sorting_order": 7
+    },
+    {
+      "name": "Cheeks01_Normal",
+      "sorting_order": 9
+    },
+    {
+      "name": "Mouth01_Normal_Open",
+      "sorting_order": 21
+    },
+    {
+      "name": "Eyes01_Normal_Open",
+      "sorting_order": 32
+    },
+    {
+      "name": "HairClippingMask01",
+      "sorting_order": 34
+    },
+    {
+      "name": "Facial01_Softlight",
+      "sorting_order": 40
+    },
+    {
+      "name": "ArmR03",
+      "sorting_order": 43
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 48
+    },
+    {
+      "name": "ArmL01_Softlight",
+      "sorting_order": 54
+    },
+    {
+      "name": "Blending01",
+      "sorting_order": 56
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:08:12",
+  "builtin": true
+}

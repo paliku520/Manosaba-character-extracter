@@ -32,6 +32,52 @@ MCE_BANNER = """███╗   ███╗ ██████╗█████
 ╚═╝     ╚═╝ ╚═════╝╚══════╝"""
 
 
+def _bundle_root() -> Path:
+    """PyInstaller onedir 产物中随包资源所在目录（6.x 在 _internal/，5.x 与 exe 同级）"""
+    base = PROJECT_ROOT / "dist" / "backend"
+    internal = base / "_internal"
+    return internal if internal.is_dir() else base
+
+
+def count_builtin_sources() -> int:
+    """仓库内置预设源头文件数（builtin/presets/<角色>/<名称>.json）"""
+    src = PROJECT_ROOT / "builtin" / "presets"
+    return len(list(src.glob("*/*.json"))) if src.is_dir() else 0
+
+
+def verify_bundled_resources() -> bool:
+    """校验 i18n / 内置预设是否随包，且落位与运行时读取路径一致。
+
+    这类问题只会在打包后暴露（开发版直读仓库目录），所以构建时就断言。
+    """
+    root = _bundle_root()
+    ok = True
+
+    i18n = root / "i18n" / "common" / "zh_CN.yaml"
+    if i18n.is_file():
+        print(f"[OK] 已打包翻译: {i18n.relative_to(root)}")
+    else:
+        print(f"[!] 缺少翻译文件: {i18n}")
+        ok = False
+
+    # 必须落在 builtin_presets/<角色>/<名称>.json（src/preset_store.py 的 builtin_dir() 读取路径）
+    builtin = root / "builtin_presets"
+    files = sorted(builtin.glob("*/*.json")) if builtin.is_dir() else []
+    if files:
+        chars = {p.parent.name for p in files}
+        print(f"[OK] 已打包内置预设: {len(files)} 个文件 / {len(chars)} 个角色 → {builtin.relative_to(root)}")
+        src_count = count_builtin_sources()
+        if src_count and len(files) != src_count:
+            print(f"[WARN] 内置预设数量不一致: 仓库 {src_count} / 包内 {len(files)}")
+    else:
+        print(f"[!] 内置预设未随包（应为 {builtin}/<角色>/<名称>.json）")
+        if (builtin / "presets").is_dir():
+            print("    → 包内多出一层 presets/：--add-data 的源应写 builtin/presets（PyInstaller 拷贝的是源目录的内容）")
+        ok = False
+
+    return ok
+
+
 def run_pyinstaller(
     company: Optional[str] = None,
     product_name: Optional[str] = None,
@@ -68,6 +114,10 @@ def run_pyinstaller(
         "--collect-all", "archspec",     # 收集 archspec JSON 数据文件
         # 打包翻译文件 i18n/（后端从 _MEIPASS 读取）
         "--add-data", f"{PROJECT_ROOT / 'i18n'};i18n",
+        # 打包内置预设源头：注意源必须写到 builtin/presets（PyInstaller 拷贝的是"源目录的内容"），
+        # 否则包里会多出一层 builtin_presets/presets/，而运行时读的是 _MEIPASS/builtin_presets/<角色>/<名称>.json
+        # → 打包版看不到任何内置预设（启动时也就无法镜像 / 自愈到 data/presets）。
+        "--add-data", f"{PROJECT_ROOT / 'builtin' / 'presets'};builtin_presets",
         # 防御性排除：业务代码已不导入这些模块（GUI 全部由 Electron 承担），
         # 此处仅防止间接依赖把它们带进包体
         "--exclude-module", "webview",
@@ -84,6 +134,12 @@ def run_pyinstaller(
     else:
         print(f"[WARN] 图标文件不存在: {icon}，跳过")
 
+    builtin_count = count_builtin_sources()
+    if builtin_count:
+        print(f"[INFO] 内置预设源头: {builtin_count} 个（builtin/presets/<角色>/<名称>.json）")
+    else:
+        print("[WARN] 未找到内置预设源头 builtin/presets/*/*.json —— 打包版将没有内置预设")
+
     PyInstaller.__main__.run(args)
 
     exe = PROJECT_ROOT / "dist" / "backend" / "backend.exe"
@@ -94,6 +150,14 @@ def run_pyinstaller(
         print("=" * 60)
     else:
         print("[!] 未找到 backend.exe，打包可能失败")
+
+    # 随包资源校验：缺了就直接失败（否则要等用户装完包才发现内置预设不见了）
+    print("-" * 60)
+    if not verify_bundled_resources():
+        print("  随包资源校验失败，已中断打包")
+        print("=" * 60)
+        sys.exit(1)
+    print("=" * 60)
 
 
 if __name__ == "__main__":

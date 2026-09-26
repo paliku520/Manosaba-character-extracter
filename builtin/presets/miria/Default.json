@@ -1,0 +1,53 @@
+{
+  "character_name": "miria",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "Mouth_Normal_Open",
+      "sorting_order": 16
+    },
+    {
+      "name": "Eyes_Normal_Open01",
+      "sorting_order": 40
+    },
+    {
+      "name": "ClippingMask_Eyes",
+      "sorting_order": 42
+    },
+    {
+      "name": "Cheeks_Normal",
+      "sorting_order": 44
+    },
+    {
+      "name": "ClippingMask_Facial",
+      "sorting_order": 52
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 62
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 71
+    },
+    {
+      "name": "ClippingMask_Effect_Root_02",
+      "sorting_order": 73
+    },
+    {
+      "name": "ClippingMask_Effect_Root_01",
+      "sorting_order": 74
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:16:58",
+  "builtin": true
+}

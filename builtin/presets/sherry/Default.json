@@ -1,0 +1,53 @@
+{
+  "character_name": "sherry",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "Cheeks_Normal",
+      "sorting_order": 3
+    },
+    {
+      "name": "Mouth_Normal_Middle",
+      "sorting_order": 20
+    },
+    {
+      "name": "Eyes_Normal_Open01",
+      "sorting_order": 50
+    },
+    {
+      "name": "HairColoringClippingMask",
+      "sorting_order": 59
+    },
+    {
+      "name": "HairLineClippingMask",
+      "sorting_order": 60
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 79
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 94
+    },
+    {
+      "name": "RootBlendingSoftlight",
+      "sorting_order": 96
+    },
+    {
+      "name": "RootBlendingOverlay",
+      "sorting_order": 97
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:21:39",
+  "builtin": true
+}

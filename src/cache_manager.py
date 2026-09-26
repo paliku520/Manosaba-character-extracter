@@ -66,6 +66,7 @@ def load_extracted_data(cache_dir: Path, character_name: str) -> Optional[Dict]:
 
         # 旧缓存可能没有 mask_mapping：尝试读取同目录的 mask_mapping.json（独立生成的文件）
         if "mask_mapping" not in data:
+            save_dir = cache_dir / character_name
             mm_path = save_dir / "mask_mapping.json"
             if mm_path.exists():
                 try:

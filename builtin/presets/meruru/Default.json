@@ -1,0 +1,61 @@
+{
+  "character_name": "meruru",
+  "name": "Default",
+  "parts": [
+    {
+      "name": "Body",
+      "sorting_order": 1
+    },
+    {
+      "name": "HeadBase01",
+      "sorting_order": 45
+    },
+    {
+      "name": "Cheeks01_Normal",
+      "sorting_order": 47
+    },
+    {
+      "name": "Mouth01_Normal_Open01",
+      "sorting_order": 62
+    },
+    {
+      "name": "Eyes01_Normal_Open01",
+      "sorting_order": 79
+    },
+    {
+      "name": "ClippingMask_Eyes01_01",
+      "sorting_order": 81
+    },
+    {
+      "name": "ClippingMask_Facial01_01",
+      "sorting_order": 86
+    },
+    {
+      "name": "ArmL01",
+      "sorting_order": 106
+    },
+    {
+      "name": "ArmR01",
+      "sorting_order": 120
+    },
+    {
+      "name": "OptionF_Head01_ArmR01",
+      "sorting_order": 135
+    },
+    {
+      "name": "ClippingMask_Angle01_02",
+      "sorting_order": 137
+    },
+    {
+      "name": "ClippingMask_Angle01_01",
+      "sorting_order": 138
+    }
+  ],
+  "sketch": {
+    "text": "",
+    "size": 56,
+    "align": "center"
+  },
+  "updated": "2026-09-26 13:15:38",
+  "builtin": true
+}
