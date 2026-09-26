@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md)
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
-Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**: auto-detect component data, export sprites directly, or composite full illustrations. The UI is an **Electron frameless window**, with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
+Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**: auto-detect component data, export sprites directly, composite full illustrations, or render character nameplates in the game's original layout. The UI is an **Electron frameless window**, with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
 
 ## Related Projects
 >- **[Manosaba-Library](https://github.com/QwQSakuya/Manosaba-Library)** — Another project from the "Magical Girl's Witch Trial" community, it's a fan-made unofficial resource site that collects story node maps, evidence compendiums, CG galleries, voice and music files, and a full material library index, with support for online character illustration previews.
@@ -14,17 +14,21 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Character Compositing** — Composite full illustrations by part position, depth & clipping masks, with categories/thumbnails and Multiply / Overlay / Softlight blend modes to reproduce the original look
 - **Anan Sketchbook** — Custom text on anan's sketchbook parts (font size / alignment / auto wrap)
 - **Part Management** — search, natural sorting, collapsible groups, select all, quick-select ClippingMask parts, click to copy name
+- **Part Presets** — built-in default combinations for each character, restore checks with one click; save your own combinations and import/export them as JSON files / codes (built-in presets are protected and cannot be overwritten or deleted)
 - **Live Preview** — wheel zoom (cursor-centered), drag pan
+- **Zoom Viewer** — zoom into composites / single parts / sprites: wheel zoom, drag pan, export directly from the viewer
 - **Preview Quality / Original Export** — preview composites at lower resolution to reduce load; export keeps original quality by default, can switch to match preview
 - **Low-end GPU Optimization** — can disable hardware acceleration (software rendering) and UI animations for smoother low-end devices
 - **Sprite Preview** — one-click preview of all sprites for no-component characters, check to export
+- **Nameplate Compositing** — enter a name on the home page to render a nameplate PNG in the game's original layout (saved to `output/nameplate/`); on first use, "Extract Assets" locates the game directory and extracts the base plate & fonts (the search can be cancelled, or pick a bundle manually)
 - **Hierarchy Viewer** — component tree, copy button per row
 - **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it; remembers the last used game directory
+- **Cancellable Loading** — character analysis can be cancelled at any time, instantly returning to a usable state
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
 - **Memory Reclaim** — Releases resources immediately with GC triggers; forced GC before exit
 - **Taskbar Effects** — Electron mode shows progress during loading and flashes the taskbar when done
 - **Debug Mode** — Monitor memory/CPU/window resolution (current run only)
-- **Log Files** — Console logs also written to `logs/`, one-click cleanup
+- **Log Files / Console** — Console logs also written to `logs/`, one-click cleanup; plus a standalone log console window (level filtering, multi-line merging, save to file)
 - **Multi-language / Theme** — Simplified Chinese / English / 日本語 / Magical Girl Language; dark/light theme + character accent colors persisted
 - **Total Exports / About / Auto Update Check / Disclaimer** (third-party unofficial tool)
 
@@ -75,11 +79,12 @@ cd electron && npm install             # Electron dependencies
 1. Click a character on the left → the program auto-detects:
    - **No component data** → Preview Sprites / Export All Directly / Cancel
    - **With component data** → Direct Export / Composite Character
-2. Composite mode: check parts → live preview → save composite PNG
+2. Composite mode: check parts (or pick a built-in / custom preset from the preset bar) → live preview → save composite PNG
+3. Nameplate: enter a name on the home page nameplate card, pick font & first-letter color → generate preview → save (run "Extract Assets" first)
 
 ### Settings
 
-Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Spoiler Notice**, **Preview Quality** (10–100%, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Auto-find characters directory** (when off, you must manually pick the folder that directly contains the character bundles), **Spoiler Notice**, **Preview Quality** (25–100%, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 
@@ -89,8 +94,9 @@ After installation, the app reads/writes the following data under its **install 
 
 | Path | Purpose |
 |---|---|
-| `D:\mce\data` | Settings `settings.json` |
-| `D:\mce\output` | Exported sprites / composite PNGs |
+| `D:\mce\data` | Settings `settings.json` + part presets `presets\` |
+| `D:\mce\data\nameplate` | Extracted nameplate assets & fonts (copyrighted assets are not bundled; used when `webui` is read-only in the installed build) |
+| `D:\mce\output` | Exported sprites / composites / nameplate PNGs |
 | `D:\mce\temp` | Sprite cache (clearable) |
 | `D:\mce\resources\backend\logs` | Runtime logs (one-click cleanup) |
 
@@ -106,24 +112,30 @@ After installation, the app reads/writes the following data under its **install 
 ```
 output/
 ├── <name>/            # No components: sprites flat here
-└── <name>/            # With components: sprites/ (sprites) + composite/ (composite images)
-    ├── character_data.json  # part / hierarchy data
-    └── mask_mapping.json    # mask & blend mode mapping
+├── <name>/            # With components: sprites/ (sprites) + composite/ (composite images)
+│   ├── character_data.json  # part / hierarchy data
+│   └── mask_mapping.json    # mask & blend mode mapping
+└── nameplate/         # Nameplate PNGs (named after the entered name, auto-numbered on conflict)
 temp/                  # Sprite cache (clearable, speeds up re-loading)
+data/presets/          # Part presets (built-in mirror + user-created; clearing the cache keeps them)
 ```
 
 ## Project Structure
 
 ```
-├── run.py             # Business logic layer (JsApi: compositing/preview/settings; no GUI dependency)
+├── run.py             # Business logic layer (JsApi: compositing/preview/settings/extraction/nameplates/update check; no GUI dependency)
 ├── backend.py         # stdio JSON-RPC backend process (the only entry, reuses run.py's JsApi)
 ├── electron/          # Electron UI shell
 │   ├── main.js        #   main process: frameless window + window control + native dialogs + Python child bridge
 │   ├── preload.js     #   bridge layer: window.pywebview.api / __pywebview.events / __electron
+│   ├── nsis/          #   installer customization (upgrade data protection / allow-list uninstall)
 │   └── package.json
-├── webui/             # Frontend (index.html + css/ + js/, fully local, no CDN)
-├── src/               # Core modules (loading, compositing, export, cache, i18n, settings, etc.)
+├── webui/             # Frontend (index.html + css/ + js/, fully local, no CDN; console/ is the log console window)
+├── src/               # Core modules (bundle loading, compositing, export, cache, presets, nameplates, i18n, settings, update check, etc.)
+├── i18n/              # Language packs (YAML: common + games/<game>; all 4 languages share the same key set)
+├── builtin/           # Built-in part presets (shipped with the package, read-only)
 ├── scripts/           # PyInstaller packaging scripts
+├── docs/              # English README, etc.
 ├── output/            # Output directory (generated at runtime)
 └── temp/              # Sprite cache (generated at runtime)
 ```
@@ -152,10 +164,10 @@ The content extracted by this tool is from the game **"魔法少女ノ魔女裁�
 
 This project is a **deep refactoring and performance-optimized version** of the [KabeNaki](https://github.com/lingk7/KabeNaki) project. Special thanks to the original project author [lingk7](https://github.com/lingk7) for their outstanding work.
 
-**Refactoring and optimizations include:**
-- **Architecture Refactoring**: Split the original monolithic file into a modular design (`bundleloader`, `compositor`, `tools`, etc.) for improved maintainability.
-- **Performance Optimization**: Optimized UI responsiveness and data processing flow, eliminating unnecessary full UI rebuilds.
-- **Feature Enhancements**: Added multi-character management, batch directory scanning, path memory, TreeView hierarchy, multi-language support, and cache reuse.
+On that basis, this project received a comprehensive technical upgrade:
+- **GUI framework migration**: fully migrated from `tkinter` to `Electron`, bringing a more modern, fluid UI and better platform compatibility.
+- **Architecture & packaging refactor**: split into a Python backend and an Electron frontend, with a one-click packaged installer for a better distribution and installation experience.
+- **Feature & UX enhancements**: on top of sprite extraction, added more precise `ClippingMask` handling, character accent colors, live preview zooming, extended multi-language support, and many other refinements.
 
 ### License
 
@@ -178,3 +190,8 @@ python scripts\build_electron.py            # One-click: backend + portable zip 
 - Version is read automatically from `src/version.py` (artifacts `MCE-Setup-<version>.exe` / `MCE-<version>-win.zip` and the backend exe version info stay in sync; change the version in one place only)
 - electron-builder config: `electron/electron-builder.yml` (requires electron/node_modules installed)
 - see `--help` for more options
+
+> **Asset copyright note**: the nameplate base plate and the game fonts are copyrighted assets and are
+> **neither committed to the repository nor shipped in release packages** (`electron-builder.yml` excludes
+> `webui/assets/nameplate/` and the three game fonts from `extraResources`). End users must extract them
+> via "Extract Assets" in the app. The bundled UI fonts and the rest of the page resources are packaged as usual.
