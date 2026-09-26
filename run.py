@@ -43,6 +43,7 @@ from src.compositor import (
     has_component_data,
 )
 from src.export_manager import save_composite
+from src import nameplate
 from src import preset_store
 from src.worker_client import (
     LoadCancelledInWorker,
@@ -75,6 +76,7 @@ from src.settings import (
     get_disable_hardware_accel,
     get_export_count,
     get_export_original_quality,
+    get_last_directory,
     get_mode,
     get_no_spoiler,
     GAME_MODES,
@@ -341,6 +343,13 @@ class JsApi:
         self._composite_lock = threading.Lock()  # 合成串行锁：共享画布/精灵缓存同一时刻仅一个 worker 使用
         self._composite_gen = 0                  # 合成代号：新请求递增，旧请求被取代（防抖/最新优先）
         self._char_has_component: Dict[str, bool] = {}  # 加载目录时缓存的角色组件状态（避免点击时重复解析 bundle）
+
+        # 名片合成（素材/字体见 src/nameplate.py；渲染器按素材路径缓存）
+        self._nameplate_renderer: Optional["nameplate.NameplateRenderer"] = None
+        self._nameplate_key: Optional[Tuple[str, str]] = None
+        self._nameplate_image: Optional[Image.Image] = None
+        self._nameplate_cancel: bool = False        # 素材查找中止标志（前端「停止查找」置位）
+        self._nameplate_gen: int = 0               # 查找代号（新一次查找让仍在跑的旧查找自行退出）
 
         # 内置预设镜像：启动时即把 builtin/presets（打包版为包内 builtin_presets）写回
         # data/presets，误删 / 损坏的「Default」在此自动恢复
@@ -1250,6 +1259,274 @@ class JsApi:
             save_settings(export_count=self._export_count)
             log("info", _("log.composite_saved", path=path))
             self._emit("save_complete", {"ok": True, "path": str(path), "dir": str(path.parent), "export_count": self._export_count})
+        self._run_async(worker)
+        return True
+
+    # ── 名片合成 ──────────────────────────────────────────
+    #
+    # 素材与排版参数解析自游戏 bundle（见 src/nameplate.py 顶部说明）：
+    #   general-sprites_assets_all.bundle → Sprite "NamePlateBase"（601x289 空白名片底板）
+    #   naninovel-ui_assets_all.bundle    → AuthorBase / AuthorLabel 节点（字号 136、文本左边界 −213、
+    #                                        垂直中心 +14，均相对底板中心）
+    # 底板提取到 data/nameplate/（与 temp/ 解耦：清缓存不丢，无需重复提取）；
+    # 字体放 data/fonts/，由用户自备。
+
+    def _nameplate_assets(self) -> Dict:
+        """名片素材现状（按候选目录顺序查找底板）"""
+        for d in nameplate.nameplate_dirs():
+            base = d / nameplate.BASE_PNG_NAME
+            if base.exists():
+                return {"dir": str(d), "base": str(base), "ready": True}
+        d = nameplate.nameplate_dir(writable=True)
+        return {"dir": str(d), "base": "", "ready": False}
+
+    def _nameplate_renderer_instance(self) -> "nameplate.NameplateRenderer":
+        """返回（并缓存）名片渲染器；素材变化时自动重建"""
+        assets = self._nameplate_assets()
+        if not assets["ready"]:
+            raise nameplate.NameplateAssetsMissing(assets["dir"])
+        key = assets["base"]
+        if self._nameplate_renderer is None or self._nameplate_key != key:
+            self._nameplate_renderer = nameplate.NameplateRenderer(Path(assets["base"]))
+            self._nameplate_key = key
+            log("info", f"[nameplate] 已加载名片底板 {assets['base']}")
+        return self._nameplate_renderer
+
+    def get_nameplate_info(self) -> dict:
+        """名片合成的静态信息（同步）：素材状态 / 字体列表 / 权威排版参数 / 上次目录"""
+        assets = self._nameplate_assets()
+        try:
+            nameplate.fonts_dir(writable=True)      # 确保可写字体目录存在，便于用户直接往里放字体
+        except Exception:
+            pass
+        fonts_dir = nameplate.fonts_dir()
+        return {
+            "ready": assets["ready"],
+            "assets": assets,
+            "fonts": nameplate.list_fonts_all(),
+            "fonts_dir": str(fonts_dir),
+            "system_font": nameplate.system_font_path() or "",
+            # 现读 settings.json（不取 BundleLoader 的启动快照），与 prepare_nameplate 的起点一致
+            "last_directory": get_last_directory() or self._loader.last_path,
+            "layout": {
+                # 以下数字全部来自解析出的 UI 节点，前端只做展示/校准
+                "base_size": list(nameplate.BASE_SPRITE_SIZE),
+                "font_size": nameplate.LABEL_FONT_SIZE,
+                "label_size": list(nameplate.LABEL_SIZE),
+                "label_pos": list(nameplate.LABEL_ANCHORED_POS),
+                "margin_left": nameplate.LABEL_MARGIN_LEFT,
+                "center_y": nameplate.LABEL_CENTER_Y,
+                "steps": dict(nameplate.DEFAULT_FONT_STEPS),
+            },
+        }
+
+    def prepare_nameplate(self, bundle_path: str = "", with_fonts: bool = True):
+        """自动查找并提取名片素材 +（可选）游戏原版字体（事件: nameplate_assets）
+
+        查找起点 = settings.json 的 `last_directory`（**每次查找现读**，用户刚选的游戏目录立即生效）：
+        先在该目录及其下级查找（优先 `StandaloneWindows64`，素材实际存放处），
+        找不到再逐级向上做**浅层探测**；仅对最接近起点的少数几层做浅递归兜底
+        （见 src/nameplate.py 的 _RECURSE_ROOTS / _DEFAULT_DOWN_DEPTH）。
+        自动查找失败时返回 searched / hint 供前端提示，用户可用 bundle_path 手动指定（手动指引）。
+        查找期间用户可调 `cancel_nameplate_prepare` 中止（事件带 cancelled=True）。
+
+        with_fonts: 顺带提取游戏字体（TsukushiMincho / SourceHanSerifSC 等）到
+                    webui/assets/fonts/，已存在的同名文件跳过
+        """
+        self._nameplate_gen += 1                      # 新一次查找：让仍在跑的旧查找自行退出
+        gen = self._nameplate_gen
+
+        def worker():
+            self._nameplate_cancel = False            # 每次查找独立（上次的停止不留到这次）
+
+            def cancelled():
+                # 用户点了「停止查找」，或已被更新的一次查找取代
+                return self._nameplate_cancel or gen != self._nameplate_gen
+            try:
+                # 起点以 settings.json 为权威：**每次查找现读**，保证对 last_directory 的变化敏感
+                # （BundleLoader.last_path 只是进程启动时的快照，用户新选了游戏目录后可能仍是旧值）
+                start = Path(get_last_directory() or self._loader.last_path or ".")
+                searched: List[str] = []
+
+                src: Optional[Path] = Path(bundle_path) if bundle_path else None
+                if src is not None and not src.exists():
+                    src = None
+                if src is None:
+                    log("info", f"[nameplate] 自动查找名片素材，起点: {start}")
+                    src, searched = nameplate.find_sprites_bundle(start, should_cancel=cancelled)
+
+                if src is None or not src.exists():
+                    log("warning", f"[nameplate] 未找到名片素材 bundle（已搜索: {searched[:6]}）")
+                    if cancelled():                    # 期间已取消/已被新查找取代 → 不回灌陈旧结果
+                        return
+                    self._emit("nameplate_assets", {
+                        "ok": False,
+                        "error": "bundle_not_found",
+                        "manual": bool(bundle_path),   # True = 用户手动指定的文件也无效（不再自动弹选择框）
+                        "start": str(start),
+                        "searched": searched[:6],
+                        # 人工查找的位置指引（前端模态窗口展示：去哪里找、该选哪个文件）
+                        "hint": {
+                            "rel": nameplate.GAME_REL_HINT,
+                            "file": nameplate.BUNDLE_HINT_FILE,
+                        },
+                    })
+                    return
+
+                if cancelled():
+                    raise nameplate.NameplateSearchCancelled()
+                info = nameplate.extract_base_assets(src)   # 自动选可写目录（优先 webui/assets/nameplate）
+
+                # 顺带提取游戏原版字体（明朝体/宋体等），失败不影响底板提取
+                fonts_saved: List[Dict] = []
+                fonts_dir = nameplate.fonts_dir(writable=True)   # 只读安装 → 回退 data/nameplate/fonts
+                if with_fonts:
+                    try:
+                        bundles = nameplate.find_font_bundles(src.parent, should_cancel=cancelled)
+                        if bundles:
+                            fonts_saved = nameplate.extract_font_assets(bundles, fonts_dir)
+                    except Exception as e:
+                        log("warning", f"[nameplate] 提取游戏字体失败（可手动放入字体）: {e}")
+
+                self._nameplate_renderer = None       # 素材已更新 → 重建
+                self._nameplate_key = None
+                if cancelled():                       # 期间已取消/已被新查找取代 → 静默丢弃
+                    return
+                self._emit("nameplate_assets", {
+                    "ok": True,
+                    "bundle": str(src),
+                    "size": info["size"],
+                    "assets": self._nameplate_assets(),
+                    "fonts_extracted": fonts_saved,
+                    "fonts": nameplate.list_fonts_all(),
+                    "fonts_dir": str(fonts_dir),
+                    "searched": searched[:6],
+                })
+            except nameplate.NameplateSearchCancelled:
+                # 中止事件由 cancel_nameplate_prepare **立即**发出（点击即响应）；
+                # 这里只静默退出 —— 单次目录枚举在超大目录上可能耗数秒，等检测到标志再回报就太迟了
+                log("info", "[nameplate] 素材查找已中止（后台静默退出）")
+            except Exception as e:
+                log("error", f"[nameplate] 提取名片素材失败: {e}")
+                self._emit("nameplate_assets", {"ok": False, "error": str(e)})
+        self._run_async(worker)
+        return True
+
+    def cancel_nameplate_prepare(self) -> dict:
+        """中止正在进行的名片素材查找（用户点「停止查找」）
+
+        **立即回报 cancelled 事件**，前端即刻复位；后台 worker 会在下一个检查点静默退出
+        （单次目录枚举在超大目录上可能要数秒，等 worker 自己发现标志再回报会明显卡顿）。
+        """
+        self._nameplate_cancel = True
+        self._emit("nameplate_assets", {"ok": False, "cancelled": True})
+        log("info", "[nameplate] 收到中止素材查找的请求（已立即回报前端）")
+        return {"success": True}
+
+    def import_nameplate_font(self, path: str) -> dict:
+        """把用户选定的字体文件复制到可写字体目录（同步），返回最新字体列表"""
+        try:
+            src = Path(path)
+            if not src.is_file() or src.suffix.lower() not in nameplate.FONT_EXTS:
+                return {"success": False, "error": "bad_file"}
+            dest_dir = nameplate.fonts_dir(writable=True)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / src.name
+            if src.resolve() != dest.resolve():
+                shutil.copy2(src, dest)
+            log("info", f"[nameplate] 已导入字体 {src.name}")
+            return {"success": True, "fonts": nameplate.list_fonts_all()}
+        except Exception as e:
+            log("warning", f"[nameplate] 导入字体失败: {e}")
+            return {"success": False, "error": str(e)}
+
+    @staticmethod
+    def _nameplate_kwargs(params: Dict) -> Dict:
+        """把前端参数整理为 NameplateRenderer.render 的关键字参数"""
+        params = params or {}
+        raw_steps = params.get("steps") or {}
+        steps = {}
+        for key in ("surname_head", "given_head", "rest"):
+            try:
+                if key in raw_steps and raw_steps[key] is not None:
+                    steps[key] = float(raw_steps[key])
+            except (TypeError, ValueError):
+                pass
+        try:
+            scale = float(params.get("scale") or 1.0)
+        except (TypeError, ValueError):
+            scale = 1.0
+        return {
+            "font_path": str(params.get("font") or "") or None,
+            "scale": max(0.1, min(4.0, scale)),
+            "color": str(params.get("color") or "#FFFFFF"),
+            "head_color": str(params.get("head_color") or "") or None,
+            "steps": steps or None,
+        }
+
+    def render_nameplate(self, params: Dict):
+        """渲染名片预览（事件: nameplate_rendered）"""
+        def worker():
+            try:
+                renderer = self._nameplate_renderer_instance()
+                with self._composite_lock:      # 与角色合成互斥：PIL 解码/渲染串行，避免内存峰值叠加
+                    img = renderer.render(
+                        surname=str((params or {}).get("surname") or ""),
+                        given=str((params or {}).get("given") or ""),
+                        **self._nameplate_kwargs(params),
+                    )
+                self._nameplate_image = img
+                data_url, pv_size = _pil_preview(img, max_side=self._preview_max_side())
+                log("info", f"[nameplate] 已渲染名片 {img.width}x{img.height}")
+                self._emit("nameplate_rendered", {
+                    "ok": True,
+                    "data_url": data_url,
+                    "size": pv_size,
+                    "full_size": list(img.size),
+                })
+            except nameplate.NameplateAssetsMissing:
+                self._emit("nameplate_rendered", {"ok": False, "error": "assets_missing",
+                                                  "assets": self._nameplate_assets()})
+            except Exception as e:
+                log("error", f"[nameplate] 渲染名片失败: {e}")
+                self._emit("nameplate_rendered", {"ok": False, "error": str(e)})
+        self._run_async(worker)
+        return True
+
+    def save_nameplate(self, params: Dict = None):
+        """保存名片 PNG 到输出目录 output/nameplate/（事件: nameplate_saved）"""
+        def worker():
+            img = self._nameplate_image
+            if img is None:
+                self._emit("nameplate_saved", {"ok": False, "error": "no_image"})
+                return
+            try:
+                params_d = params or {}
+                stem = nameplate.safe_file_stem(
+                    f"{params_d.get('surname') or ''}{params_d.get('given') or ''}")
+                save_dir = self._output_dir / "nameplate"
+                save_dir.mkdir(parents=True, exist_ok=True)
+                path = save_dir / f"{stem}.png"
+                idx = 1
+                while path.exists():
+                    path = save_dir / f"{stem}_{idx}.png"
+                    idx += 1
+                out_img = img
+                if not self._export_original_quality:
+                    out_img = _downscale_for_preview(img, self._preview_max_side())
+                out_img.save(str(path))
+            except Exception as e:
+                self._emit("nameplate_saved", {"ok": False, "error": str(e)})
+                return
+            self._export_count += 1
+            save_settings(export_count=self._export_count)
+            log("info", f"[nameplate] 名片已保存: {path}")
+            self._emit("nameplate_saved", {
+                "ok": True,
+                "path": str(path),
+                "dir": str(path.parent),
+                "export_count": self._export_count,
+            })
         self._run_async(worker)
         return True
 

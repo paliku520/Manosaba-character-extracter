@@ -19,6 +19,15 @@ data/
 settings.json
 settings.json.bak
 
+# ── 名片素材（游戏资源，版权受限）──
+# 底板与游戏原版字体不在仓库/发行包内分发，需用户在运行时从游戏目录「一键提取」：
+#   webui/assets/nameplate/      → 底板 PNG（运行时提取，命中失败时兜底 data/nameplate/）
+#   webui/assets/fonts/ 下三个   → 游戏字体（只列未跟踪项，避免误伤程序自带 UI 字体）
+webui/assets/nameplate/
+webui/assets/fonts/PixelMplus10.ttf
+webui/assets/fonts/SourceHanSansKR.otf
+webui/assets/fonts/SourceHanSerifSC.otf
+
 # ── 环境 ──
 .env
 venv/

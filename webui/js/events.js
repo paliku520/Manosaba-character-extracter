@@ -298,4 +298,9 @@
       toast(t('dialog.update_check_error_msg', { msg: r.message }), 'error');
     }
   });
+
+  // 名片合成（首页卡片；处理体在 nameplate.js，与 part_preview_ready 同模式）
+  on('nameplate_assets', (d) => MCE.npOnAssets(d));
+  on('nameplate_rendered', (d) => MCE.npOnRendered(d));
+  on('nameplate_saved', (d) => MCE.npOnSaved(d));
 })();

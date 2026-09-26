@@ -55,6 +55,8 @@ window.__electron = {
   gpuInfo: () => ipcRenderer.invoke('sys:gpu'),
   // 拖拽导入：将拖入的 File 解析为磁盘绝对路径（Electron 29+ 标准 API）
   getPathForFile: (file) => webUtils.getPathForFile(file),
+  // 通用文件选择（名片合成：选 bundle / 背景图 / 字体）→ 绝对路径或 null
+  openFile: (opts) => ipcRenderer.invoke('dialog:openFile', opts),
   // 窗口最大化/还原（原生双击标题栏、Aero Snap 也会触发）→ 前端同步图标与缩放手柄
   onMaximizedChanged: (cb) => {
     if (typeof cb !== 'function') return;

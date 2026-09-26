@@ -738,6 +738,20 @@ ipcMain.handle('dialog:folderOutput', async () => {
   return r.canceled ? null : r.filePaths[0];
 });
 
+// 通用文件选择对话框（名片合成：选 bundle / 背景图 / 字体）；不修改 last_directory 记忆
+// opts: { filters: [{name, extensions}], defaultPath, title } → 返回选中文件绝对路径或 null
+ipcMain.handle('dialog:openFile', async (_e, opts) => {
+  const o = opts || {};
+  const filters = Array.isArray(o.filters) && o.filters.length ? o.filters : undefined;
+  const r = await dialog.showOpenDialog(win, {
+    properties: ['openFile'],
+    filters,
+    defaultPath: o.defaultPath || undefined,
+    title: o.title || undefined,
+  });
+  return r.canceled ? null : r.filePaths[0];
+});
+
 /* ── 任务栏（Windows 原生：进度显示 + 完成后黄色闪烁）────────── */
 
 // 读条期间在任务栏图标显示进度（0~1；Windows 任务栏绿色进度条）

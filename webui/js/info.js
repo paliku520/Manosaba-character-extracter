@@ -45,7 +45,10 @@
       '    <li>' + t('info.tip3') + '</li>' +
       '  </ul>' +
       '</div>' +
+      // 名片合成卡片（由 nameplate.js 挂载：独立模块便于维护，语言切换时随本页重建）
+      '<div id="np-mount"></div>' +
       '</div>';
+    if (MCE.renderNameplateCard) MCE.renderNameplateCard();
   }
 
   // ── 导出 ────────────────────────────────────────────────

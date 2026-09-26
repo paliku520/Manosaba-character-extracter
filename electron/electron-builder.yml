@@ -13,11 +13,16 @@ files:
   - preload.js
   - package.json
 # 前端页面（file:// 加载，相对资源路径不变）与 Python 后端子进程（PyInstaller 打包产物）
+# 注意：名片素材（底板 + 游戏原版字体）版权受限，不入发行包，由用户运行时从游戏目录「一键提取」
 extraResources:
   - from: ../webui
     to: webui
     filter:
       - "**/*"
+      - "!assets/nameplate/**"
+      - "!assets/fonts/PixelMplus10.ttf"
+      - "!assets/fonts/SourceHanSansKR.otf"
+      - "!assets/fonts/SourceHanSerifSC.otf"
   - from: ../dist/backend
     to: backend
     filter:

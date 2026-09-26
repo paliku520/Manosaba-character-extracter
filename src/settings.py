@@ -53,6 +53,17 @@ def get_presets_dir() -> Path:
     return _get_config_dir() / "presets"
 
 
+def get_nameplate_dir() -> Path:
+    """返回名片素材目录（data/nameplate/）。
+
+    存放从游戏 bundle 提取的名牌底板（NamePlateBase / NameUnderline）。
+    与 temp/ 解耦：清除缓存不会丢失，无需重复提取。
+    名片字体目录见 src.nameplate.fonts_dirs()：首选 webui/assets/fonts，
+    安装到只读目录时回退 data/nameplate/fonts。
+    """
+    return _get_config_dir() / "nameplate"
+
+
 # 配置文件路径
 CONFIG_FILE = _get_config_file()
 
