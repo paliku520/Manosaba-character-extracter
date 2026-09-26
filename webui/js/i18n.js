@@ -115,7 +115,7 @@
       document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
         el.setAttribute('placeholder', this.t(el.getAttribute('data-i18n-placeholder')));
       });
-      // 悬停提示统一走自定义气泡（app.js 的全局委托监听 data-tip），因此写入 data-tip；
+      // 悬停提示统一走自定义气泡（ui.js 的全局委托监听 data-tip），因此写入 data-tip；
       // 同时移除原生 title，避免系统气泡与自定义气泡同时出现（样式不一致）
       document.querySelectorAll('[data-i18n-title], [data-i18n-tip]').forEach((el) => {
         const key = el.getAttribute('data-i18n-title') || el.getAttribute('data-i18n-tip');

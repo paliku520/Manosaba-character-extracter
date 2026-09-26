@@ -347,7 +347,20 @@
     <div class="rh rh-se" data-dir="br"></div>
   </div>
 
+  <!-- 前端脚本按职责拆分（均挂在 window.MCE 命名空间下，跨模块调用为运行时晚绑定）
+       加载顺序要求：core.js 必须最先（提供 MCE / App / $ / t / api / on / init）；
+       events.js 建议最后（注册后端事件）。其余顺序无关。 -->
   <script src="js/i18n.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/core.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/charlist.js"></script>
+  <script src="js/parts.js"></script>
+  <script src="js/preview.js"></script>
+  <script src="js/hierarchy.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/update.js"></script>
+  <script src="js/info.js"></script>
+  <script src="js/about.js"></script>
+  <script src="js/events.js"></script>
 </body>
 </html>

@@ -461,7 +461,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
 }
 .clip-hint .ch-q { pointer-events: none; }
 /* 全项目唯一的悬停提示气泡（.ui-tip）：portal 到 body 的 fixed 提示，规避弹窗滚动容器裁剪；
-   文案写在元素的 data-tip 上，由 app.js 的全局委托统一接管（任意带 [data-tip] 的元素悬停/聚焦即弹出）。 */
+   文案写在元素的 data-tip 上，由 ui.js 的全局委托统一接管（任意带 [data-tip] 的元素悬停/聚焦即弹出）。 */
 .ui-tip {
   position: fixed; left: 0; top: 0; z-index: 1500;   /* 高于 modal(100)/toast(200)/彩蛋(300)/下拉(1000) */
   width: max-content; max-width: 260px;
@@ -677,7 +677,7 @@ html[data-theme="light"] .about-section:hover { border-color: var(--accent); bac
   gap: 5px; padding: 0 10px; height: 32px;
   white-space: nowrap;
 }
-/* 已输入文字：悬停时由统一的 .ui-tip 气泡展示（见 app.js setTipText），此处只保留状态高亮 */
+/* 已输入文字：悬停时由统一的 .ui-tip 气泡展示（见 ui.js setTipText），此处只保留状态高亮 */
 .sketch-edit-btn.has-text { color: var(--text); }
 /* 素描本文字编辑模态中的 textarea（最大 5 行） */
 .sketch-modal-textarea {
