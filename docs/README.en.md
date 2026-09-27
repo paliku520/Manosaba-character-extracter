@@ -10,26 +10,46 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 ## Features
 
+**Extraction & Compositing**
+
 - **Auto Detection** — Detect component data: preview/export directly when absent, or export/composite when present
-- **Character Compositing** — Composite full illustrations by part position, depth & clipping masks, with categories/thumbnails and Multiply / Overlay / Softlight blend modes to reproduce the original look
-- **Anan Sketchbook** — Custom text on anan's sketchbook parts (font size / alignment / auto wrap)
-- **Part Management** — search, natural sorting, collapsible groups, select all, quick-select ClippingMask parts, click to copy name
-- **Part Presets** — built-in default combinations for each character, restore checks with one click; save your own combinations and import/export them as JSON files / codes (built-in presets are protected and cannot be overwritten or deleted)
-- **Live Preview** — wheel zoom (cursor-centered), drag pan
-- **Zoom Viewer** — zoom into composites / single parts / sprites: wheel zoom, drag pan, export directly from the viewer
-- **Preview Quality / Original Export** — preview composites at lower resolution to reduce load; export keeps original quality by default, can switch to match preview
-- **Low-end GPU Optimization** — can disable hardware acceleration (software rendering) and UI animations for smoother low-end devices
+- **Character Compositing** — Composite full illustrations by part position, depth & clipping masks, with categories/thumbnails; five blend modes (Normal / Multiply / Screen / Overlay / Softlight) to reproduce the original look
 - **Sprite Preview** — one-click preview of all sprites for no-component characters, check to export
-- **Nameplate Compositing** — enter a name on the home page to render a nameplate PNG in the game's original layout (saved to `output/nameplate/`); on first use, "Extract Assets" locates the game directory and extracts the base plate & fonts (the search can be cancelled, or pick a bundle manually)
+- **Part Management** — search, natural sorting, collapsible groups, select all, quick-select ClippingMask parts, click to copy name
 - **Hierarchy Viewer** — component tree, copy button per row
-- **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it; remembers the last used game directory
+- **Anan Sketchbook** — custom text on anan's sketchbook parts (multi-line, font size, alignment)
 - **Cancellable Loading** — character analysis can be cancelled at any time, instantly returning to a usable state
+
+**Part Presets**
+
+- Built-in **Default presets** for all main characters — restore checks with one click (shipped with the package; automatically repaired if missing or corrupted)
+- Save your own combinations and import/export them as **JSON files / codes**; built-in presets are protected and cannot be overwritten or deleted
+
+**Nameplate Compositing**
+
+- Enter a name on the home page to render a nameplate PNG in the game's original layout (601×289; font sizes and layout parameters are parsed from the game's UI bundle; overly long names widen the canvas instead of shrinking the font)
+- Fonts are limited to TsukushiMincho / SourceHanSerifSC; output goes to `output/nameplate/`
+- On first use, "Extract Assets" locates the game directory and extracts the base plate & fonts (the search can be cancelled at any time, or pick a bundle manually)
+
+**Preview & Viewing**
+
+- **Live Preview** — wheel zoom (cursor-centered), drag pan
+- **Zoom Viewer** — zoom into composites / single parts / sprites, and export directly from the viewer
+- **Preview Quality / Original Export** — preview composites at lower resolution to reduce load (100 / 75 / 50 / 25 levels); export keeps original quality by default, can switch to match preview
+
+**UI & Experience**
+
+- **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it; remembers the last used game directory
+- **Multi-language / Theme** — Simplified Chinese / English / 日本語 / Magical Girl Language; dark/light theme + 17 character accent colors, persisted
+- **Low-end GPU Optimization** — can disable hardware acceleration (software rendering) and UI animations for smoother low-end devices
+- **Taskbar Effects** — shows progress during loading and flashes the taskbar when done
+- **Log Files / Console** — Console logs also written to `logs/`, one-click cleanup; plus a standalone log console window (level filtering, multi-line merging, save to file)
+
+**Data & Maintenance**
+
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
 - **Memory Reclaim** — Releases resources immediately with GC triggers; forced GC before exit
-- **Taskbar Effects** — Electron mode shows progress during loading and flashes the taskbar when done
 - **Debug Mode** — Monitor memory/CPU/window resolution (current run only)
-- **Log Files / Console** — Console logs also written to `logs/`, one-click cleanup; plus a standalone log console window (level filtering, multi-line merging, save to file)
-- **Multi-language / Theme** — Simplified Chinese / English / 日本語 / Magical Girl Language; dark/light theme + character accent colors persisted
 - **Total Exports / About / Auto Update Check / Disclaimer** (third-party unofficial tool)
 
 ## Requirements
@@ -50,8 +70,8 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 | Storage | ~500 MB free space | 1 GB or more |
 
 > - The packaged build (portable / installer) already bundles the Python backend and Electron runtime, so **no Python / Node.js installation is required** — runs out of the box.
-> - Compositing creates large canvases (up to 2000×4000); on low-RAM or iGPU machines, enable **Disable Hardware Acceleration** and **Disable UI Animations** for smoother performance.
-> - On low-end devices, lower the **Preview Quality** (25–100%) to reduce load; export still keeps original quality by default.
+> - Compositing creates large canvases (no smaller than 2000×4000, automatically expanded to fit the parts' actual span); on low-RAM or iGPU machines, enable **Disable Hardware Acceleration** and **Disable UI Animations** for smoother performance.
+> - On low-end devices, lower the **Preview Quality** (100 / 75 / 50 / 25 levels) to reduce load; export still keeps original quality by default.
 
 ## Usage
 
@@ -84,7 +104,7 @@ cd electron && npm install             # Electron dependencies
 
 ### Settings
 
-Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Auto-find characters directory** (when off, you must manually pick the folder that directly contains the character bundles), **Spoiler Notice**, **Preview Quality** (25–100%, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Auto-find characters directory** (when off, you must manually pick the folder that directly contains the character bundles), **Spoiler Notice**, **Preview Quality** (100 / 75 / 50 / 25 levels, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 
@@ -95,30 +115,59 @@ After installation, the app reads/writes the following data under its **install 
 | Path | Purpose |
 |---|---|
 | `D:\mce\data` | Settings `settings.json` + part presets `presets\` |
-| `D:\mce\data\nameplate` | Extracted nameplate assets & fonts (copyrighted assets are not bundled; used when `webui` is read-only in the installed build) |
 | `D:\mce\output` | Exported sprites / composites / nameplate PNGs |
-| `D:\mce\temp` | Sprite cache (clearable) |
-| `D:\mce\resources\backend\logs` | Runtime logs (one-click cleanup) |
+| `D:\mce\temp` | Extraction cache (clearable) |
+| `D:\mce\logs` | Runtime logs (one-click cleanup; follows the data directory) |
 
 > Data (`data`/`output`/`temp`/`logs`) is always stored **preferentially in the program directory** (the install directory or the portable extraction directory); it only falls back to `%APPDATA%\Manosaba Character Extracter` when that directory is not writable (e.g. failed permission grant, antivirus interference, read-only drive).
+>
+> Extracted nameplate assets & fonts go into the **program resources directory** `resources\webui\assets\nameplate`
+> (and `assets\fonts`); `data\nameplate` is only used as a fallback when the `webui` directory is not writable.
 >
 > When installed to the default `C:\Program Files\MCE`, the installer grants normal users write and delete permission on that directory, so data (`data`/`output`/`temp`/`logs`) is still stored directly under the install directory.
 >
 > **Overwriting installs / upgrades never touch that data** (matching Inno Setup): before installing, the installer moves `data`/`output`/`temp`/`logs` into a sibling `MCE-update-backup` folder and moves them back afterwards (a rename — no data is copied); the uninstaller only ever deletes files it installed (`MCE.exe`, `resources`, `locales`, and other allow-listed entries), so files you placed in the install directory are never removed.
 > During uninstallation, if data folders are detected under the install directory (except in silent mode), a dialog asks whether to delete them as well: "Yes" deletes everything, "No" uninstalls the app but keeps your data, "Cancel" aborts the uninstall.
 
-### Output Structure
+### Output & Cache Structure
 
 ```
 output/
 ├── <name>/            # No components: sprites flat here
-├── <name>/            # With components: sprites/ (sprites) + composite/ (composite images)
-│   ├── character_data.json  # part / hierarchy data
-│   └── mask_mapping.json    # mask & blend mode mapping
+├── <name>/sprites/    # With components: exported sprites
+├── <name>/composite/  # With components: composite images (<name>_composite.png, auto-numbered on conflict)
 └── nameplate/         # Nameplate PNGs (named after the entered name, auto-numbered on conflict)
-temp/                  # Sprite cache (clearable, speeds up re-loading)
+temp/
+└── <name>/            # Extraction cache: sprites/ + character_data.json + mask_mapping.json
 data/presets/          # Part presets (built-in mirror + user-created; clearing the cache keeps them)
 ```
+
+## Architecture
+
+**Launch path**
+
+- Development: `start.bat` → `electron/main.js` → `spawn(backend.py)` → `run.JsApi`
+- Packaged: `MCE.exe` → `resources/backend/backend.exe` (the same backend, bundled with PyInstaller)
+
+**Responsibility split**
+
+- The **Electron main process** owns all OS-native UI: frameless window control (native Aero Snap / drag / double-click maximize / edge resize), directory & file pickers, taskbar progress, and the log console window. The frontend reaches it via `window.pywebview.api` (business methods) and `window.__electron` (window/dialogs/log console and other native capabilities).
+- The **Python backend** only does business logic and image processing, with no GUI framework dependency; `run.py` has no standalone entry point — the only process entry is `backend.py`.
+
+**Communication protocol** (one JSON per line over stdin/stdout)
+
+- Request `{"id":N,"method":"...","args":[...]}` → response `{"id":N,"result":...}` / `{"id":N,"error":"..."}`
+- Events `{"event":"name","payload":{...}}` (progress, preview images, update results, etc.)
+- stdout is reserved for the protocol; logs always go to stderr and into `logs/`
+
+**Extraction worker subprocess**
+
+UnityPy extraction runs in a dedicated `backend.py --worker` subprocess (to avoid occasional freezes in the backend main process): it can be cancelled at any time (the subprocess is killed), and no output for 45 s or a total of 600 s is treated as a timeout with one automatic retry.
+
+**Environment variables (development / debugging)**
+
+- `MCE_PYTHON` — override the backend Python interpreter (read first by both `start.bat` and `main.js`)
+- `MCE_DATA_DIR` — redirect all data directories (`data`/`output`/`temp`/`logs`); set automatically by Electron in the packaged build
 
 ## Project Structure
 
@@ -137,17 +186,10 @@ data/presets/          # Part presets (built-in mirror + user-created; clearing 
 ├── scripts/           # PyInstaller packaging scripts
 ├── docs/              # English README, etc.
 ├── output/            # Output directory (generated at runtime)
-└── temp/              # Sprite cache (generated at runtime)
+└── temp/              # Extraction cache (generated at runtime)
 ```
 
-> **Single launch path**: `start.bat` → `electron/main.js` → `spawn(backend.py)` → `run.JsApi`.
-> Responsibility split: the **Electron main process** owns the window and all OS-native UI (window
-> control, directory pickers, taskbar); the **Python backend** owns all business logic and image
-> processing. They talk over stdin/stdout in one-JSON-per-line form: events are
-> `{"event": ..., "payload": ...}`, responses are `{"id": ..., "result"|"error": ...}`.
-> The backend holds no window reference and there is no second GUI implementation.
-
-Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [Electron](https://www.electronjs.org/) (frameless UI shell, Chromium rendering + native Aero Snap).
+Tech stack: [UnityPy](https://github.com/K0lb3/UnityPy) (bundle parsing), Pillow (image processing), [Electron](https://www.electronjs.org/) (frameless UI shell, Chromium rendering + native Aero Snap). These are the only 3 runtime dependencies on the Python side; OS capabilities such as explorer-window focusing are implemented with the ctypes standard library.
 
 ## Acknowledgments & License
 
