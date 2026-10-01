@@ -142,7 +142,6 @@
       g.className = 'part-group';
       const h = document.createElement('div');
       h.className = 'part-group-header';
-      setTipText(h, cat);
       const caret = document.createElement('span');
       caret.className = 'part-caret';
       caret.innerHTML =
@@ -156,7 +155,6 @@
       desel.type = 'button';
       desel.className = 'part-deselect';
       desel.textContent = t('parts.deselect_group');
-      setTipText(desel, cat);
       desel.addEventListener('click', (e) => {
         e.stopPropagation();   // 不触发展开/折叠
         deselectGroup(g);
