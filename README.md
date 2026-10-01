@@ -80,8 +80,9 @@
 Windows 下直接使用仓库根目录的 `start.bat` 启动脚本：
 
 ```bat
-start.bat            :: Electron 无边框窗口（默认，原生 Aero Snap / 拖动 / 双击最大化 / 边缘缩放）
-start.bat help       :: 显示帮助
+start.bat                  :: Electron 无边框窗口（默认，原生 Aero Snap / 拖动 / 双击最大化 / 边缘缩放）
+start.bat help             :: 显示帮助
+start.bat clean [目标...]  :: 清理临时文件与构建缓存（见下方「清理开发缓存」）
 ```
 
 **首次运行前需安装依赖**：
@@ -92,6 +93,25 @@ cd electron && npm install             # Electron 依赖
 ```
 
 > 也可手动启动：`cd electron && npm start`
+
+### 清理开发缓存（`start.bat clean`）
+
+开发过程中产生的临时文件与构建缓存可按目标分开清理：
+
+```bat
+start.bat clean                  :: 默认：temp + logs + build + pycache（不含 dist）
+start.bat clean temp             :: 只清提取缓存 temp/
+start.bat clean logs             :: 只清日志 logs/*.log（该目录下其它文件保留）
+start.bat clean build            :: 只清 PyInstaller 构建缓存 build/
+start.bat clean pycache          :: 只清 __pycache__ / .pytest_cache
+start.bat clean dist             :: 只清打包产物 dist/
+start.bat clean all              :: 以上全部
+start.bat clean temp logs build  :: 目标可空格组合
+```
+
+- 目标名大小写不敏感，未知目标会给出提示并列出用法。
+- **不碰用户数据**：`data/`（设置与预设）、`output/`（导出结果）、`builtin/`（内置预设）、`electron/node_modules`。
+- `__pycache__` 只扫描仓库自身的 `src/`、`scripts/`、`builtin/`、`i18n/` 与根目录，不会进入 `.venv`、`node_modules`。
 
 
 ### 使用步骤
@@ -172,6 +192,7 @@ UnityPy 提取在 `backend.py --worker` 独立子进程中执行（避免后端�
 ## 项目结构
 
 ```
+├── start.bat          # Windows 启动脚本（启动应用 / 清理临时文件与构建缓存）
 ├── run.py             # 业务逻辑层（JsApi：合成/预览/设置/提取/名片/更新检查；无任何 GUI 依赖）
 ├── backend.py         # stdio JSON-RPC 后端进程（唯一入口，复用 run.py 的 JsApi）
 ├── electron/          # Electron 界面壳

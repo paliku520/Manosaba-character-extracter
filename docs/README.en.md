@@ -80,8 +80,9 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 On Windows, use the `start.bat` launcher in the repo root:
 
 ```bat
-start.bat            :: Electron frameless window (default; native Aero Snap / drag / double-click maximize / edge resize)
-start.bat help       :: Show help
+start.bat                  :: Electron frameless window (default; native Aero Snap / drag / double-click maximize / edge resize)
+start.bat help             :: Show help
+start.bat clean [targets]  :: Remove temp files and build caches (see "Cleaning dev caches" below)
 ```
 
 **Install dependencies once before first run:**
@@ -92,6 +93,25 @@ cd electron && npm install             # Electron dependencies
 ```
 
 > Alternatively launch manually: `cd electron && npm start`
+
+### Cleaning dev caches (`start.bat clean`)
+
+Leftovers from development can be cleaned per target:
+
+```bat
+start.bat clean                  :: default: temp + logs + build + pycache (dist is kept)
+start.bat clean temp             :: only the extraction cache temp/
+start.bat clean logs             :: only logs/*.log (other files in that folder are kept)
+start.bat clean build            :: only the PyInstaller cache build/
+start.bat clean pycache          :: only __pycache__ / .pytest_cache
+start.bat clean dist             :: only the packaging output dist/
+start.bat clean all              :: everything above
+start.bat clean temp logs build  :: targets can be combined with spaces
+```
+
+- Target names are case-insensitive; an unknown target prints a hint with the usage.
+- **User data is never touched**: `data/` (settings & presets), `output/` (exports), `builtin/` (built-in presets), `electron/node_modules`.
+- `__pycache__` is swept only in the repo's own `src/`, `scripts/`, `builtin/`, `i18n/` and the root, never inside `.venv` or `node_modules`.
 
 
 ### Steps
@@ -172,6 +192,7 @@ UnityPy extraction runs in a dedicated `backend.py --worker` subprocess (to avoi
 ## Project Structure
 
 ```
+├── start.bat          # Windows launcher (start the app / clean temp files & build caches)
 ├── run.py             # Business logic layer (JsApi: compositing/preview/settings/extraction/nameplates/update check; no GUI dependency)
 ├── backend.py         # stdio JSON-RPC backend process (the only entry, reuses run.py's JsApi)
 ├── electron/          # Electron UI shell
