@@ -367,6 +367,16 @@ img { -webkit-user-drag: none; }
   flex: 1; min-width: 0; width: auto; height: 30px; max-width: 180px;
   padding: 4px 10px; font-size: 13px; font-family: var(--mono); text-transform: uppercase;
 }
+/* R/G/B 数值输入（与色块/hex/色板双向同步） */
+.np-color-rgb { display: flex; align-items: center; gap: 12px; }
+.np-rgb-field {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text-dim); font-family: var(--mono);
+}
+.np-rgb-input {
+  width: 54px; height: 28px; padding: 4px 6px; text-align: center;
+  font-size: 13px; font-family: var(--mono);
+}
 .np-color-grid { display: grid; grid-template-columns: repeat(auto-fill, 26px); gap: 5px; }
 .np-color-grid .np-color-item { width: 26px; height: 26px; }
 .np-color-grid .np-color-item .np-swatch { width: 20px; height: 20px; }

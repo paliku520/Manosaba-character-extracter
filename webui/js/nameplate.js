@@ -90,9 +90,37 @@
     return list.length ? list[0].path : '';
   }
 
-  /** 规范化 hex 颜色（#RGB / #RRGGBB，可省略 #）→ #RRGGBB 大写；无效返回 null */
-  function normalizeHex(text) {
-    const s = String(text || '').trim().replace(/^#/, '');
+  /** RGB(0..255) → #RRGGBB（大写） */
+  function rgbToHex(r, g, b) {
+    return ('#' + [r, g, b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')).toUpperCase();
+  }
+
+  /** #RRGGBB → {r,g,b}（0..255） */
+  function hexToRgb(hex) {
+    const s = String(hex || '').replace('#', '');
+    return {
+      r: parseInt(s.slice(0, 2), 16) || 0,
+      g: parseInt(s.slice(2, 4), 16) || 0,
+      b: parseInt(s.slice(4, 6), 16) || 0,
+    };
+  }
+
+  /** 解析用户输入的颜色 → #RRGGBB 大写；无效返回 null。
+   *  支持：#RGB / #RRGGBB / RRGGBB（可省 #）/ rgb(r,g,b) / r,g,b */
+  function parseColor(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+    // rgb() / rgba() 与「R,G,B」两种写法统一处理
+    const m = raw.match(/^rgba?\(\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})\s*[,\s]\s*(\d{1,3})/i);
+    const parts = m ? [m[1], m[2], m[3]]
+      : (raw.includes(',') ? raw.split(',').map((s) => s.trim()).slice(0, 3) : null);
+    if (parts) {
+      if (parts.length !== 3 || !parts.every((s) => /^\d{1,3}$/.test(s))) return null;
+      const n = parts.map(Number);
+      if (n.some((v) => v > 255)) return null;
+      return rgbToHex(n[0], n[1], n[2]);
+    }
+    const s = raw.replace(/^#/, '');
     if (/^[0-9a-fA-F]{3}$/.test(s)) {
       return ('#' + s.split('').map((c) => c + c).join('')).toUpperCase();
     }
@@ -125,8 +153,17 @@
     body.innerHTML =
       '<div class="np-color-top">' +
       '  <span class="np-color-preview" id="npm-preview"></span>' +
-      '  <input type="text" class="np-input np-color-hex" id="npm-hex" maxlength="7"' +
-      '         placeholder="#FFFFFF" spellcheck="false" autocomplete="off">' +
+      '  <input type="text" class="np-input np-color-hex" id="npm-hex" maxlength="18"' +
+      '         placeholder="#FFFFFF" spellcheck="false" autocomplete="off"' +
+      '         data-tip="' + t('np.color_input_hint') + '">' +
+      '</div>' +
+      '<div class="np-color-rgb">' +
+      '  <label class="np-rgb-field">R<input type="text" class="np-input np-rgb-input" id="npm-r"' +
+      '         maxlength="3" inputmode="numeric" autocomplete="off" spellcheck="false"></label>' +
+      '  <label class="np-rgb-field">G<input type="text" class="np-input np-rgb-input" id="npm-g"' +
+      '         maxlength="3" inputmode="numeric" autocomplete="off" spellcheck="false"></label>' +
+      '  <label class="np-rgb-field">B<input type="text" class="np-input np-rgb-input" id="npm-b"' +
+      '         maxlength="3" inputmode="numeric" autocomplete="off" spellcheck="false"></label>' +
       '</div>' +
       '<div class="np-color-grid" id="npm-roles">' +
       NP_PALETTE.map((c) => colorItemHtml(c.color, colorLabel(c.id), c.id)).join('') +
@@ -148,6 +185,9 @@
 
     const pv = body.querySelector('#npm-preview');
     const hx = body.querySelector('#npm-hex');
+    const ri = body.querySelector('#npm-r');
+    const gi = body.querySelector('#npm-g');
+    const bi = body.querySelector('#npm-b');
     const cursor = body.querySelector('#npm-cursor');
     const plane = body.querySelector('#npm-plane');
     const roles = body.querySelector('#npm-roles');
@@ -173,10 +213,21 @@
       cursor.style.top = (y * 100).toFixed(2) + '%';
     };
 
-    const apply = (color, keepHex, xy) => {
+    /** 把当前颜色回写到 R/G/B 三个数值框 */
+    const syncRgbInputs = () => {
+      const c = hexToRgb(current);
+      ri.value = String(c.r);
+      gi.value = String(c.g);
+      bi.value = String(c.b);
+    };
+
+    // keep: '' = 全部回写（点色板/角色色/初始化）；'hex' = 不回写 hex 框；'rgb' = 不回写 R/G/B 框
+    // （正在输入的框不回写，否则光标会跳位）
+    const apply = (color, keep, xy) => {
       current = color;
       pv.style.background = color;
-      if (!keepHex) hx.value = color;
+      if (keep !== 'hex') hx.value = color;
+      if (keep !== 'rgb') syncRgbInputs();
       roles.querySelectorAll('.np-color-item').forEach((b) => {
         b.classList.toggle('selected', b.dataset.color.toUpperCase() === color.toUpperCase());
       });
@@ -185,7 +236,7 @@
 
     roles.addEventListener('click', (e) => {
       const item = e.target.closest('.np-color-item');
-      if (item) apply(item.dataset.color);
+      if (item) apply(item.dataset.color, '');
     });
 
     // 取色板：按下并拖动连续取色（坐标超界时颜色贴到端色、光标停在边缘，不会跳回另一端）
@@ -197,7 +248,7 @@
       // clientLeft/clientTop/clientWidth/Height 不含边框，与背景渐变的绘制区一致
       const x = (e.clientX - r.left - plane.clientLeft) / w;
       const y = (e.clientY - r.top - plane.clientTop) / h;
-      apply(planeColorAt(x, y), false, { x, y });
+      apply(planeColorAt(x, y), '', { x, y });
     };
     plane.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -211,8 +262,21 @@
     });
 
     hx.addEventListener('input', () => {
-      const v = normalizeHex(hx.value);
-      if (v) apply(v, true);   // 输入中不回写输入框，避免光标跳动
+      const v = parseColor(hx.value);        // 支持 #RGB / #RRGGBB / rgb(r,g,b) / R,G,B
+      if (v) apply(v, 'hex');                // 输入中不回写输入框，避免光标跳动
+    });
+
+    // R/G/B 数值框：三者都合法（0..255）才应用；失焦时回写为当前真实值（纠正半途/超范围输入）
+    const onRgbInput = () => {
+      const parts = [ri.value, gi.value, bi.value].map((s) => s.trim());
+      if (!parts.every((s) => /^\d{1,3}$/.test(s))) return;
+      const n = parts.map(Number);
+      if (n.some((v) => v > 255)) return;
+      apply(rgbToHex(n[0], n[1], n[2]), 'rgb');
+    };
+    [ri, gi, bi].forEach((el) => {
+      el.addEventListener('input', onRgbInput);
+      el.addEventListener('blur', syncRgbInputs);
     });
 
     const modal = showModal({
@@ -222,7 +286,7 @@
       className: 'np-color-modal-wrap',
     });
     closeFn = modal.close;
-    apply(draft);
+    apply(draft, '');
     setTimeout(() => hx.focus(), 30);
   }
 
@@ -483,16 +547,58 @@
     btn.classList.toggle('np-searching', S.searching);
   }
 
-  /** 提取素材：bundlePath 为空 = 自动查找；非空 = 用户手动指定的文件 */
-  async function prepare(bundlePath) {
+  /** 点「一键提取素材」：先确认将在哪个路径查找（重读 info，保证显示的是最新 last_directory） */
+  async function openSearchPathModal() {
+    await loadInfo();                       // 刷新起点（可能在别处改过游戏目录）
+    const path = (S.info && S.info.last_directory) || '';
+    const body = document.createElement('div');
+    body.className = 'np-hint-modal';
+    body.innerHTML =
+      '<p class="np-hint-lead">' + t('np.search_path_lead') + '</p>' +
+      '<div class="np-hint-block"><code class="np-hint-code" data-role="path"></code></div>' +
+      '<div class="np-hint-meta">' + t('np.search_path_hint') + '</div>';
+    body.querySelector('[data-role="path"]').textContent = path || '—';
+
+    let modal = null;
+    const footer = document.createElement('div');
+    footer.appendChild(modalBtn(t('dialog.cancel'), 'btn sm', () => { if (modal) modal.close(); }));
+    footer.appendChild(modalBtn(t('np.search_change_path'), 'btn sm', () => {
+      if (modal) modal.close();
+      changeSearchPath();
+    }));
+    footer.appendChild(modalBtn(t('np.search_use_path'), 'btn sm primary', () => {
+      if (modal) modal.close();
+      prepare('');
+    }));
+    modal = showModal({ title: t('np.search_path_title'), body, footer, className: 'np-hint-modal-wrap' });
+  }
+
+  /** 换一个搜索位置：选一个新目录（同时被记为 last_directory）→ 以它为起点查找 */
+  async function changeSearchPath() {
+    const a = api();
+    if (!a || !a.select_directory) { toast(t('np.need_desktop'), 'warning'); return; }
+    let dir = null;
+    try {
+      dir = await a.select_directory();     // 系统目录选择（选择后主进程会写回 last_directory）
+    } catch (e) {
+      dir = null;
+    }
+    if (!dir) return;                       // 用户取消
+    await loadInfo();                       // 刷新起点显示
+    await prepare(dir, true);               // 以该目录为搜索起点
+  }
+
+  /** 提取素材：bundlePath 为空 = 用上次游戏目录自动查找；
+   *  asDir = 把 bundlePath 当搜索起点目录；否则当 bundle 文件（手动指定的素材） */
+  async function prepare(bundlePath, asDir) {
     const a = api();
     if (!a || !a.prepare_nameplate) return;
     S.searching = true;
     syncPrepareButton();
     const start = (S.info && S.info.last_directory) || '';
-    setSetupStatus(bundlePath
-      ? t('np.importing_bundle', { name: fileBaseName(bundlePath) })
-      : t('np.searching', { path: start || '—' }));
+    setSetupStatus(asDir || !bundlePath
+      ? t('np.searching', { path: bundlePath || start || '—' })
+      : t('np.importing_bundle', { name: fileBaseName(bundlePath) }));
     try {
       await a.prepare_nameplate(bundlePath || '');   // 结果由 nameplate_assets 事件回报
     } catch (e) {
@@ -611,7 +717,7 @@
 
     const btnPrepare = $('#np-btn-prepare');
     if (btnPrepare) btnPrepare.addEventListener('click', () => {
-      if (S.searching) cancelSearch(); else prepare('');
+      if (S.searching) cancelSearch(); else openSearchPathModal();   // 先确认搜索路径再开始
     });
     const btnPick = $('#np-btn-pick-bundle');
     if (btnPick) btnPick.addEventListener('click', manualPickBundle);

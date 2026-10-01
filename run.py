@@ -1327,7 +1327,8 @@ class JsApi:
         先在该目录及其下级查找（优先 `StandaloneWindows64`，素材实际存放处），
         找不到再逐级向上做**浅层探测**；仅对最接近起点的少数几层做浅递归兜底
         （见 src/nameplate.py 的 _RECURSE_ROOTS / _DEFAULT_DOWN_DEPTH）。
-        自动查找失败时返回 searched / hint 供前端提示，用户可用 bundle_path 手动指定（手动指引）。
+        自动查找失败时返回 searched / hint 供前端提示；`bundle_path` 可手动指定：
+        传**目录** = 以它为搜索起点，传**文件** = 直接用它。
         查找期间用户可调 `cancel_nameplate_prepare` 中止（事件带 cancelled=True）。
 
         with_fonts: 顺带提取游戏字体（TsukushiMincho / SourceHanSerifSC 等）到
@@ -1348,11 +1349,16 @@ class JsApi:
                 start = Path(get_last_directory() or self._loader.last_path or ".")
                 searched: List[str] = []
 
-                src: Optional[Path] = Path(bundle_path) if bundle_path else None
-                if src is not None and not src.exists():
-                    src = None
+                # bundle_path 可为：bundle 文件（直接用它）或**目录**（作为搜索起点）
+                src: Optional[Path] = None
+                if bundle_path:
+                    given = Path(bundle_path)
+                    if given.is_dir():
+                        start = given     # 用户指定的搜索起点目录
+                    elif given.exists():
+                        src = given       # 用户指定的 bundle 文件 → 直接用
                 if src is None:
-                    log("info", f"[nameplate] 自动查找名片素材，起点: {start}")
+                    log("info", f"[nameplate] 查找名片素材，起点: {start}")
                     src, searched = nameplate.find_sprites_bundle(start, should_cancel=cancelled)
 
                 if src is None or not src.exists():
@@ -1362,7 +1368,9 @@ class JsApi:
                     self._emit("nameplate_assets", {
                         "ok": False,
                         "error": "bundle_not_found",
-                        "manual": bool(bundle_path),   # True = 用户手动指定的文件也无效（不再自动弹选择框）
+                        "manual": bool(bundle_path) and Path(bundle_path).exists(),
+                        #         True = 用户确实指定过路径（目录起点/素材文件）且无效 → 不再自动弹提示模态；
+                        #         False = 用户给的路径不存在（实际走的是自动查找）→ 仍弹指引模态
                         "start": str(start),
                         "searched": searched[:6],
                         # 人工查找的位置指引（前端模态窗口展示：去哪里找、该选哪个文件）
