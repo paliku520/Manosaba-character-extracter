@@ -29,6 +29,7 @@ import queue
 import shutil
 import sys
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -129,6 +130,13 @@ def _update_error_message(exc: UpdateError) -> str:
     if key:
         return _(key)
     return _("dialog.update_error_unknown", msg=str(exc))
+
+
+# ── 启动静默检查的重试策略 ─────────────────────────────────
+# 启动瞬间网络/代理可能尚未就绪，静默检查失败时重试至多 5 次；
+# 静默模式不弹窗，因此每次尝试与最终结果都写入日志（logs/ 与控制台窗口）。
+SILENT_UPDATE_RETRIES = 5
+SILENT_UPDATE_RETRY_DELAY = 3.0   # 重试间隔（秒）
 
 
 # ── 程序基础路径（兼容 PyInstaller 冻结环境） ──────────────
@@ -1601,32 +1609,50 @@ class JsApi:
         return True
 
     def check_update(self, silent: bool = False):
-        """检查更新（事件: update_result）"""
+        """检查更新（事件: update_result）
+
+        启动时的静默检查失败会重试至多 SILENT_UPDATE_RETRIES 次（网络/超时类错误）；
+        静默模式不弹窗，每次尝试与最终结果都会写入日志。
+        """
         def worker():
-            try:
-                info = check_for_update(__version__)
+            max_retries = SILENT_UPDATE_RETRIES if silent else 0
+            for attempt in range(max_retries + 1):
+                try:
+                    info = check_for_update(__version__)
+                except UpdateError as e:
+                    if attempt < max_retries:
+                        log("warning", f"update check failed ({e.reason}), "
+                                       f"retry {attempt + 1}/{max_retries}: {e}")
+                        time.sleep(SILENT_UPDATE_RETRY_DELAY)
+                        continue
+                    log("warning", f"update check failed ({e.reason}) after {attempt + 1} attempt(s): {e}")
+                    self._emit("update_result", {
+                        "status": "error", "current": __version__,
+                        "message": _update_error_message(e), "silent": bool(silent),
+                    })
+                    return
+                except Exception as e:
+                    log("warning", f"update check failed after {attempt + 1} attempt(s): {e}")
+                    self._emit("update_result", {
+                        "status": "error", "current": __version__,
+                        "message": str(e), "silent": bool(silent),
+                    })
+                    return
+
+                suffix = f" (after {attempt + 1} attempts)" if attempt else ""
                 if info is None:
+                    log("info", f"update check: already latest (v{__version__}){suffix}")
                     self._emit("update_result", {
                         "status": "latest", "current": __version__, "silent": bool(silent),
                     })
                 else:
+                    log("info", f"update check: v{info.latest_version} available{suffix}")
                     self._emit("update_result", {
                         "status": "available", "current": __version__,
                         "latest": info.latest_version, "url": info.release_url,
                         "notes": info.notes, "silent": bool(silent),
                     })
-            except UpdateError as e:
-                log("warning", f"check update failed ({e.reason}): {e}")
-                self._emit("update_result", {
-                    "status": "error", "current": __version__,
-                    "message": _update_error_message(e), "silent": bool(silent),
-                })
-            except Exception as e:
-                log("warning", f"check update failed: {e}")
-                self._emit("update_result", {
-                    "status": "error", "current": __version__,
-                    "message": str(e), "silent": bool(silent),
-                })
+                return
         self._run_async(worker)
         return True
 
