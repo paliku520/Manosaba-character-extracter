@@ -123,6 +123,10 @@ dialog:
   update_available_title: "Update Available"
   update_check_error_msg: "Failed to check for updates:\n{msg}"
   update_latest_msg: "You are running the latest version v{current}"
+  update_error_network: "Cannot reach GitHub. Please check your network or proxy settings and try again."
+  update_error_timeout: "Connecting to GitHub timed out. Please check your network or proxy settings and try again."
+  update_error_rate_limit: "Too many requests to GitHub. Please try again later."
+  update_error_unknown: "Failed to check for updates:\n{msg}"
 
 hierarchy:
   collapse_all: "Collapse All"

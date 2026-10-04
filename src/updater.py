@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import socket
 from dataclasses import dataclass
 from typing import Optional
 from urllib.error import HTTPError, URLError
@@ -29,6 +30,35 @@ class UpdateInfo:
     latest_version: str   # 最新版本号（如 "1.1.0"）
     release_url: str      # 发布页面地址
     notes: str            # 发布说明摘要
+
+
+class UpdateError(RuntimeError):
+    """检查更新失败。
+
+    reason 用于调用方给出友好提示（不把底层异常原文直接展示给用户）：
+      network    — 无法连接（DNS 解析失败、连接被拒绝/重置等）
+      timeout    — 连接或读取超时
+      rate_limit — 请求过于频繁（GitHub 返回 403/429）
+      unknown    — 其他错误（HTTP 状态异常、响应无法解析等）
+    """
+
+    def __init__(self, reason: str, message: str = "") -> None:
+        super().__init__(message or reason)
+        self.reason = reason
+
+
+def _classify_error(exc: BaseException) -> str:
+    """把 urlopen 抛出的底层异常归类为 UpdateError.reason"""
+    if isinstance(exc, HTTPError):
+        return "rate_limit" if exc.code in (403, 429) else "unknown"
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, (TimeoutError, socket.timeout)):
+            return "timeout"
+        return "network"
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return "timeout"
+    return "unknown"
 
 
 def _normalize_version(tag: str) -> str:
@@ -102,7 +132,7 @@ def check_for_update(
         None      — 已是最新版本
 
     异常:
-        URLError / HTTPError / ValueError — 网络错误或响应异常，由调用方处理
+        UpdateError — 网络错误或响应异常（携带分类 reason），由调用方处理
     """
     req = Request(
         RELEASES_API_URL,
@@ -112,8 +142,14 @@ def check_for_update(
         },
     )
 
-    with urlopen(req, timeout=timeout) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
+    try:
+        with urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        raise UpdateError(_classify_error(e), str(e)) from e
+
+    if not isinstance(data, dict):
+        raise UpdateError("unknown", "unexpected response payload")
 
     tag = data.get("tag_name", "")
     latest = _normalize_version(tag)

@@ -125,6 +125,10 @@ dialog:
   update_available_title: "neYO Toim"
   update_check_error_msg: "AnxAn Toim Baru:\n{msg}"
   update_latest_msg: "Toim oF now v{current}"
+  update_error_network: "Ca-nay to Ge-mon. AnxAn rEcanRey Owk proxy, S~ond' sAgAin."
+  update_error_timeout: "Ge-mon ConWa Toim itsWA. AnxAn rEcanRey Owk proxy, S~ond' sAgAin."
+  update_error_rate_limit: "AnxAn Ge-mon hArLie. ShoJikA Toim itsWA, sAgAin."
+  update_error_unknown: "AnxAn Toim Baru:\n{msg}"
 
 hierarchy:
   collapse_all: "Alte Ca-nay"

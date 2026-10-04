@@ -123,6 +123,10 @@ dialog:
   update_available_title: "发现新版本"
   update_check_error_msg: "检查更新时出错:\n{msg}"
   update_latest_msg: "当前已是最新版本 v{current}"
+  update_error_network: "无法连接到 GitHub，请检查网络或代理设置后重试。"
+  update_error_timeout: "连接 GitHub 超时，请检查网络或代理设置后重试。"
+  update_error_rate_limit: "请求 GitHub 过于频繁，请稍后重试。"
+  update_error_unknown: "检查更新失败:\n{msg}"
 
 hierarchy:
   collapse_all: "全部折叠"

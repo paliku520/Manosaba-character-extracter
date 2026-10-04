@@ -87,7 +87,7 @@ from src.settings import (
     get_theme,
     save_settings,
 )
-from src.updater import check_for_update
+from src.updater import UpdateError, check_for_update
 from src.version import __version__
 
 
@@ -112,6 +112,23 @@ def _open_in_file_manager(path: Path) -> None:
         os.startfile(str(path))
     except Exception as e:
         log("warning", f"open path failed: {e}")
+
+
+# ── 更新检查错误 → 友好提示 ────────────────────────────────
+# 网络不可达（如 GitHub 被拦截、代理未开启）时不把底层异常原文直接展示给用户，
+# 按 UpdateError.reason 映射到对应文案；无法识别的错误保留原始信息便于排查。
+_UPDATE_ERROR_I18N = {
+    "network": "dialog.update_error_network",
+    "timeout": "dialog.update_error_timeout",
+    "rate_limit": "dialog.update_error_rate_limit",
+}
+
+
+def _update_error_message(exc: UpdateError) -> str:
+    key = _UPDATE_ERROR_I18N.get(exc.reason)
+    if key:
+        return _(key)
+    return _("dialog.update_error_unknown", msg=str(exc))
 
 
 # ── 程序基础路径（兼容 PyInstaller 冻结环境） ──────────────
@@ -1598,7 +1615,14 @@ class JsApi:
                         "latest": info.latest_version, "url": info.release_url,
                         "notes": info.notes, "silent": bool(silent),
                     })
+            except UpdateError as e:
+                log("warning", f"check update failed ({e.reason}): {e}")
+                self._emit("update_result", {
+                    "status": "error", "current": __version__,
+                    "message": _update_error_message(e), "silent": bool(silent),
+                })
             except Exception as e:
+                log("warning", f"check update failed: {e}")
                 self._emit("update_result", {
                     "status": "error", "current": __version__,
                     "message": str(e), "silent": bool(silent),

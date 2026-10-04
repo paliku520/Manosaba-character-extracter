@@ -122,6 +122,10 @@ dialog:
   update_available_title: "新しいバージョンがあります"
   update_check_error_msg: "更新の確認中にエラーが発生しました:\n{msg}"
   update_latest_msg: "現在、最新バージョン v{current} を使用しています"
+  update_error_network: "GitHub に接続できません。ネットワークまたはプロキシ設定を確認して、もう一度お試しください。"
+  update_error_timeout: "GitHub への接続がタイムアウトしました。ネットワークまたはプロキシ設定を確認して、もう一度お試しください。"
+  update_error_rate_limit: "GitHub へのリクエストが多すぎます。しばらくしてからもう一度お試しください。"
+  update_error_unknown: "更新の確認に失敗しました:\n{msg}"
 
 hierarchy:
   collapse_all: "すべて折りたたむ"
