@@ -23,7 +23,7 @@
 **背景素材导出**
 
 - 独立「背景素材」页自动定位游戏的 `backgrounds` 目录，支持场景背景 / CG 插图 / 演出素材分类、搜索、勾选和单包预览
-- 批量导出原始尺寸 PNG 到 `output/backgrounds/<分类>/<素材包>/`；同名文件自动编号，导出可取消并保留已完成的图片
+- 在内存中生成预览，复用预热进程和有容量上限的缓存；批量平铺导出原始尺寸 PNG 到 `output/backgrounds/背景/`；同名文件自动编号，导出可取消并保留已完成的图片
 - 优先导出 Sprite，无 Sprite 时读取 Texture2D，不重复导出精灵的底层纹理；详细行为和开发验证见 [背景素材说明](docs/backgrounds.md)
 
 **部件组合预设**
@@ -165,7 +165,7 @@ output/
 ├── <角色名>/            # 无组件：精灵直接平铺
 ├── <角色名>/sprites/    # 有组件：导出的精灵
 ├── <角色名>/composite/  # 有组件：合成图（<角色名>_composite.png，重名自动加序号）
-├── backgrounds/<分类>/<素材包>/  # 背景素材 PNG（场景 / CG / 演出，重名自动加序号）
+├── backgrounds/背景/  # 背景素材 PNG（场景 / CG / 演出，重名自动加序号）
 └── nameplate/           # 名片 PNG（按姓名命名，重名自动加序号）
 temp/
 └── <角色名>/            # 提取缓存：sprites/ + character_data.json + mask_mapping.json

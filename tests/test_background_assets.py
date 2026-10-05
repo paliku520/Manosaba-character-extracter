@@ -1,14 +1,19 @@
 """Background discovery/export regression tests; no game assets are required."""
 
+import base64
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
-from src.background_assets import export_backgrounds, find_backgrounds_dir, scan_backgrounds
+from src.background_assets import (
+    BackgroundPreviewCache, export_backgrounds, find_backgrounds_dir,
+    preview_background, scan_backgrounds,
+)
 from src.compositor import LoadCancelled
 
 
@@ -87,6 +92,7 @@ class BackgroundAssetsTests(unittest.TestCase):
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["errors"], [])
         self.assertEqual(result["files"][0]["type"], "Sprite")
+        self.assertEqual(Path(result["files"][0]["file_path"]).parent, self.output)
         with Image.open(result["files"][0]["file_path"]) as image:
             self.assertEqual(image.size, (12, 6))
             self.assertEqual(image.getpixel((0, 0)), (12, 34, 56, 78))
@@ -108,6 +114,11 @@ class BackgroundAssetsTests(unittest.TestCase):
         self.assertEqual(len(set(paths)), 4)
         self.assertTrue(all(Path(p).name.startswith("_CON") for p in paths))
         self.assertTrue(all(Path(p).is_file() for p in paths))
+        self.assertTrue(all(Path(p).parent == self.output for p in paths))
+        # Identical image names from another category share the same flat directory.
+        other = export_backgrounds([self.item("stills/1.bundle")], self.output)
+        self.assertEqual(Path(other["files"][0]["file_path"]), self.output / "_CON_4.png")
+        self.assertFalse(any(path.is_dir() for path in self.output.iterdir()))
 
     @patch("src.background_assets.UnityPy.load")
     def test_bad_bundle_and_object_do_not_abort_batch(self, load):
@@ -156,6 +167,72 @@ class BackgroundAssetsTests(unittest.TestCase):
         self.assertEqual(result["count"], 0)
         self.assertEqual(list(self.output.rglob("*.png")), [])
         self.assertEqual(list(staging.iterdir()), [])
+
+    @patch("src.background_assets.UnityPy.load")
+    def test_preview_resizes_in_memory_and_decodes_only_first_sprite(self, load):
+        unused = image_object(path_id=2)
+        unused.read = Mock(side_effect=AssertionError("unnecessary decode"))
+        load.return_value = environment(image_object(size=(2560, 1280)), unused,
+                                        image_object("Texture2D"))
+        original_save = Image.Image.save
+        destinations = []
+        def save_preview(image, target, **kwargs):
+            destinations.append(target)
+            return original_save(image, target, **kwargs)
+        with patch.object(Image.Image, "save", new=save_preview):
+            result = preview_background(self.bundle("mainbackground/1.bundle"))
+        self.assertEqual(result["size"], [2560, 1280])
+        self.assertEqual(result["count"], 2)
+        self.assertTrue(all(isinstance(target, io.BytesIO) for target in destinations))
+        unused.read.assert_not_called()
+        with Image.open(io.BytesIO(base64.b64decode(result["data_url"].split(",", 1)[1]))) as image:
+            self.assertEqual(image.size, (1280, 640))
+            self.assertEqual(image.mode, "RGBA")
+            self.assertEqual(image.getpixel((0, 0))[3], 78)
+        self.assertFalse(self.output.exists())
+
+    @patch("src.background_assets.UnityPy.load")
+    def test_preview_falls_back_to_texture_or_next_usable_sprite(self, load):
+        load.return_value = environment(image_object("Texture2D", size=(32, 16)))
+        result = preview_background(self.bundle("mainbackground/1.bundle"))
+        self.assertEqual(result["size"], [32, 16])
+        load.return_value = environment(image_object(error="corrupt"), image_object(name="usable"))
+        self.assertEqual(preview_background(Path("test.bundle"))["name"], "usable")
+        load.return_value = environment()
+        with self.assertRaises(ValueError):
+            preview_background(Path("test.bundle"))
+
+    @patch("src.background_assets.UnityPy.load")
+    def test_preview_cancel_releases_unity_data(self, load):
+        env = environment(image_object())
+        env.files["bundle"] = object()
+        load.return_value = env
+        calls = iter((False, True))
+        with self.assertRaises(LoadCancelled):
+            preview_background(Path("test.bundle"), cancel_check=lambda: next(calls))
+        self.assertEqual(env.files, {})
+
+    def test_preview_cache_lru_limit_and_source_invalidation(self):
+        cache = BackgroundPreviewCache(max_bytes=20)
+        paths = [self.bundle(f"mainbackground/{i}.bundle") for i in range(3)]
+        keys = [cache.key(path) for path in paths]
+        value = {"data_url": "1234567890", "name": ""}
+        cache.put(keys[0], value)
+        cache.put(keys[1], value)
+        self.assertEqual(cache.get(keys[0]), value)  # Refresh recency.
+        cache.put(keys[2], value)
+        self.assertIsNone(cache.get(keys[1]))
+        paths[0].write_bytes(b"changed source")
+        changed = cache.key(paths[0])
+        self.assertNotEqual(changed, keys[0])
+        self.assertIsNone(cache.get(changed))
+        cache.put(changed, value)
+        self.assertIsNone(cache.get(keys[0]))
+        cache.put(changed, {"data_url": "x" * 21})
+        self.assertIsNone(cache.get(changed))
+        self.assertLessEqual(cache._bytes, cache.max_bytes)
+        cache.clear()
+        self.assertEqual(cache._bytes, 0)
 
 
 if __name__ == "__main__":

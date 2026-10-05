@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import base64
 import gc
+import io
 import os
 import re
 import tempfile
+from collections import OrderedDict
 from pathlib import Path, PurePosixPath
 
 import UnityPy
+from PIL import Image
 
 from src.bundle_loader import SKIP_DIRS
 from src.compositor import LoadCancelled
@@ -98,6 +102,92 @@ def scan_backgrounds(directory: Path, cancel_check=None) -> dict:
     return {"directory": str(root), "bundles": bundles, "count": len(bundles)}
 
 
+class BackgroundPreviewCache:
+    """Bound preview memory with LRU eviction; changed source files get new keys."""
+
+    def __init__(self, max_bytes: int = 64 * 1024 * 1024):
+        self.max_bytes = max_bytes
+        self._entries = OrderedDict()
+        self._bytes = 0
+
+    @staticmethod
+    def key(path: Path, max_side: int = 1280) -> tuple:
+        path = path.resolve()
+        stat = path.stat()
+        return (str(path), stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, max_side)
+
+    def get(self, key: tuple) -> dict | None:
+        entry = self._entries.get(key)
+        if entry is None:
+            return None
+        self._entries.move_to_end(key)
+        return entry[0].copy()
+
+    def put(self, key: tuple, result: dict) -> None:
+        # Drop older versions of this bundle rather than retaining stale previews.
+        for old_key in list(self._entries):
+            if old_key[0] == key[0]:
+                self._bytes -= self._entries.pop(old_key)[1]
+        size = len(result["data_url"]) + len(result.get("name", "").encode("utf-8"))
+        if size > self.max_bytes:
+            return
+        while self._entries and self._bytes + size > self.max_bytes:
+            _, (_, old_size) = self._entries.popitem(last=False)
+            self._bytes -= old_size
+        self._entries[key] = (result.copy(), size)
+        self._bytes += size
+
+    def clear(self) -> None:
+        self._entries.clear()
+        self._bytes = 0
+
+
+def preview_background(bundle_path: Path, max_side: int = 1280, cancel_check=None) -> dict:
+    """Decode the first usable image and encode only its in-memory thumbnail."""
+    if max_side < 1:
+        raise ValueError("invalid preview size")
+    _check_cancel(cancel_check)
+    env = UnityPy.load(str(bundle_path))
+    objects, images = [], []
+    obj = data = None
+    errors = []
+    try:
+        objects = list(env.objects)
+        images = [obj for obj in objects if obj.type.name == "Sprite"]
+        if not images:
+            images = [obj for obj in objects if obj.type.name == "Texture2D"]
+        for obj in images:
+            _check_cancel(cancel_check)
+            image = None
+            try:
+                data = obj.read()
+                image = data.image
+                if image is None:
+                    raise ValueError(_("background.no_images"))
+                size = list(image.size)
+                image.thumbnail((max_side, max_side), Image.Resampling.LANCZOS)
+                _check_cancel(cancel_check)
+                with io.BytesIO() as stream:
+                    image.save(stream, format="PNG")
+                    url = "data:image/png;base64," + base64.b64encode(stream.getvalue()).decode("ascii")
+                return {"name": getattr(data, "m_Name", "") or f"image_{obj.path_id}",
+                        "size": size, "data_url": url, "count": len(images)}
+            except LoadCancelled:
+                raise
+            except Exception as exc:
+                errors.append(str(exc))
+            finally:
+                if image is not None:
+                    image.close()
+        raise ValueError("\n".join(errors) or _("background.no_images"))
+    finally:
+        env.files.clear()
+        objects.clear()
+        images.clear()
+        obj = data = env = None
+        gc.collect()
+
+
 def _safe_name(name: str) -> str:
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip().rstrip(". ")
     if not name or name in (".", ".."):
@@ -152,7 +242,6 @@ def export_backgrounds(bundles: list[dict], output_dir: Path,
             relative = PurePosixPath(item["id"])
             if relative.is_absolute() or ".." in relative.parts or not relative.parts:
                 raise ValueError("invalid background id")
-            target_dir = output_dir.joinpath(*(_safe_name(p) for p in relative.parts))
             env = UnityPy.load(item["bundle_path"])
             objects = list(env.objects)
             images = [obj for obj in objects if obj.type.name == "Sprite"]
@@ -169,7 +258,7 @@ def export_backgrounds(bundles: list[dict], output_dir: Path,
                     image = data.image
                     if image is None:
                         raise ValueError(_("background.no_images"))
-                    target = _save_png(image, target_dir, name, staging_dir)
+                    target = _save_png(image, output_dir, name, staging_dir)
                     files.append({"id": item["id"], "name": name, "file_path": str(target),
                                   "size": list(image.size), "type": obj.type.name})
                 except LoadCancelled:

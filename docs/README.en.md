@@ -23,7 +23,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 **Background Export**
 
 - A dedicated **Backgrounds** tab locates the game's `backgrounds` directory, with scene / CG / effects categories, search, selection and per-bundle previews
-- Batch-export native-size PNGs to `output/backgrounds/<category>/<bundle>/`; duplicate filenames receive a numeric suffix, and cancellation retains completed images
+- Generate thumbnails in memory with a prewarmed worker and bounded cache; batch-export native-size PNGs together to `output/backgrounds/背景/`; duplicate filenames receive a numeric suffix, and cancellation retains completed images
 - Export Sprites first, or Texture2D when no Sprites exist, without exporting backing textures twice; see [background documentation (Chinese)](backgrounds.md) for implementation and regression tests
 
 **Part Presets**
@@ -165,7 +165,7 @@ output/
 ├── <name>/            # No components: sprites flat here
 ├── <name>/sprites/    # With components: exported sprites
 ├── <name>/composite/  # With components: composite images (<name>_composite.png, auto-numbered on conflict)
-├── backgrounds/<category>/<bundle>/  # Background PNGs (scene / CG / effects, auto-numbered on conflict)
+├── backgrounds/背景/  # Background PNGs (scene / CG / effects, auto-numbered on conflict)
 └── nameplate/         # Nameplate PNGs (named after the entered name, auto-numbered on conflict)
 temp/
 └── <name>/            # Extraction cache: sprites/ + character_data.json + mask_mapping.json

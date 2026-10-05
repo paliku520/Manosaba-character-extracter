@@ -107,7 +107,7 @@ def _shutdown_logs():
         pass  # 主进程可能已退出（管道关闭），忽略
 
 
-def _worker_main() -> None:
+def _worker_main(background_preview: bool = False) -> None:
     """提取工作子进程入口（backend.py --worker）：执行一次 UnityPy 提取。
 
     父进程（src.worker_client）spawn 本模式子进程 → 发一行 JSON 请求 →
@@ -124,7 +124,7 @@ def _worker_main() -> None:
 
     from src.compositor import extract_character_data, extract_sprites
     from src.export_manager import export_sprites as _export_sprites
-    from src.background_assets import export_backgrounds
+    from src.background_assets import export_backgrounds, preview_background
 
     def _send(obj) -> None:
         try:
@@ -143,6 +143,12 @@ def _worker_main() -> None:
             rid = req.get("id")
             kind = req.get("kind")
             args = req.get("args") or {}
+
+            if background_preview:
+                if kind != "preview_background":
+                    raise ValueError(f"unknown background worker kind: {kind}")
+                _send({"id": rid, "result": preview_background(Path(args["bundle_path"]))})
+                continue
 
             def _cb(cur: int, total: int) -> None:
                 _send({"event": "progress", "payload": {"current": cur, "total": total}})
@@ -174,7 +180,8 @@ def _worker_main() -> None:
             traceback.print_exc(file=sys.stderr)
             sys.stderr.flush()
             _send({"id": rid, "error": f"{type(e).__name__}: {e}"})
-        break  # 一个子进程只服务一个请求（无状态残留，父进程按需重开）
+        if not background_preview:
+            break  # 角色提取/批量导出仍然每个子进程只服务一个请求
 
 
 def main():
@@ -222,6 +229,7 @@ def main():
             write_response(rid, {"error": f"{type(e).__name__}: {e}"})
 
     # stdin EOF（Electron 主进程窗口关闭/退出时关闭管道）→ 优雅退出清理
+    api._close_background_preview()
     _shutdown_logs()
     flush_events()
     from src.logtools import flush_logs
@@ -231,5 +239,7 @@ def main():
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--worker":
         _worker_main()  # 提取工作子进程模式（方案 A）
+    elif len(sys.argv) > 1 and sys.argv[1] == "--background-worker":
+        _worker_main(background_preview=True)
     else:
         main()
