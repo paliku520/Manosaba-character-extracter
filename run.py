@@ -39,6 +39,7 @@ from PIL import Image
 
 from src.bundle_loader import BundleLoader
 from src.background_assets import BackgroundPreviewCache, scan_backgrounds
+from src.small_assets import OUTPUT_GROUPS
 from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
     LoadCancelled,
@@ -631,9 +632,18 @@ class JsApi:
         return {"ok": True}
 
     def load_backgrounds(self, path: str) -> dict:
-        """Discover backgrounds independently of the character-directory setting."""
+        """Discover backgrounds and individual images independently of characters."""
         def task():
             result = scan_backgrounds(Path(path), self._background_cancel.is_set)
+            small = run_extract_worker(
+                "scan_small_assets", {"directory": result["directory"]},
+                progress_callback=lambda cur, total: self._emit("background_progress", {
+                    "operation": "scan", "current": cur, "total": total,
+                }), cancel_check=self._background_cancel.is_set,
+            )
+            result["bundles"].extend(small["bundles"])
+            result["count"] = len(result["bundles"])
+            result["errors"] = small["errors"]
             if self._background_cancel.is_set():
                 raise LoadCancelled()
             self._background_bundles = {item["id"]: item for item in result["bundles"]}
@@ -661,20 +671,21 @@ class JsApi:
         if self._background_cancel.is_set():
             raise LoadCancelled()
         path = Path(item["bundle_path"])
-        key = self._background_preview_cache.key(path)
+        selector = {key: item[key] for key in ("object_id", "asset_type") if key in item}
+        key = self._background_preview_cache.key(path, **selector)
         result = self._background_preview_cache.get(key)
         if result is None:
             result = self._background_preview_worker.preview(
-                path, cancel_check=self._background_cancel.is_set,
+                path, cancel_check=self._background_cancel.is_set, **selector,
             )
             if self._background_cancel.is_set():
                 raise LoadCancelled()
-            if self._background_preview_cache.key(path) == key:
+            if self._background_preview_cache.key(path, **selector) == key:
                 self._background_preview_cache.put(key, result)
         return result
 
     def prewarm_backgrounds(self) -> dict:
-        """Cache previews for every loaded bundle, independently of UI filters."""
+        """Cache previews for every loaded asset, independently of UI filters."""
         if not self._background_bundles:
             return {"ok": False, "error": _("background.invalid_selection")}
         items = list(self._background_bundles.values())
@@ -698,16 +709,21 @@ class JsApi:
         return self._start_background_job("prewarm", task)
 
     def export_backgrounds(self, selected_ids: List[str]) -> dict:
-        """Export selected images together in output/backgrounds/背景/."""
+        """Export native PNGs into flat, named categories under backgrounds/."""
         if (not isinstance(selected_ids, list) or not selected_ids
                 or any(not isinstance(key, str) or key not in self._background_bundles
                        for key in selected_ids)):
             return {"ok": False, "error": _("background.invalid_selection")}
-        items = [self._background_bundles[key] for key in dict.fromkeys(selected_ids)]
-        output_dir = self._output_dir / "backgrounds" / "背景"
+        items = [{**self._background_bundles[key], "output_group": OUTPUT_GROUPS.get(
+            self._background_bundles[key].get("group"), "背景",
+        )} for key in dict.fromkeys(selected_ids)]
+        output_dir = self._output_dir / "backgrounds"
 
         def task():
             result = self._extract_background_batch(items, output_dir, "export")
+            groups = {item["output_group"] for item in items}
+            if len(groups) == 1:
+                result["output_dir"] = str(output_dir / next(iter(groups)))
             if result["count"] > 0:
                 self._export_count += 1
                 save_settings(export_count=self._export_count)

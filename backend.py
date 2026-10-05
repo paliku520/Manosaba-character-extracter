@@ -125,6 +125,9 @@ def _worker_main(background_preview: bool = False) -> None:
     from src.compositor import extract_character_data, extract_sprites
     from src.export_manager import export_sprites as _export_sprites
     from src.background_assets import export_backgrounds, preview_background
+    from src.small_assets import SmallAssetPreviewer, scan_small_assets
+
+    previewer = SmallAssetPreviewer() if background_preview else None
 
     def _send(obj) -> None:
         try:
@@ -147,11 +150,21 @@ def _worker_main(background_preview: bool = False) -> None:
             if background_preview:
                 if kind != "preview_background":
                     raise ValueError(f"unknown background worker kind: {kind}")
-                _send({"id": rid, "result": preview_background(Path(args["bundle_path"]))})
+                if args.get("object_id") is not None:
+                    result = previewer.preview(Path(args["bundle_path"]), args["object_id"], args["asset_type"])
+                else:
+                    previewer.close()
+                    result = preview_background(Path(args["bundle_path"]))
+                _send({"id": rid, "result": result})
                 continue
 
             def _cb(cur: int, total: int) -> None:
                 _send({"event": "progress", "payload": {"current": cur, "total": total}})
+
+            if kind == "scan_small_assets":
+                result = scan_small_assets(Path(args["directory"]), progress_callback=_cb)
+                _send({"id": rid, "result": result})
+                break
 
             if kind == "export_backgrounds":
                 result = export_backgrounds(
@@ -182,6 +195,8 @@ def _worker_main(background_preview: bool = False) -> None:
             _send({"id": rid, "error": f"{type(e).__name__}: {e}"})
         if not background_preview:
             break  # 角色提取/批量导出仍然每个子进程只服务一个请求
+    if previewer is not None:
+        previewer.close()
 
 
 def main():

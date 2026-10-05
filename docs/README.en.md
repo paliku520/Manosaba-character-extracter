@@ -20,11 +20,12 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Anan Sketchbook** — custom text on anan's sketchbook parts (multi-line, font size, alignment)
 - **Cancellable Loading** — character analysis can be cancelled at any time, instantly returning to a usable state
 
-**Background Export**
+**Background and Small Asset Export**
 
-- A dedicated **Backgrounds** tab locates the game's `backgrounds` directory, with scene / CG / effects categories, search, selection and per-bundle previews
-- Generate thumbnails in memory with a prewarmed worker, bounded memory cache and disk thumbnails; prewarm all loaded assets with one click; batch-export native-size PNGs together to `output/backgrounds/背景/`; duplicate filenames receive a numeric suffix, and cancellation retains completed images
-- Export Sprites first, or Texture2D when no Sprites exist, without exporting backing textures twice; see [background documentation (Chinese)](backgrounds.md) for implementation and regression tests
+- A dedicated **Assets** tab locates backgrounds, CGs, evidence, profiles, interface icons/buttons and all stage-bundle images, with categories, search and selection
+- Click rows to preview; checkboxes independently select exports. Prewarm all loaded assets, with bounded memory, disk thumbnails in temp and cancellation
+- Export native-size PNGs flat within `output/backgrounds/背景/` for original backgrounds and named folders such as `证物/`, `人物资料/`, `界面素材/` and `演出物件/` for small images; no per-bundle subfolders, and conflicts receive numeric suffixes
+- List atlas sprites individually and include independent textures, excluding duplicate sprite backing textures and empty runtime textures; see [asset documentation (Chinese)](backgrounds.md)
 
 **Part Presets**
 
@@ -127,9 +128,9 @@ start.bat clean temp logs build  :: targets can be combined with spaces
    - **With component data** → Direct Export / Composite Character
 2. Composite mode: check parts (or pick a built-in / custom preset from the preset bar) → live preview → save composite PNG
 3. Nameplate: enter a name on the home page nameplate card, pick font & first-letter color → generate preview → save (run "Extract Assets" first)
-4. Backgrounds: open the **Backgrounds** tab → **Load backgrounds** → select the game root or `backgrounds` folder → filter/check assets → **Export selected**. Click an asset row to preview it; checkboxes only control export selection. **Prewarm all** caches thumbnails for every loaded asset, with progress and cancellation. Scene backgrounds are shown by default; CGs and effects are available from the category dropdown. **Select visible** selects the current filtered list, selections persist across categories, and **Deselect all** clears every selection.
+4. Assets: open **Assets** → **Load asset folder** → select the game root or `backgrounds` folder → filter/check assets → **Export selected**. Click rows to preview; checkboxes only control export selection. **Prewarm all** caches every loaded asset, with progress and cancellation. Scene backgrounds appear by default; small images are available from the category dropdown. **Select visible** selects the filtered list, selections persist across categories, and **Deselect all** clears every selection.
 
-Background previews are limited to a 1280-pixel longest edge; exports always preserve native dimensions, independently of character preview/export quality settings. Dropping a game folder while the Backgrounds tab is active also loads backgrounds. Scans, previews and exports can be cancelled; completed PNGs are retained and failed assets are listed separately.
+Previews have a 1280-pixel longest edge; exports preserve native dimensions independently of character quality settings. Background bundles preview the first image and export all images; small assets preview/export one selected object. Dropping the game folder in the Assets tab also loads assets. Scans, previews, prewarming and exports can be cancelled; completed PNGs/cache entries remain, and failures are listed separately.
 
 ### Settings
 
@@ -165,7 +166,8 @@ output/
 ├── <name>/            # No components: sprites flat here
 ├── <name>/sprites/    # With components: exported sprites
 ├── <name>/composite/  # With components: composite images (<name>_composite.png, auto-numbered on conflict)
-├── backgrounds/背景/  # Background PNGs (scene / CG / effects, auto-numbered on conflict)
+├── backgrounds/背景/  # Original background, CG and effects PNGs
+├── backgrounds/<category>/ # Evidence, profiles, UI and stage PNGs, flat per category
 └── nameplate/         # Nameplate PNGs (named after the entered name, auto-numbered on conflict)
 temp/
 └── <name>/            # Extraction cache: sprites/ + character_data.json + mask_mapping.json

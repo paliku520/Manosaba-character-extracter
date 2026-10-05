@@ -137,7 +137,8 @@ class BackgroundPreviewWorker:
             self._closed = True
             self._reset()
 
-    def preview(self, bundle_path: Path, cancel_check=None, timeout: float = 45.0) -> dict:
+    def preview(self, bundle_path: Path, cancel_check=None, timeout: float = 45.0,
+                object_id=None, asset_type=None) -> dict:
         with self._lock:
             if cancel_check and cancel_check():
                 raise LoadCancelledInWorker()
@@ -147,7 +148,8 @@ class BackgroundPreviewWorker:
             try:
                 self._proc.stdin.write(json.dumps({
                     "id": rid, "kind": "preview_background",
-                    "args": {"bundle_path": str(bundle_path)},
+                    "args": {"bundle_path": str(bundle_path), "object_id": object_id,
+                             "asset_type": asset_type},
                 }) + "\n")
                 self._proc.stdin.flush()
                 deadline = time.monotonic() + timeout

@@ -14,7 +14,7 @@
   function visibleBundles() {
     const query = $('#bg-search').value.trim().toLowerCase();
     return state.bundles.filter((item) => (!state.category || item.group === state.category)
-      && (!query || item.id.toLowerCase().includes(query)));
+      && (!query || [item.id, item.name, item.source || ''].join(' ').toLowerCase().includes(query)));
   }
 
   function updateControls() {
@@ -50,12 +50,14 @@
       const row = document.createElement('div');
       row.className = 'background-row part-item';
       row.setAttribute('role', 'button');
-      row.setAttribute('aria-label', t('background.preview') + ': ' + item.id);
+      const displayName = item.object_id ? item.name : item.id;
+      row.setAttribute('aria-label', t('background.preview') + ': ' + displayName);
+      row.title = item.source || item.id;
       row.dataset.id = item.id;
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
-      checkbox.setAttribute('aria-label', item.id);
+      checkbox.setAttribute('aria-label', displayName);
       checkbox.checked = state.selected.has(item.id);
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) state.selected.add(item.id);
@@ -63,7 +65,7 @@
         updateControls();
       });
       const name = document.createElement('span');
-      name.textContent = item.id;
+      name.textContent = displayName;
       label.appendChild(checkbox);
       row.append(label, name);
       const preview = () => {
@@ -168,12 +170,15 @@
       buildCategories();
       renderList();
       MCE.setStatus(t('background.loaded', { count: result.count }));
+      showErrors(result.errors);
     } else if (result.operation === 'preview') {
       state.preview = result;
       $('#bg-preview-image').src = result.data_url;
       $('#bg-preview-image').alt = result.name;
       $('#bg-preview-image').hidden = false;
-      $('#bg-preview-label').textContent = result.id;
+      const item = state.bundles.find((entry) => entry.id === result.id);
+      $('#bg-preview-label').textContent = item && item.object_id
+        ? groupLabel(item.group) + ' / ' + item.name : result.id;
       refreshPreviewMeta();
       MCE.setStatus(t('app.status.ready'));
     } else if (result.operation === 'export') {
