@@ -19,6 +19,7 @@
 
   function updateControls() {
     $('#bg-load').disabled = state.busy;
+    $('#bg-prewarm').disabled = state.busy || !state.bundles.length;
     $('#bg-export').disabled = state.busy || state.selected.size === 0;
     $('#bg-select-all').disabled = state.busy || !visibleBundles().length;
     $('#bg-select-none').disabled = state.busy || !state.selected.size;
@@ -29,6 +30,10 @@
       total: state.bundles.length, visible: visibleBundles().length, selected: state.selected.size,
     });
     $('#bg-list').querySelectorAll('input, button').forEach((el) => { el.disabled = state.busy; });
+    $('#bg-list').querySelectorAll('.background-row').forEach((el) => {
+      el.tabIndex = state.busy ? -1 : 0;
+      el.setAttribute('aria-disabled', String(state.busy));
+    });
   }
 
   function renderList() {
@@ -44,9 +49,13 @@
     visible.forEach((item) => {
       const row = document.createElement('div');
       row.className = 'background-row part-item';
+      row.setAttribute('role', 'button');
+      row.setAttribute('aria-label', t('background.preview') + ': ' + item.id);
+      row.dataset.id = item.id;
       const label = document.createElement('label');
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', item.id);
       checkbox.checked = state.selected.has(item.id);
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) state.selected.add(item.id);
@@ -55,11 +64,20 @@
       });
       const name = document.createElement('span');
       name.textContent = item.id;
-      label.append(checkbox, name);
-      const preview = MCE.btn(t('background.preview'), 'btn sm', () => startJob(
-        'preview', () => api().preview_background(item.id),
-      ));
-      row.append(label, preview);
+      label.appendChild(checkbox);
+      row.append(label, name);
+      const preview = () => {
+        if (!state.busy) startJob('preview', () => api().preview_background(item.id));
+      };
+      row.addEventListener('click', (event) => {
+        if (!event.target.closest('input, label')) preview();
+      });
+      row.addEventListener('keydown', (event) => {
+        if (event.target === row && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          preview();
+        }
+      });
       list.appendChild(row);
     });
     updateControls();
@@ -168,6 +186,11 @@
       if (result.count && !result.errors.length) MCE.offerOpen(
         t('background.export'), message, result.output_dir,
       );
+    } else if (result.operation === 'prewarm') {
+      const message = t('background.prewarm_done', { count: result.count, total: result.total });
+      MCE.setStatus(message);
+      MCE.toast(message, result.errors.length ? 'warning' : 'success');
+      showErrors(result.errors);
     }
   });
 
@@ -183,6 +206,8 @@
   MCE.loadBackgroundDirectory = (path) => startJob('scan', () => api().load_backgrounds(path));
   MCE.initBackgrounds = () => {
     $('#bg-load').addEventListener('click', loadBackgrounds);
+    $('#bg-prewarm').addEventListener('click', () => startJob('prewarm',
+      () => api().prewarm_backgrounds()));
     $('#bg-export').addEventListener('click', () => startJob('export',
       () => api().export_backgrounds(Array.from(state.selected))));
     $('#bg-open').addEventListener('click', () => api().open_output());

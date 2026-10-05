@@ -234,6 +234,59 @@ class BackgroundAssetsTests(unittest.TestCase):
         cache.clear()
         self.assertEqual(cache._bytes, 0)
 
+    def cached_preview(self):
+        with Image.new("RGBA", (16, 8), (12, 34, 56, 78)) as image, io.BytesIO() as stream:
+            image.save(stream, format="PNG")
+            return {"name": "sample", "size": [4096, 2048], "count": 1,
+                    "data_url": "data:image/png;base64," + base64.b64encode(stream.getvalue()).decode("ascii")}
+
+    def test_disk_cache_retains_all_entries_beyond_memory_limit_and_across_restart(self):
+        directory = self.root / "cache"
+        cache = BackgroundPreviewCache(max_bytes=1, directory=directory)
+        keys = [cache.key(self.bundle(f"mainbackground/{i}.bundle")) for i in range(3)]
+        value = self.cached_preview()
+        for key in keys:
+            cache.put(key, value)
+        self.assertEqual(cache._bytes, 0)
+        restarted = BackgroundPreviewCache(directory=directory)
+        for key in keys:
+            self.assertEqual(restarted.get(key), value)
+        self.assertEqual(len(list(directory.glob("*.png"))), 3)
+        self.assertEqual(list(directory.glob("*.tmp")), [])
+
+    def test_disk_cache_invalidates_changed_sources_without_accumulating_old_versions(self):
+        path = self.bundle("mainbackground/1.bundle")
+        cache = BackgroundPreviewCache(directory=self.root / "cache")
+        key = cache.key(path)
+        value = self.cached_preview()
+        cache.put(key, value)
+        path.write_bytes(b"updated bundle")
+        changed = cache.key(path)
+        cache.clear()
+        self.assertIsNone(cache.get(changed))
+        cache.put(changed, value)
+        cache.clear()
+        self.assertEqual(cache.get(changed), value)
+        self.assertEqual(len(list(cache.directory.glob("*.png"))), 1)
+
+    def test_corrupt_disk_cache_is_a_miss_and_failed_write_cleans_temporary_files(self):
+        cache = BackgroundPreviewCache(directory=self.root / "cache")
+        key = cache.key(self.bundle("mainbackground/1.bundle"))
+        value = self.cached_preview()
+        cache.put(key, value)
+        cache.clear()
+        png, metadata = cache._disk_paths(key)
+        png.write_bytes(b"broken png")
+        self.assertIsNone(cache.get(key))
+        cache.put(key, value)
+        cache.clear()
+        metadata.write_text("[]", encoding="utf-8")
+        self.assertIsNone(cache.get(key))
+        with patch("src.background_assets.os.replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                cache.put(key, value)
+        self.assertEqual(list(cache.directory.glob("*.tmp")), [])
+
 
 if __name__ == "__main__":
     unittest.main()

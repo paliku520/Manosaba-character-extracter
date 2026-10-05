@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import base64
 import gc
+import hashlib
 import io
+import json
 import os
 import re
 import tempfile
@@ -105,8 +107,9 @@ def scan_backgrounds(directory: Path, cancel_check=None) -> dict:
 class BackgroundPreviewCache:
     """Bound preview memory with LRU eviction; changed source files get new keys."""
 
-    def __init__(self, max_bytes: int = 64 * 1024 * 1024):
+    def __init__(self, max_bytes: int = 64 * 1024 * 1024, directory: Path | None = None):
         self.max_bytes = max_bytes
+        self.directory = directory
         self._entries = OrderedDict()
         self._bytes = 0
 
@@ -118,12 +121,60 @@ class BackgroundPreviewCache:
 
     def get(self, key: tuple) -> dict | None:
         entry = self._entries.get(key)
-        if entry is None:
-            return None
-        self._entries.move_to_end(key)
-        return entry[0].copy()
+        if entry is not None:
+            self._entries.move_to_end(key)
+            return entry[0].copy()
+        if self.directory is not None:
+            png, metadata = self._disk_paths(key)
+            try:
+                stored = json.loads(metadata.read_text(encoding="utf-8"))
+                if stored["key"] != list(key):
+                    return None
+                result = stored["preview"]
+                if (not isinstance(result["name"], str) or len(result["size"]) != 2
+                        or not all(isinstance(n, int) and n > 0 for n in result["size"])
+                        or not isinstance(result["count"], int) or result["count"] < 1):
+                    return None
+                data = png.read_bytes()
+                with Image.open(io.BytesIO(data)) as image:
+                    if image.format != "PNG" or max(image.size) > key[-1]:
+                        return None
+                    image.verify()
+                result["data_url"] = "data:image/png;base64," + base64.b64encode(data).decode("ascii")
+                self._remember(key, result)
+                return result.copy()
+            except (OSError, ValueError, KeyError, TypeError):
+                pass  # Missing, stale or corrupt cache entries are decoded again.
+        return None
 
     def put(self, key: tuple, result: dict) -> None:
+        if self.directory is not None:
+            png, metadata = self._disk_paths(key)
+            data = base64.b64decode(result["data_url"].split(",", 1)[1], validate=True)
+            stored = {"key": list(key), "preview": {k: v for k, v in result.items() if k != "data_url"}}
+            self._write_atomic(png, data)
+            self._write_atomic(metadata, json.dumps(stored, ensure_ascii=False).encode("utf-8"))
+        self._remember(key, result)
+
+    def _disk_paths(self, key: tuple) -> tuple[Path, Path]:
+        # Overwrite older source versions, keeping one thumbnail per source/size.
+        digest = hashlib.sha256(json.dumps([1, key[0], key[-1]]).encode("utf-8")).hexdigest()
+        return self.directory / f"{digest}.png", self.directory / f"{digest}.json"
+
+    @staticmethod
+    def _write_atomic(path: Path, data: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(data)
+            os.replace(temporary, path)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
+    def _remember(self, key: tuple, result: dict) -> None:
         # Drop older versions of this bundle rather than retaining stale previews.
         for old_key in list(self._entries):
             if old_key[0] == key[0]:

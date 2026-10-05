@@ -376,7 +376,7 @@ class JsApi:
         self._background_lock = threading.Lock()
         self._background_cancel = threading.Event()
         self._background_preview_worker = BackgroundPreviewWorker()
-        self._background_preview_cache = BackgroundPreviewCache()
+        self._background_preview_cache = BackgroundPreviewCache(directory=self._temp_dir / "background-previews")
 
         # 名片合成（素材/字体见 src/nameplate.py；渲染器按素材路径缓存）
         self._nameplate_renderer: Optional["nameplate.NameplateRenderer"] = None
@@ -653,19 +653,49 @@ class JsApi:
             return {"ok": False, "error": _("background.invalid_selection")}
 
         def task():
-            path = Path(item["bundle_path"])
-            key = self._background_preview_cache.key(path)
-            result = self._background_preview_cache.get(key)
-            if result is None:
-                result = self._background_preview_worker.preview(
-                    path, cancel_check=self._background_cancel.is_set,
-                )
-                if self._background_cancel.is_set():
-                    raise LoadCancelled()
-                if self._background_preview_cache.key(path) == key:
-                    self._background_preview_cache.put(key, result)
+            result = self._get_background_preview(item)
             return {"id": background_id, **result}
         return self._start_background_job("preview", task)
+
+    def _get_background_preview(self, item: dict) -> dict:
+        if self._background_cancel.is_set():
+            raise LoadCancelled()
+        path = Path(item["bundle_path"])
+        key = self._background_preview_cache.key(path)
+        result = self._background_preview_cache.get(key)
+        if result is None:
+            result = self._background_preview_worker.preview(
+                path, cancel_check=self._background_cancel.is_set,
+            )
+            if self._background_cancel.is_set():
+                raise LoadCancelled()
+            if self._background_preview_cache.key(path) == key:
+                self._background_preview_cache.put(key, result)
+        return result
+
+    def prewarm_backgrounds(self) -> dict:
+        """Cache previews for every loaded bundle, independently of UI filters."""
+        if not self._background_bundles:
+            return {"ok": False, "error": _("background.invalid_selection")}
+        items = list(self._background_bundles.values())
+
+        def task():
+            count, errors = 0, []
+            for index, item in enumerate(items):
+                if self._background_cancel.is_set():
+                    raise LoadCancelled()
+                try:
+                    self._get_background_preview(item)
+                    count += 1
+                except (LoadCancelled, LoadCancelledInWorker):
+                    raise
+                except Exception as exc:
+                    errors.append({"id": item["id"], "message": str(exc)})
+                self._emit("background_progress", {
+                    "operation": "prewarm", "current": index + 1, "total": len(items),
+                })
+            return {"count": count, "total": len(items), "errors": errors}
+        return self._start_background_job("prewarm", task)
 
     def export_backgrounds(self, selected_ids: List[str]) -> dict:
         """Export selected images together in output/backgrounds/背景/."""

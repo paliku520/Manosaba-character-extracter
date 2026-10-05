@@ -13,8 +13,11 @@
 .background-content { display: flex; flex: 1; min-height: 0; gap: 20px; padding: 16px 24px; }
 .background-list { flex: 1; min-width: 200px; overflow: auto; }
 .background-row { display: flex; justify-content: space-between; gap: 8px; }
-.background-row label { display: flex; gap: 8px; align-items: center; min-width: 0; cursor: pointer; }
-.background-row label span { overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+.background-row { cursor: pointer; }
+.background-row[aria-disabled="true"] { cursor: default; }
+.background-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.background-row label { display: flex; align-items: center; cursor: pointer; }
+.background-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
 .background-row input { flex-shrink: 0; accent-color: var(--accent); }
 .background-preview { flex: 1; min-width: 0; overflow: auto; }
 .background-preview img { display: block; width: 100%; height: auto; border-radius: 8px; margin: 12px 0; }

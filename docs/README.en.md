@@ -23,7 +23,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 **Background Export**
 
 - A dedicated **Backgrounds** tab locates the game's `backgrounds` directory, with scene / CG / effects categories, search, selection and per-bundle previews
-- Generate thumbnails in memory with a prewarmed worker and bounded cache; batch-export native-size PNGs together to `output/backgrounds/背景/`; duplicate filenames receive a numeric suffix, and cancellation retains completed images
+- Generate thumbnails in memory with a prewarmed worker, bounded memory cache and disk thumbnails; prewarm all loaded assets with one click; batch-export native-size PNGs together to `output/backgrounds/背景/`; duplicate filenames receive a numeric suffix, and cancellation retains completed images
 - Export Sprites first, or Texture2D when no Sprites exist, without exporting backing textures twice; see [background documentation (Chinese)](backgrounds.md) for implementation and regression tests
 
 **Part Presets**
@@ -127,7 +127,7 @@ start.bat clean temp logs build  :: targets can be combined with spaces
    - **With component data** → Direct Export / Composite Character
 2. Composite mode: check parts (or pick a built-in / custom preset from the preset bar) → live preview → save composite PNG
 3. Nameplate: enter a name on the home page nameplate card, pick font & first-letter color → generate preview → save (run "Extract Assets" first)
-4. Backgrounds: open the **Backgrounds** tab → **Load backgrounds** → select the game root or `backgrounds` folder → filter/check assets → **Export selected**. Scene backgrounds are shown by default; CGs and effects are available from the category dropdown. **Select visible** selects the current filtered list, selections persist across categories, and **Deselect all** clears every selection.
+4. Backgrounds: open the **Backgrounds** tab → **Load backgrounds** → select the game root or `backgrounds` folder → filter/check assets → **Export selected**. Click an asset row to preview it; checkboxes only control export selection. **Prewarm all** caches thumbnails for every loaded asset, with progress and cancellation. Scene backgrounds are shown by default; CGs and effects are available from the category dropdown. **Select visible** selects the current filtered list, selections persist across categories, and **Deselect all** clears every selection.
 
 Background previews are limited to a 1280-pixel longest edge; exports always preserve native dimensions, independently of character preview/export quality settings. Dropping a game folder while the Backgrounds tab is active also loads backgrounds. Scans, previews and exports can be cancelled; completed PNGs are retained and failed assets are listed separately.
 

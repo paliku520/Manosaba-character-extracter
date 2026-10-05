@@ -1,7 +1,9 @@
 """Exercise preview worker lifetime and interruption using real stdio pipes."""
 
+import os
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 from pathlib import Path
@@ -15,6 +17,11 @@ import json, os, sys, time
 for line in sys.stdin:
     request = json.loads(line)
     path = request['args']['bundle_path']
+    if path.startswith('lock:'):
+        with open(path[5:], 'wb') as locked:
+            locked.write(b'worker holds file open')
+            locked.flush()
+            time.sleep(60)
     if path == 'slow':
         time.sleep(60)
     if path == 'exit':
@@ -76,6 +83,14 @@ class BackgroundWorkerTests(unittest.TestCase):
                     self.worker.preview(Path(path), timeout=0.1)
                 self.assertIsNotNone(proc.poll())
                 self.assertIn("pid", self.worker.preview(Path("ok")))
+
+    @unittest.skipUnless(os.name == "nt", "Windows file-lock and venv launcher regression")
+    def test_cancel_closes_actual_workers_file_before_parent_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            locked = Path(directory) / "in-progress.tmp"
+            with self.assertRaises(LoadCancelledInWorker):
+                self.worker.preview("lock:" + str(locked), cancel_check=locked.exists, timeout=5)
+            locked.unlink()  # Fails with WinError 32 if the launched worker survives.
 
 
 if __name__ == "__main__":

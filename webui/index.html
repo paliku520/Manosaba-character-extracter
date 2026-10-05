@@ -333,6 +333,7 @@
           <p class="desc" data-i18n="background.description">从游戏目录加载背景素材，按分类勾选并导出原始尺寸 PNG。</p>
           <div class="background-actions">
             <button id="bg-load" class="btn primary" data-i18n="background.load">加载背景目录</button>
+            <button id="bg-prewarm" class="btn" data-i18n="background.prewarm" disabled>预热全部</button>
             <button id="bg-export" class="btn" data-i18n="background.export" disabled>导出所选</button>
             <button id="bg-open" class="btn" data-i18n="left.open_output">打开输出目录</button>
             <button id="bg-cancel" class="btn" data-i18n="dialog.cancel" hidden>取消</button>
@@ -349,7 +350,7 @@
         <div class="background-content">
           <div id="bg-list" class="background-list"></div>
           <div class="background-preview">
-            <p id="bg-preview-label" class="desc" data-i18n="background.preview_hint">点击素材旁的预览按钮查看图片。</p>
+            <p id="bg-preview-label" class="desc" data-i18n="background.preview_hint">点击素材行查看预览，勾选框用于选择导出。</p>
             <img id="bg-preview-image" alt="" hidden>
             <p id="bg-preview-meta" class="desc"></p>
           </div>

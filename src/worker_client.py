@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import os
 import queue
 import subprocess
 import sys
@@ -61,6 +62,17 @@ def _stderr_reader(proc: subprocess.Popen) -> None:
 
 
 def _kill(proc: subprocess.Popen) -> None:
+    # A Windows venv python.exe can launch a second Python process. Terminating
+    # only the launcher leaves that worker running and holding output files open.
+    if os.name == "nt" and proc.poll() is None:
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW, timeout=3,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     try:
         proc.kill()
     except Exception:
