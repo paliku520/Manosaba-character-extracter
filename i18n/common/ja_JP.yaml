@@ -1,6 +1,40 @@
 # 日本語 共通（すべての作品で共用）
 # キー階層は翻訳キーのセグメントに対応（app.status.ready = app → status → ready）
 
+background:
+  tab_title: "背景素材"
+  description: "ゲームフォルダーから背景素材を読み込み、分類ごとに選択して元のサイズの PNG を出力します。CG や演出素材にはネタバレが含まれる場合があります。"
+  load: "背景を読み込む"
+  export: "選択した素材を出力"
+  category: "素材の分類"
+  all_categories: "すべての分類"
+  search: "素材を検索…"
+  select_visible: "表示中をすべて選択"
+  deselect: "選択をすべて解除"
+  preview: "プレビュー"
+  preview_hint: "素材の横のプレビューボタンで画像を表示します。"
+  preview_meta: "{name} · {width} × {height} · {count} 枚（先頭を表示、すべて出力）"
+  summary: "全 {total} パック · 表示 {visible} · 選択 {selected}"
+  empty: "ゲームフォルダーまたは backgrounds フォルダーを選択してください。"
+  no_matches: "一致する素材がありません。"
+  scan_progress: "背景素材を検索中…"
+  preview_progress: "背景プレビューを読み込み中…"
+  export_progress: "背景素材を出力中…"
+  loaded: "背景素材を {count} パック読み込みました"
+  export_done: "背景画像を {count} 枚出力しました"
+  cancelled: "中止しました。出力済みの画像は保持されます。"
+  failed: "背景素材の処理に失敗しました"
+  errors: "{count} 件の素材を出力できませんでした"
+  busy: "現在の処理が完了するまで待つか、先に中止してください。"
+  invalid_selection: "背景を読み込み、有効な素材を選択してください。"
+  not_found: "backgrounds フォルダーが見つかりません：{path}"
+  no_bundles: "背景フォルダーに bundle ファイルがありません：{path}"
+  no_images: "このパックに読み取り可能な背景画像がありません。"
+  groups:
+    mainbackground: "場面背景"
+    stills: "CG イラスト"
+    tricks: "演出素材"
+
 about:
   copyright: "非商用 · 学習・交流用"
   dev_bilibili: "Bilibili"

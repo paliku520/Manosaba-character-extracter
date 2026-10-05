@@ -124,6 +124,7 @@ def _worker_main() -> None:
 
     from src.compositor import extract_character_data, extract_sprites
     from src.export_manager import export_sprites as _export_sprites
+    from src.background_assets import export_backgrounds
 
     def _send(obj) -> None:
         try:
@@ -145,6 +146,14 @@ def _worker_main() -> None:
 
             def _cb(cur: int, total: int) -> None:
                 _send({"event": "progress", "payload": {"current": cur, "total": total}})
+
+            if kind == "export_backgrounds":
+                result = export_backgrounds(
+                    args["bundles"], Path(args["output_dir"]), progress_callback=_cb,
+                    staging_dir=Path(args["staging_dir"]) if args.get("staging_dir") else None,
+                )
+                _send({"id": rid, "result": result})
+                break
 
             bp = str(args["bundle_path"])
             out = str(args.get("output_dir") or "")

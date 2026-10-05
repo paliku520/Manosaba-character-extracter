@@ -96,6 +96,8 @@
   }
 
   function loadDir(path) {
+    if (App.backgroundBusy) { toast(t('background.busy'), 'warning'); return; }
+    if (App._activeTab === 'backgrounds') { MCE.loadBackgroundDirectory(path); return; }
     console.log(t('log.js_load_dir', { path }));
     setStatus(t('app.progress.loading_bundles'), true);
     api().load_directory(path);
@@ -189,6 +191,7 @@
   }
 
   async function onCharClick(name) {
+    if (App.backgroundBusy) { toast(t('background.busy'), 'warning'); return; }
     if (MCE.spear.active) return;   // 长矛彩蛋锁定期间禁止切换角色
     if (App.loading) {
       const ok = await confirmDialog(t('dialog.cancel_load_title'), t('dialog.cancel_load_msg'));

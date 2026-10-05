@@ -95,6 +95,7 @@
     previewThumbs: {},       // {精灵名: dataURL}
     previewSel: new Set(),   // 已勾选精灵名
     loading: false,          // 正在加载角色/导出（读条中禁止切换）
+    backgroundBusy: false,   // 背景任务使用同一状态栏，期间禁止启动角色任务
     sketchText: '',          // Anan 素描本已应用的文字（点“应用”后生效）
     sketchSize: 56,          // Anan 素描本文字字号（已应用）
     sketchAlign: 'center',   // Anan 素描本文字对齐：left/center/right（已应用）
@@ -192,6 +193,7 @@
     });
     document.addEventListener('mouseup', () => { resizeState = null; });
     $('#btn-load').addEventListener('click', onLoadClick);
+    MCE.initBackgrounds();
     setupDragDrop();  // 拖拽导入：把游戏目录文件夹拖入窗口即可加载
     $('#btn-open-output').addEventListener('click', () => api().open_output());
     $('#btn-settings').addEventListener('click', openSettings);

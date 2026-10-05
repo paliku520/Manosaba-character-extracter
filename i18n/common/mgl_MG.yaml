@@ -4,6 +4,41 @@
 # log.* 和 console.* 的魔女语与英文一致（便于日志阅读）
 # 具体翻译方法可以参考md文档:_fiXmArge_Language.md
 
+# New background labels use the existing English fallback convention.
+background:
+  tab_title: "Backgrounds"
+  description: "Load backgrounds from the game folder, select a category and export native-size PNGs. CGs and effects may contain spoilers."
+  load: "Load backgrounds"
+  export: "Export selected"
+  category: "Asset category"
+  all_categories: "All categories"
+  search: "Search assets…"
+  select_visible: "Select visible"
+  deselect: "Deselect all"
+  preview: "Preview"
+  preview_hint: "Click Preview beside an asset to view it."
+  preview_meta: "{name} · {width} × {height} · {count} images (first shown; all exported)"
+  summary: "{total} bundles · {visible} visible · {selected} selected"
+  empty: "Choose the game folder or backgrounds folder to load assets."
+  no_matches: "No matching assets."
+  scan_progress: "Finding backgrounds…"
+  preview_progress: "Loading background preview…"
+  export_progress: "Exporting backgrounds…"
+  loaded: "Loaded {count} background bundles"
+  export_done: "Exported {count} background images"
+  cancelled: "Cancelled; images already exported are retained."
+  failed: "Background operation failed"
+  errors: "Failed to export {count} assets"
+  busy: "Wait for the current task to finish, or cancel it first."
+  invalid_selection: "Load backgrounds and select valid assets first."
+  not_found: "Backgrounds folder not found: {path}"
+  no_bundles: "No bundle files in backgrounds folder: {path}"
+  no_images: "No readable background images in this bundle."
+  groups:
+    mainbackground: "Scene backgrounds"
+    stills: "CG illustrations"
+    tricks: "Effects"
+
 about:
   copyright: "Non-commercial · For learning"
   dev_bilibili: "Bilibili"

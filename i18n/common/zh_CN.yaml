@@ -2,6 +2,40 @@
 # 界面 / 按钮 / 状态 / 日志 / 设置等通用文案，与具体作品无关
 # 键名层级即翻译键分段（如 app.status.ready = app → status → ready）
 
+background:
+  tab_title: "背景素材"
+  description: "从游戏目录加载背景素材，按分类勾选并导出原始尺寸 PNG。CG 和演出素材可能包含剧透。"
+  load: "加载背景目录"
+  export: "导出所选"
+  category: "素材分类"
+  all_categories: "全部分类"
+  search: "搜索素材…"
+  select_visible: "全选当前列表"
+  deselect: "取消全选"
+  preview: "预览"
+  preview_hint: "点击素材旁的预览按钮查看图片。"
+  preview_meta: "{name} · {width} × {height} · 共 {count} 张（预览首张，导出包含全部）"
+  summary: "共 {total} 个素材包 · 当前显示 {visible} 个 · 已选 {selected} 个"
+  empty: "请选择游戏目录或 backgrounds 目录以加载背景素材。"
+  no_matches: "没有匹配的素材。"
+  scan_progress: "正在查找背景素材…"
+  preview_progress: "正在读取背景预览…"
+  export_progress: "正在导出背景素材…"
+  loaded: "已加载 {count} 个背景素材包"
+  export_done: "已导出 {count} 张背景图片"
+  cancelled: "已取消；已经导出的图片会保留。"
+  failed: "背景素材处理失败"
+  errors: "{count} 项素材未能导出"
+  busy: "请等待当前任务完成，或先取消当前任务。"
+  invalid_selection: "请先加载背景目录并选择有效的素材。"
+  not_found: "未找到 backgrounds 目录：{path}"
+  no_bundles: "背景目录中没有 bundle 文件：{path}"
+  no_images: "素材包中没有可读取的背景图像。"
+  groups:
+    mainbackground: "场景背景"
+    stills: "CG 插图"
+    tricks: "演出素材"
+
 about:
   copyright: "非商业用途 · 仅供学习交流"
   dev_bilibili: "Bilibili"
