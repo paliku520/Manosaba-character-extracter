@@ -107,8 +107,9 @@
   on('load_complete', (r) => {
     clearProgress();
     if (r.cancelled) {
-      // 本次查找被新的加载请求打断
+      // 用户点击「取消加载」→ 提示已中止；被新的加载请求打断则只复位状态（新加载随即刷新状态栏）
       setStatus(t('app.status.cancelled'), false);
+      if (r.cancelled_reason === 'user') toast(t('left.load_cancelled'), 'info');
       return;
     }
     if (r.success) {

@@ -193,6 +193,14 @@
     });
     document.addEventListener('mouseup', () => { resizeState = null; });
     $('#btn-load').addEventListener('click', onLoadClick);
+    // 「取消加载」（进度区内，仅加载游戏目录期间可见）：立即禁用防重复点击，
+    // 复位交给 clearProgress（load_complete 到达后收起进度区）
+    $('#btn-cancel-load').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      btn.disabled = true;
+      try { await api().cancel_load(); }
+      catch (err) { btn.disabled = false; toast(String(err), 'error'); }
+    });
     MCE.initBackgrounds();
     setupDragDrop();  // 拖拽导入：把游戏目录文件夹拖入窗口即可加载
     $('#btn-open-output').addEventListener('click', () => api().open_output());

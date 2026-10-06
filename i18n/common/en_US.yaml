@@ -214,6 +214,8 @@ left:
   clear_cache_confirm_msg: "Clear all temporary cache files?\n\nNext character load will need to re-extract data."
   clear_cache_confirm_title: "Clear Cache"
   load_button: "Load Game Directory"
+  cancel_load: "Cancel Loading"
+  load_cancelled: "Game directory loading cancelled"
   open_output: "Open Output Folder"
   settings: "Settings"
   drop_overlay: "Drop to load this directory"

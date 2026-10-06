@@ -21,6 +21,8 @@
       'left.load_button': '加载游戏目录',
       'left.open_output': '打开输出目录',
       'left.settings': '设置',
+      'left.cancel_load': '取消加载',
+      'left.load_cancelled': '已取消加载游戏目录',
       'left.char_list_title': '角色列表',
       'left.char_search': '搜索角色…',
       'left.clear_cache': '清除缓存',

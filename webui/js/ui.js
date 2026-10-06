@@ -178,6 +178,8 @@
     App._progressPhase = (p && p.phase) || '';
     const wrap = $('#progress-wrap');
     wrap.hidden = false;
+    // 「取消加载」只服务于加载游戏目录（phase=load）；其余阶段（分析/导出/合成等）各有取消入口
+    $('#btn-cancel-load').hidden = App._progressPhase !== 'load';
     const pct = p.total > 0 ? Math.round((p.current / p.total) * 100) : 0;
     $('#progress-bar').style.width = pct + '%';
     // 进度条只显示百分比，避免与状态栏文本重复
@@ -191,6 +193,10 @@
     App.loading = false;
     App._progressPhase = '';
     $('#progress-wrap').hidden = true;
+    // 收起进度区时一并复位「取消加载」（隐藏 + 解除点击后的禁用态，供下一次加载使用）
+    const cancelBtn = $('#btn-cancel-load');
+    cancelBtn.hidden = true;
+    cancelBtn.disabled = false;
     // 读条完成后任务栏黄色闪烁吸引注意（无读条时仅防御性调用，不闪烁；合成不闪烁）
     if (wasVisible && phase !== 'composite') taskbarDone();
   }

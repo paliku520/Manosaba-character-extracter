@@ -368,6 +368,7 @@ class JsApi:
         self._show_release_notes = get_show_release_notes()  # 更新弹窗是否展示 Release 更新内容（默认开启）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
+        self._load_cancel = threading.Event()   # 「取消加载」标志：用户中止正在进行的目录扫描（每次加载开始时复位）
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
         self._monitor: Optional[ResourceMonitor] = None  # 资源占用监视线程（调试模式开启时创建）
         self._char_gen = 0                      # 角色加载代号：递增以中断旧加载
@@ -755,6 +756,14 @@ class JsApi:
         self._background_preview_worker.close()
         self._background_preview_cache.clear()
 
+    def cancel_load(self) -> dict:
+        """中止正在进行的「加载游戏目录」扫描（前端「取消加载」）。
+
+        仅中止本次扫描：已加载完成的角色列表保持不变，被取代/取消的加载不会写回结果。
+        """
+        self._load_cancel.set()
+        return {"ok": True}
+
     def load_directory(self, path: str):
         """加载游戏目录（后台线程，事件: progress / load_complete）；新查找会打断上一次未完成的查找"""
         # 若上一次加载仍在进行，立即记录其被新加载取代（显示旧目录，避免取消日志滞后）
@@ -763,20 +772,34 @@ class JsApi:
         self._load_generation += 1
         gen = self._load_generation
         self._loading_path = path
+        self._load_cancel.clear()   # 本次加载不继承上一次的「取消加载」请求
         log("info", _("log.loading_dir", path=path))
+
+        # 取消来源：user=用户点击「取消加载」；replaced=被新一次加载取代（供前端区分提示）
+        cancel_state: Dict[str, bool] = {"user": False}
 
         def worker():
             def cb(cur, total):
                 self._emit("progress", {"current": cur, "total": total, "phase": "load"})
             def cancel():
-                # 一旦有新一次 load_directory 调用（代号变化），中断本次查找
+                # 用户手动取消 → 记录来源并中断；否则一旦有新一次 load_directory 调用（代号变化）也中断
+                if self._load_cancel.is_set():
+                    cancel_state["user"] = True
+                    return True
                 return gen != self._load_generation
             self._emit("status", {"text": _("app.progress.loading_bundles")})
+            # 立即显示进度区（0%）：目录查找阶段也要能点到「取消加载」
+            self._emit("progress", {"current": 0, "total": 0, "phase": "load"})
             result = self._loader.load_from_directory(
                 path, progress_callback=cb, cancel_check=cancel, auto_find=self._auto_find_characters
             )
             if result.get("cancelled"):
-                # 已被更新的加载取代（取消日志已在 load_directory 同步打印）
+                result["cancelled_reason"] = "user" if cancel_state["user"] else "replaced"
+                if cancel_state["user"]:
+                    log("info", _("log.load_cancelled_dir", path=path))
+                    if gen == self._load_generation:
+                        self._loading_path = None
+                # 被新加载取代时：中断标记交给新加载持有，取消日志已在 load_directory 同步打印
                 self._emit("load_complete", result)
                 return
             # 本次加载正常结束（未被取代）：清空进行中标记

@@ -18,7 +18,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Part Management** — search, natural sorting, collapsible groups, select all, quick-select ClippingMask parts, click to copy name
 - **Hierarchy Viewer** — component tree, copy button per row
 - **Anan Sketchbook** — custom text on anan's sketchbook parts (multi-line, font size, alignment)
-- **Cancellable Loading** — character analysis can be cancelled at any time, instantly returning to a usable state
+- **Cancellable Loading** — both game-directory loading (folder lookup / bundle scan) and character analysis can be cancelled at any time, instantly returning to a usable state; cancelling keeps the already loaded characters
 
 **Background and Small Asset Export**
 

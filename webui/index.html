@@ -114,7 +114,14 @@
         <div id="status" class="status"><span class="dot"></span><span id="status-text" data-i18n="app.status.ready">就绪</span></div>
         <!-- 进度条（位于状态栏与清空缓存按钮之间，正常文档流不遮挡按钮） -->
         <div id="progress-wrap" class="progress-wrap" hidden>
-          <div class="progress-label" id="progress-label">…</div>
+          <div class="progress-head">
+            <div class="progress-label" id="progress-label">…</div>
+            <!-- 「取消加载」仅加载游戏目录期间显示（见 js/ui.js 的 showProgress） -->
+            <button id="btn-cancel-load" class="btn ghost sm" hidden>
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+              <span data-i18n="left.cancel_load">取消加载</span>
+            </button>
+          </div>
           <div class="progress-track"><div class="progress-bar" id="progress-bar"></div></div>
         </div>
         <button id="btn-clear-cache" class="btn ghost sm">

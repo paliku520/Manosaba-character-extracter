@@ -217,6 +217,8 @@ left:
   clear_cache_confirm_msg: "Ca-nay Alte temp Ge-mon?\n\nNext JIO Loadeh need neYO cOnzAI."
   clear_cache_confirm_title: "Ca-nay temp"
   load_button: "Loadeh Coa Tain"
+  cancel_load: "Ca-nay Loadeh"
+  load_cancelled: "Coa Tain Loadeh Ca-nay"
   open_output: "Owk GE-mon"
   settings: "Co-Jundic"
   drop_overlay: "Alte to Loadeh Ge-mon"

@@ -214,6 +214,8 @@ left:
   clear_cache_confirm_msg: "确定要清除所有临时缓存文件吗？\n\n下次加载角色时需要重新提取数据。"
   clear_cache_confirm_title: "清除缓存"
   load_button: "加载游戏目录"
+  cancel_load: "取消加载"
+  load_cancelled: "已取消加载游戏目录"
   open_output: "打开输出文件夹"
   settings: "设置"
   drop_overlay: "松开鼠标以加载此目录"

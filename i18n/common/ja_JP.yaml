@@ -213,6 +213,8 @@ left:
   clear_cache_confirm_msg: "すべての一時キャッシュファイルを削除しますか？\n\n次回キャラクターを読み込む際にデータを再抽出する必要があります。"
   clear_cache_confirm_title: "キャッシュをクリア"
   load_button: "ゲームディレクトリを読み込む"
+  cancel_load: "読み込みをキャンセル"
+  load_cancelled: "ゲームディレクトリの読み込みをキャンセルしました"
   open_output: "出力フォルダを開く"
   settings: "設定"
   drop_overlay: "マウスを離してこのディレクトリを読み込み"

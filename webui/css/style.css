@@ -207,6 +207,11 @@ img { -webkit-user-drag: none; }
 .progress-wrap { display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
 .progress-wrap[hidden] { display: none; } /* hidden 覆盖 display:flex */
 .progress-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 进度标题行：百分比 + 「取消加载」（按钮仅 phase=load 时显示，见 js/ui.js） */
+.progress-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.progress-head .progress-label { flex: 1; min-width: 0; }
+#btn-cancel-load { flex-shrink: 0; white-space: nowrap; }
+#btn-cancel-load[hidden] { display: none; } /* hidden 覆盖 .btn 的 inline-flex */
 .progress-track { height: 6px; background: var(--bg-elev); border-radius: 4px; overflow: hidden; }
 .progress-bar { height: 100%; width: 0%; background: var(--accent); border-radius: 4px; transition: width .2s ease; }
 
