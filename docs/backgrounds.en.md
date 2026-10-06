@@ -20,32 +20,34 @@ Previews are capped at 1280 px on the longest side, while the UI displays the or
 All output follows the output directory in the settings. PNGs are placed directly inside each category folder — no per-bundle subfolders. For example:
 
 ```text
-output/backgrounds/背景/Background_001_001.png
-output/backgrounds/证物/Clue_001_013.png
-output/backgrounds/人物资料/Profile_Alisa.png
-output/backgrounds/界面素材/InputIndicator.png
-output/backgrounds/演出物件/1-2-3_Smartphone.png
+output/backgrounds/mainbackground/Background_001_001.png
+output/backgrounds/stills/CG_001.png
+output/backgrounds/tricks/Effect_001.png
+output/backgrounds/evidence/Clue_001_013.png
+output/backgrounds/profiles/Profile_Alisa.png
+output/backgrounds/interface/InputIndicator.png
+output/backgrounds/stage_props/1-2-3_Smartphone.png
 ```
 
-| Category folder | Source & classification rules |
-| --- | --- |
-| 背景 (Scene backgrounds) | Scene backgrounds, CG illustrations and stage resource bundles under the original `backgrounds` |
-| 证物 (Evidence), 人物资料 (Profiles) | `Clue_*` and `Profile_*` from `general-witchbook` |
-| 界面素材 (Interface) | `general-sprites`, `naninovel-ui`, `resources.assets`, `sharedassets*.assets` |
-| 演出物件 (Stage props) | Images named after weapons, phones, keys, paper, curtains, etc. in `naninovel-spawn` |
-| 演出人物 (Stage characters) | Images and parts named after characters in stage bundles |
-| 演出背景 (Stage backgrounds) | Background, Frontground, Space, etc. images in stage bundles |
-| 演出特效 (Stage effects) | CutIn, glass shards, light effects, flames, blood stains, etc. |
-| 地图素材 (Maps) | Maps and pins named Map / Pin |
-| 演出其他 (Other stage images) | Placeholder images such as `kari`, and other stage images that cannot be identified by name |
-| 特效纹理 (Effect textures) | Material textures from `general-prefabs` |
-| 转场遮罩 (Transition masks) | Mask textures from `general-transitions` |
+| Category folder | UI category | Source & classification rules |
+| --- | --- | --- |
+| `mainbackground` | Scene backgrounds | Scene backgrounds from the original `backgrounds/mainbackground` (including assets placed directly in the `backgrounds` root) |
+| `stills` | CG illustrations | CG illustrations from the original `backgrounds/stills` |
+| `tricks` | Effects | Stage resource bundles from the original `backgrounds/tricks` |
+| `evidence`, `profiles` | Evidence, Profiles | `Clue_*` and `Profile_*` from `general-witchbook` |
+| `interface` | Interface | `general-sprites`, `naninovel-ui`, `resources.assets`, `sharedassets*.assets` |
+| `stage_props` | Stage props | Images named after weapons, phones, keys, paper, curtains, etc. in `naninovel-spawn` |
+| `stage_characters` | Stage characters | Images and parts named after characters in stage bundles |
+| `stage_backgrounds` | Stage backgrounds | Background, Frontground, Space, etc. images in stage bundles |
+| `stage_effects` | Stage effects | CutIn, glass shards, light effects, flames, blood stains, etc. |
+| `maps` | Maps | Maps and pins named Map / Pin |
+| `stage_other` | Other stage images | Placeholder images such as `kari`, and other stage images that cannot be identified by name |
+| `effect_textures` | Effect textures | Material textures from `general-prefabs` |
+| `transitions` | Transition masks | Mask textures from `general-transitions` |
 
-> The category folder names on disk are fixed Chinese names, independent of the UI language.
+Every valid Sprite and standalone Texture2D in stage bundles is included; classification is based on the source and the original name, and unrecognized images go to `stage_other` (Other stage images). Small assets are not filtered by pixel size, so large UI illustrations and stage backgrounds are included as well. Atlas sprites are listed individually, and the backing textures and alpha textures they reference are not listed again; standalone textures in the same bundle that are not referenced by any sprite are kept. Runtime textures without pixels (such as 0×0) are not exportable images. Unity built-in resources, font files, audio, and scripts are out of scope for this page.
 
-Every valid Sprite and standalone Texture2D in stage bundles is included; classification is based on the source and the original name, and unrecognized images go to 演出其他 (Other stage images). Small assets are not filtered by pixel size, so large UI illustrations and stage backgrounds are included as well. Atlas sprites are listed individually, and the backing textures and alpha textures they reference are not listed again; standalone textures in the same bundle that are not referenced by any sprite are kept. Runtime textures without pixels (such as 0×0) are not exportable images. Unity built-in resources, font files, audio, and scripts are out of scope for this page.
-
-Conflicting file names automatically receive `_1`, `_2`, etc. suffixes — existing images are never overwritten. Invalid Windows characters and reserved device names are converted to safe names.
+Conflicting file names automatically receive `_1`, `_2`, etc. suffixes — existing images are never overwritten. Invalid Windows characters and reserved device names are converted to safe names. Category folder names on disk are fixed i18n keys (see the table above), independent of the UI language.
 
 ## Preview & Cache
 
@@ -65,8 +67,9 @@ Final files are published only after PNG encoding completes; the parent process 
 
 | File | Responsibility |
 | --- | --- |
-| `src/background_assets.py` | Background location, thumbnails, object cache keys, PNG saving and per-source batch export |
+| `src/background_assets.py` | Background location, thumbnails, object cache keys and reusable source preview |
 | `src/small_assets.py` | Small-asset source location, metadata scanning, atlas dedup, classification and reusable source preview |
+| `src/export_manager.py` | Single entry point for all resource exports: safe naming, PNG saving, per-source batch export |
 | `src/worker_client.py`, `backend.py` | Cancellable scan/export and reusable preview process |
 | `run.py` | Load / preview / prewarm / export APIs and output categories |
 | `webui/js/backgrounds.js`, `webui/css/backgrounds.css` | Categories, search, selection, preview and the original interaction styles |

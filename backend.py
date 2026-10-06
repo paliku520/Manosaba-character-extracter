@@ -123,8 +123,8 @@ def _worker_main(background_preview: bool = False) -> None:
     _cfg(stream=sys.stderr, color=False)
 
     from src.compositor import extract_character_data, extract_sprites
-    from src.export_manager import export_sprites as _export_sprites
-    from src.background_assets import export_backgrounds, preview_background
+    from src.export_manager import export_backgrounds, export_sprites as _export_sprites
+    from src.background_assets import preview_background
     from src.small_assets import SmallAssetPreviewer, scan_small_assets
 
     previewer = SmallAssetPreviewer() if background_preview else None

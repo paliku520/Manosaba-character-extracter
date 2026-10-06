@@ -39,14 +39,18 @@ from PIL import Image
 
 from src.bundle_loader import BundleLoader
 from src.background_assets import BackgroundPreviewCache, scan_backgrounds
-from src.small_assets import OUTPUT_GROUPS
 from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
     LoadCancelled,
     SpriteCompositor,
     has_component_data,
 )
-from src.export_manager import save_composite
+from src.export_manager import (
+    export_preview_images,
+    output_group_name,
+    save_composite,
+    save_png,
+)
 from src import nameplate
 from src import preset_store
 from src.worker_client import (
@@ -709,19 +713,17 @@ class JsApi:
         return self._start_background_job("prewarm", task)
 
     def export_backgrounds(self, selected_ids: List[str]) -> dict:
-        """Export native PNGs into flat, named categories under backgrounds/."""
+        """Export native PNGs into flat, named category folders under backgrounds/."""
         if (not isinstance(selected_ids, list) or not selected_ids
                 or any(not isinstance(key, str) or key not in self._background_bundles
                        for key in selected_ids)):
             return {"ok": False, "error": _("background.invalid_selection")}
-        items = [{**self._background_bundles[key], "output_group": OUTPUT_GROUPS.get(
-            self._background_bundles[key].get("group"), "背景",
-        )} for key in dict.fromkeys(selected_ids)]
+        items = [self._background_bundles[key] for key in dict.fromkeys(selected_ids)]
         output_dir = self._output_dir / "backgrounds"
 
         def task():
             result = self._extract_background_batch(items, output_dir, "export")
-            groups = {item["output_group"] for item in items}
+            groups = {output_group_name(item.get("group")) for item in items}
             if len(groups) == 1:
                 result["output_dir"] = str(output_dir / next(iter(groups)))
             if result["count"] > 0:
@@ -936,18 +938,11 @@ class JsApi:
                 self._emit("export_error", {"name": name, "message": "no_preview"})
                 return
             out_dir = self._output_dir / name
-            out_dir.mkdir(parents=True, exist_ok=True)
             files = sorted(src_dir.glob("*.png"))
             if selected_names:
                 sel = set(selected_names)
                 files = [f for f in files if f.stem in sel]
-            count = 0
-            for f in files:
-                try:
-                    shutil.copy2(f, out_dir / f.name)
-                    count += 1
-                except Exception as e:
-                    log("error", _("log.sprite_extract_failed", id=f.name, e=e))
+            count = export_preview_images(files, out_dir)
             self._export_count += 1
             save_settings(export_count=self._export_count)
             log("info", _("log.export_complete", name=name, count=count))
@@ -1696,17 +1691,10 @@ class JsApi:
                 params_d = params or {}
                 stem = nameplate.safe_file_stem(
                     f"{params_d.get('surname') or ''}{params_d.get('given') or ''}")
-                save_dir = self._output_dir / "nameplate"
-                save_dir.mkdir(parents=True, exist_ok=True)
-                path = save_dir / f"{stem}.png"
-                idx = 1
-                while path.exists():
-                    path = save_dir / f"{stem}_{idx}.png"
-                    idx += 1
                 out_img = img
                 if not self._export_original_quality:
                     out_img = _downscale_for_preview(img, self._preview_max_side())
-                out_img.save(str(path))
+                path = save_png(out_img, self._output_dir / "nameplate", stem)
             except Exception as e:
                 self._emit("nameplate_saved", {"ok": False, "error": str(e)})
                 return

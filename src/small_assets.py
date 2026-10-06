@@ -23,13 +23,6 @@ SOURCES = (
     "general-prefabs_assets_all.bundle",
     "general-transitions_assets_all.bundle",
 )
-OUTPUT_GROUPS = {
-    "evidence": "证物", "profiles": "人物资料", "interface": "界面素材",
-    "stage_props": "演出物件", "stage_characters": "演出人物",
-    "stage_backgrounds": "演出背景", "stage_effects": "演出特效",
-    "stage_other": "演出其他", "maps": "地图素材",
-    "effect_textures": "特效纹理", "transitions": "转场遮罩",
-}
 
 
 def classify_asset(source: str, name: str) -> str:

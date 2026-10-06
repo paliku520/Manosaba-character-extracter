@@ -24,7 +24,7 @@
 
 - 独立「素材提取」页自动定位游戏素材，支持场景背景、CG、证物、人物资料、界面图标与按钮，以及演出包中的全部图片分类浏览、搜索和勾选
 - 点击素材行预览，勾选框独立选择导出；支持一键预热全部、有限内存缓存、temp 磁盘缩略图缓存和取消
-- 原始尺寸 PNG 按分类平铺在 `output/backgrounds/背景/`、`证物/`、`人物资料/`、`界面素材/`、`演出物件/` 等文件夹内；不创建素材包子文件夹，同名文件自动编号
+- 原始尺寸 PNG 按分类平铺在 `output/backgrounds/mainbackground/`、`stills/`、`tricks/`、`evidence/`、`profiles/`、`interface/`、`stage_props/` 等文件夹内；分类文件夹名固定为 i18n 英文键，不创建素材包子文件夹，同名文件自动编号
 - 图集 Sprite 单独列出，保留未被 Sprite 引用的独立纹理，避免重复导出整张图集；详细分类和缓存行为见 [素材提取说明](docs/backgrounds.md)
 
 **部件组合预设**
@@ -168,8 +168,8 @@ output/
 ├── <角色名>/            # 无组件：精灵直接平铺
 ├── <角色名>/sprites/    # 有组件：导出的精灵
 ├── <角色名>/composite/  # 有组件：合成图（<角色名>_composite.png，重名自动加序号）
-├── backgrounds/背景/  # 原有背景、CG 和演出包 PNG
-├── backgrounds/<分类>/ # 证物、人物资料、界面素材、演出物件等 PNG，每类平铺
+├── backgrounds/mainbackground/  # 原有背景包 PNG（stills、tricks 同理，按分类键分目录）
+├── backgrounds/<分类键>/        # 证物、人物资料、界面素材、演出物件等 PNG，每类平铺
 └── nameplate/           # 名片 PNG（按姓名命名，重名自动加序号）
 temp/
 └── <角色名>/            # 提取缓存：sprites/ + character_data.json + mask_mapping.json

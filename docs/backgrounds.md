@@ -20,30 +20,34 @@
 所有输出跟随设置中的输出目录。每个分类文件夹内直接放 PNG，不创建素材包子文件夹。例如：
 
 ```text
-output/backgrounds/背景/Background_001_001.png
-output/backgrounds/证物/Clue_001_013.png
-output/backgrounds/人物资料/Profile_Alisa.png
-output/backgrounds/界面素材/InputIndicator.png
-output/backgrounds/演出物件/1-2-3_Smartphone.png
+output/backgrounds/mainbackground/Background_001_001.png
+output/backgrounds/stills/CG_001.png
+output/backgrounds/tricks/Effect_001.png
+output/backgrounds/evidence/Clue_001_013.png
+output/backgrounds/profiles/Profile_Alisa.png
+output/backgrounds/interface/InputIndicator.png
+output/backgrounds/stage_props/1-2-3_Smartphone.png
 ```
 
-| 分类文件夹 | 来源和分类规则 |
-| --- | --- |
-| 背景 | 原有 `backgrounds` 下的场景背景、CG 和演出资源包 |
-| 证物、人物资料 | `general-witchbook` 的 `Clue_*` 和 `Profile_*` |
-| 界面素材 | `general-sprites`、`naninovel-ui`、`resources.assets`、`sharedassets*.assets` |
-| 演出物件 | `naninovel-spawn` 中武器、手机、钥匙、纸张、窗帘等命名的图片 |
-| 演出人物 | 演出包中以角色命名的图片和部件 |
-| 演出背景 | 演出包中的 Background、Frontground、Space 等图片 |
-| 演出特效 | CutIn、玻璃碎片、光效、火焰、血迹等图片 |
-| 地图素材 | Map、Pin 命名的地图和标记 |
-| 演出其他 | kari 等占位图片及无法按名称识别的其他演出图片 |
-| 特效纹理 | `general-prefabs` 中的材质纹理 |
-| 转场遮罩 | `general-transitions` 中的遮罩纹理 |
+| 分类文件夹 | 界面分类 | 来源和分类规则 |
+| --- | --- | --- |
+| `mainbackground` | 场景背景 | 原有 `backgrounds/mainbackground` 下的场景背景（含 backgrounds 根目录下的素材） |
+| `stills` | CG 插图 | 原有 `backgrounds/stills` 下的 CG |
+| `tricks` | 演出素材 | 原有 `backgrounds/tricks` 下的演出资源包 |
+| `evidence`、`profiles` | 证物、人物资料 | `general-witchbook` 的 `Clue_*` 和 `Profile_*` |
+| `interface` | 界面素材 | `general-sprites`、`naninovel-ui`、`resources.assets`、`sharedassets*.assets` |
+| `stage_props` | 演出物件 | `naninovel-spawn` 中武器、手机、钥匙、纸张、窗帘等命名的图片 |
+| `stage_characters` | 演出人物 | 演出包中以角色命名的图片和部件 |
+| `stage_backgrounds` | 演出背景 | 演出包中的 Background、Frontground、Space 等图片 |
+| `stage_effects` | 演出特效 | CutIn、玻璃碎片、光效、火焰、血迹等图片 |
+| `maps` | 地图素材 | Map、Pin 命名的地图和标记 |
+| `stage_other` | 演出其他 | kari 等占位图片及无法按名称识别的其他演出图片 |
+| `effect_textures` | 特效纹理 | `general-prefabs` 中的材质纹理 |
+| `transitions` | 转场遮罩 | `general-transitions` 中的遮罩纹理 |
 
-演出包包含的所有有效 Sprite 和独立 Texture2D 均收录；分类依据来源和原始名称，无法识别的图片进入「演出其他」。小素材不以像素大小筛选，因此也包含大幅 UI 插图和演出背景。图集 Sprite 逐个列出，引用的底层纹理和 alpha 纹理不再重复列出；保留同包中未被引用的独立纹理。0×0 等没有像素的运行时纹理不属于可导出图片。Unity 内置资源、字体文件、音频和脚本不在此页的范围内。
+演出包包含的所有有效 Sprite 和独立 Texture2D 均收录；分类依据来源和原始名称，无法识别的图片进入 `stage_other`。小素材不以像素大小筛选，因此也包含大幅 UI 插图和演出背景。图集 Sprite 逐个列出，引用的底层纹理和 alpha 纹理不再重复列出；保留同包中未被引用的独立纹理。0×0 等没有像素的运行时纹理不属于可导出图片。Unity 内置资源、字体文件、音频和脚本不在此页的范围内。
 
-同名文件自动增加 `_1`、`_2` 等后缀，已有图片不被覆盖。Windows 非法字符和设备保留名会转换为安全名称。输出分类文件夹名称固定为中文，与界面语言独立。
+同名文件自动增加 `_1`、`_2` 等后缀，已有图片不被覆盖。Windows 非法字符和设备保留名会转换为安全名称。分类文件夹名固定为 i18n 英文键（见上表），与界面语言独立。
 
 ## 预览和缓存
 
@@ -63,8 +67,9 @@ PNG 编码完成后才发布最终文件，父进程负责取消后的暂存清�
 
 | 文件 | 职责 |
 | --- | --- |
-| `src/background_assets.py` | 背景定位、缩略图、对象缓存键、PNG 保存和按来源批量导出 |
+| `src/background_assets.py` | 背景定位、缩略图、对象缓存键和来源预览复用 |
 | `src/small_assets.py` | 小素材来源定位、元数据扫描、图集去重、分类和复用来源预览 |
+| `src/export_manager.py` | 所有资源导出的统一入口：安全命名、PNG 落盘、按来源批量导出 |
 | `src/worker_client.py`、`backend.py` | 可取消扫描/导出和可复用预览进程 |
 | `run.py` | 加载、预览、预热、导出 API 与输出分类 |
 | `webui/js/backgrounds.js`、`webui/css/backgrounds.css` | 分类、搜索、勾选、预览和原版交互样式 |

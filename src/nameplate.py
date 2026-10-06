@@ -25,13 +25,13 @@
 """
 
 import math
-import re
 import sys
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
+from src.export_manager import safe_name, save_png
 from src.logtools import log
 
 # ---------------------------------------------------------------------------
@@ -341,7 +341,6 @@ def extract_base_assets(bundle_path: Path, dest_dir: Optional[Path] = None) -> D
 
     bundle_path = Path(bundle_path)
     dest_dir = Path(dest_dir) if dest_dir is not None else nameplate_dir(writable=True)
-    dest_dir.mkdir(parents=True, exist_ok=True)
 
     base_path: Optional[Path] = None
     size: Optional[List[int]] = None
@@ -361,8 +360,7 @@ def extract_base_assets(bundle_path: Path, dest_dir: Optional[Path] = None) -> D
             img = getattr(data, "image", None)
             if img is None:
                 continue
-            base_path = dest_dir / BASE_PNG_NAME
-            img.save(str(base_path))
+            base_path = save_png(img, dest_dir, Path(BASE_PNG_NAME).stem, overwrite=True)
             size = [img.size[0], img.size[1]]
             log("info", f"[nameplate] 已提取底板 {BASE_SPRITE_NAME} ({img.size[0]}x{img.size[1]}) → {base_path}")
             break
@@ -732,6 +730,6 @@ def render_nameplate(
 
 
 def safe_file_stem(text: str, fallback: str = "nameplate") -> str:
-    """把文字转成安全的文件名片段"""
-    s = re.sub(r'[<>:"/\\|?*\r\n\t]', "_", str(text or "")).strip().strip(".")
-    return s or fallback
+    """把文字转成安全的文件名片段（复用导出模块的统一命名规则）"""
+    raw = str(text or "").strip().strip(".")
+    return safe_name(raw) if raw else fallback

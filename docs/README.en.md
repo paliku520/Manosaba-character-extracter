@@ -24,7 +24,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 - A dedicated **Assets** tab locates backgrounds, CG illustrations, evidence, profiles, interface and all stage-bundle images, with categories, search and selection
 - Click rows to preview; checkboxes independently select exports. Prewarm all loaded assets, with bounded memory, disk thumbnails in temp and cancellation
-- Export native-size PNGs flat within `output/backgrounds/背景/` for original backgrounds and named folders such as `证物/`, `人物资料/`, `界面素材/` and `演出物件/` for small images; no per-bundle subfolders, and conflicts receive numeric suffixes
+- Export native-size PNGs flat within `output/backgrounds/mainbackground/`, `stills/`, `tricks/`, `evidence/`, `profiles/`, `interface/`, `stage_props/`, etc. — category folder names are fixed i18n keys; no per-bundle subfolders, and conflicts receive numeric suffixes
 - List atlas sprites individually and include independent textures, excluding duplicate sprite backing textures and empty runtime textures; see [asset documentation](backgrounds.en.md)
 
 **Part Presets**
@@ -168,8 +168,8 @@ output/
 ├── <name>/            # No components: sprites flat here
 ├── <name>/sprites/    # With components: exported sprites
 ├── <name>/composite/  # With components: composite images (<name>_composite.png, auto-numbered on conflict)
-├── backgrounds/背景/  # Original background, CG and effects PNGs
-├── backgrounds/<category>/ # Evidence, profiles, UI and stage PNGs, flat per category
+├── backgrounds/mainbackground/  # Original background PNGs (stills, tricks likewise — one folder per key)
+├── backgrounds/<category key>/  # Evidence, profiles, UI and stage PNGs, flat per category
 └── nameplate/         # Nameplate PNGs (named after the entered name, auto-numbered on conflict)
 temp/
 └── <name>/            # Extraction cache: sprites/ + character_data.json + mask_mapping.json

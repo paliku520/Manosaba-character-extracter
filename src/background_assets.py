@@ -1,4 +1,4 @@
-"""Discover and export Naninovel backgrounds without loading character components."""
+"""Discover and preview Naninovel background bundles; PNG export lives in export_manager."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import os
 import re
 import tempfile
 from collections import OrderedDict
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 import UnityPy
 from PIL import Image
@@ -266,136 +266,3 @@ def preview_background(bundle_path: Path, max_side: int = 1280, cancel_check=Non
         images.clear()
         env = None
         gc.collect()
-
-
-def _safe_name(name: str) -> str:
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).strip().rstrip(". ")
-    if not name or name in (".", ".."):
-        return "image"
-    if name.split(".")[0].upper() in {
-        "CON", "PRN", "AUX", "NUL",
-        *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10)),
-    }:
-        name = "_" + name
-    return name[:160]
-
-
-def _save_png(image, directory: Path, name: str, staging_dir: Path | None = None) -> Path:
-    """Encode away from final PNGs so cancellation cannot leave an incomplete PNG."""
-    directory.mkdir(parents=True, exist_ok=True)
-    stem = _safe_name(name)
-    with tempfile.NamedTemporaryFile(dir=staging_dir or directory, suffix=".tmp", delete=False) as stream:
-        temporary = Path(stream.name)
-    try:
-        image.save(temporary, format="PNG")
-        index = 0
-        while True:
-            target = directory / f"{stem}{'_' + str(index) if index else ''}.png"
-            try:
-                # Windows rename and POSIX hard-link both refuse existing targets.
-                if os.name == "nt":
-                    temporary.rename(target)
-                else:
-                    target.hardlink_to(temporary)
-                break
-            except FileExistsError:
-                index += 1
-    finally:
-        temporary.unlink(missing_ok=True)
-    return target
-
-
-def export_backgrounds(bundles: list[dict], output_dir: Path,
-                       progress_callback=None, cancel_check=None, staging_dir: Path | None = None) -> dict:
-    """Export individual images or entire background bundles at native size.
-
-    Parse each source once. Whole bundles prefer Sprites over Texture2D; small
-    assets use an exact type/ID selector and optional flat output category.
-    Failed sources/objects are reported while the rest of the batch continues.
-    """
-    files, errors = [], []
-    sources = OrderedDict()
-    for item in bundles:
-        try:
-            relative = PurePosixPath(item["id"])
-            if relative.is_absolute() or ".." in relative.parts or not relative.parts:
-                raise ValueError("invalid asset id")
-            group = item.get("output_group", "")
-            if group and (_safe_name(group) != group or group in (".", "..")):
-                raise ValueError("invalid output category")
-            sources.setdefault(item["bundle_path"], []).append(item)
-        except Exception as exc:
-            errors.append({"id": item.get("id", ""), "message": str(exc)})
-    completed = len(errors)
-    for source, items in sources.items():
-        _check_cancel(cancel_check)
-        env = None
-        objects, images = [], []
-        data = obj = None
-        try:
-            env = UnityPy.load(source)
-            objects = list(env.objects)
-            selectors = {(obj.type.name, str(obj.path_id)): obj for obj in objects}
-            defaults = [obj for obj in objects if obj.type.name == "Sprite"]
-            if not defaults:
-                defaults = [obj for obj in objects if obj.type.name == "Texture2D"]
-            for item in items:
-                _check_cancel(cancel_check)
-                try:
-                    if "object_id" in item:
-                        kind = item.get("asset_type")
-                        if kind not in ("Sprite", "Texture2D"):
-                            raise ValueError("invalid image type")
-                        selected = selectors.get((kind, str(item["object_id"])))
-                        images = [selected] if selected else []
-                    else:
-                        images = defaults
-                    if not images:
-                        raise ValueError(_("background.no_images"))
-                    directory = output_dir / item.get("output_group", "")
-                    for obj in images:
-                        _check_cancel(cancel_check)
-                        image = None
-                        try:
-                            data = obj.read()
-                            name = getattr(data, "m_Name", "") or f"image_{obj.path_id}"
-                            image = data.image
-                            if image is None:
-                                raise ValueError(_("background.no_images"))
-                            target = _save_png(image, directory, name, staging_dir)
-                            files.append({"id": item["id"], "name": name, "file_path": str(target),
-                                          "size": list(image.size), "type": obj.type.name})
-                        except LoadCancelled:
-                            raise
-                        except Exception as exc:
-                            errors.append({"id": item["id"], "path_id": str(obj.path_id), "message": str(exc)})
-                        finally:
-                            if image is not None:
-                                image.close()
-                            prune_texture_cache(env)
-                except LoadCancelled:
-                    raise
-                except Exception as exc:
-                    errors.append({"id": item["id"], "message": str(exc)})
-                completed += 1
-                if progress_callback:
-                    progress_callback(completed, len(bundles))
-        except LoadCancelled:
-            raise
-        except Exception as exc:
-            for item in items:
-                errors.append({"id": item["id"], "message": str(exc)})
-                completed += 1
-                if progress_callback:
-                    progress_callback(completed, len(bundles))
-        finally:
-            release_environment(env)
-            # UnityPy readers can retain large buffers in reference cycles.
-            env = None
-            objects.clear()
-            images.clear()
-            selectors = defaults = None
-            data = obj = selected = None
-            gc.collect()
-    return {"count": len(files), "files": files, "errors": errors,
-            "output_dir": str(output_dir)}
