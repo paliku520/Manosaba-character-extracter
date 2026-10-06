@@ -51,6 +51,11 @@ background:
     transitions: "转场遮罩"
 
 about:
+  contrib_lk_desc: "KabeNaki 项目作者，本项目的重构基础"
+  contrib_rf_desc: "「素材提取」页：背景与小素材的提取与导出"
+  contrib_role_contributor: "贡献者"
+  contrib_role_original: "技术致谢 · 原项目作者"
+  contrib_title: "贡献者"
   copyright: "非商业用途 · 仅供学习交流"
   dev_bilibili: "Bilibili"
   dev_click: "点击跳转"

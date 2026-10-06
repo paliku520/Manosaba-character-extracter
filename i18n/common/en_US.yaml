@@ -51,6 +51,11 @@ background:
     transitions: "Transition masks"
 
 about:
+  contrib_lk_desc: "Author of KabeNaki, the project this tool is refactored from"
+  contrib_rf_desc: 'The "Assets" page: browsing and exporting backgrounds & small assets'
+  contrib_role_contributor: "Contributor"
+  contrib_role_original: "Special Thanks · Original Author"
+  contrib_title: "Contributors"
   copyright: "Non-commercial · For learning and sharing"
   dev_bilibili: "Bilibili"
   dev_click: "Click to open"

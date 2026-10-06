@@ -54,6 +54,11 @@ background:
     transitions: "Transition masks"
 
 about:
+  contrib_lk_desc: "Taven oF KabeNaki Ge-mon"
+  contrib_rf_desc: "Assets Baru: eXi' and KeI·tion oF MEif"
+  contrib_role_contributor: "KyOhan"
+  contrib_role_original: "gDie · Taven oF Ge-mon"
+  contrib_title: "KyOhan"
   copyright: "Non-commercial · For learning"
   dev_bilibili: "Bilibili"
   dev_click: "Alte to open"

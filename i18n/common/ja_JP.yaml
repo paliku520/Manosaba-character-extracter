@@ -50,6 +50,11 @@ background:
     transitions: "トランジションマスク"
 
 about:
+  contrib_lk_desc: "KabeNaki プロジェクトの作者。本ツールのリファクタリング元"
+  contrib_rf_desc: "「素材抽出」ページ：背景と小素材の抽出・書き出し"
+  contrib_role_contributor: "コントリビューター"
+  contrib_role_original: "技術協力 · 原作者"
+  contrib_title: "コントリビューター"
   copyright: "非商用 · 学習・交流用"
   dev_bilibili: "Bilibili"
   dev_click: "クリックして開く"

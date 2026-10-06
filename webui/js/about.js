@@ -20,6 +20,7 @@
     download: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>',
     user: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    users: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
     play: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
     branch: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>',
     code: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
@@ -29,6 +30,40 @@
     external: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>',
   };
   const _aI = (k) => _aboutIcons[k] || '';
+
+  // 贡献者卡片数据（名称与链接为固定的专有名词，角色说明走 i18n）
+  const _contributors = [
+    {
+      initial: 'R',
+      name: 'Rainfrost2907',
+      roleKey: 'about.contrib_role_contributor',
+      descKey: 'about.contrib_rf_desc',
+      url: 'https://github.com/Rainfrost2907',
+      brand: 'gh',
+    },
+    {
+      initial: 'L',
+      name: 'lingk7',
+      roleKey: 'about.contrib_role_original',
+      descKey: 'about.contrib_lk_desc',
+      url: 'https://github.com/lingk7',
+      brand: 'gh',
+    },
+  ];
+
+  function _renderContributors() {
+    return _contributors.map((c) =>
+      '<div class="about-contrib">' +
+      '  <div class="about-contrib-avatar" aria-hidden="true">' + escapeHtml(c.initial) + '</div>' +
+      '  <div class="about-contrib-info">' +
+      '    <span class="about-contrib-name">' + escapeHtml(c.name) + '</span>' +
+      '    <span class="about-contrib-role">' + escapeHtml(t(c.roleKey)) + '</span>' +
+      '    <span class="about-contrib-desc">' + escapeHtml(t(c.descKey)) + '</span>' +
+      '  </div>' +
+      '  <button type="button" class="about-open ' + c.brand + '" data-url="' + c.url + '" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button>' +
+      '</div>'
+    ).join('');
+  }
 
   function renderAboutPage() {
     const el = $('#about-content');
@@ -51,6 +86,7 @@
       '<button id="btn-about-update" class="btn sm ghost">' + _aI('refresh') + t('about.update_btn') + '</button>' +
       '</div>' +
       '<p class="about-desc">' + t('about.description') + '</p>' +
+      '<div class="about-grid">' +
       '<div class="about-section">' +
       '  <h3>' + _aI('user') + t('about.dev_title') + '</h3>' +
       '  <div class="about-row">' + t('about.dev_name') + '</div>' +
@@ -62,6 +98,10 @@
       '  <div class="about-link">' + _aI('repo') + '<span class="about-link-label">' + t('about.links_repo') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
       '  <div class="about-link">' + _aI('bug') + '<span class="about-link-label">' + t('about.links_issues') + '</span><button type="button" class="about-open" data-url="https://github.com/paliku520/Manosaba-character-extracter/issues" data-tip="' + escapeHtml(t('about.dev_click')) + '">' + _aI('external') + t('about.open_btn') + '</button></div>' +
       '</div>' +
+      '<div class="about-section wide">' +
+      '  <h3>' + _aI('users') + t('about.contrib_title') + '</h3>' +
+      '  <div class="about-contrib-grid">' + _renderContributors() + '</div>' +
+      '</div>' +
       '<div class="about-section">' +
       '  <h3>' + _aI('code') + t('about.sys_title') + '</h3>' +
       '  <div class="about-sys" id="about-sys">' + t('about.sys_loading') + '</div>' +
@@ -69,6 +109,7 @@
       '<div class="about-section">' +
       '  <h3>' + _aI('heart') + t('about.thanks_title') + '</h3>' +
       '  <p class="about-thanks" id="about-thanks-easter">' + t('about.thanks_text') + '</p>' +
+      '</div>' +
       '</div>' +
       '<p class="about-copy">' + t('about.copyright') + '</p>' +
       '<p class="about-note">' + t('about.license_note') + '</p>' +
