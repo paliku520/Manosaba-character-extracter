@@ -404,13 +404,15 @@ def _reveal_worker(target: str, key: str) -> None:
     try:
         with _lock:
             last = _recent.get(key, 0.0)
-            if time.monotonic() - last < _REOPEN_TTL:
-                # 刚刚已定位过：只再聚焦一次，不重复调 Shell
-                hwnd = _cached_window(win_key, base, parent) or _find_window(parent)
-                if hwnd:
-                    _focus_window(hwnd)
-                return
-            _recent[key] = time.monotonic()
+            recent = time.monotonic() - last < _REOPEN_TTL
+            if not recent:
+                _recent[key] = time.monotonic()
+        if recent:
+            # Window lookups acquire _lock themselves; never call them while holding it.
+            hwnd = _cached_window(win_key, base, parent) or _find_window(parent)
+            if hwnd:
+                _focus_window(hwnd)
+            return
         before = {h for h, _t in _cabinet_windows()}
         if not _shell_reveal(target):
             _startfile(parent)                    # 回退：至少把所在目录打开

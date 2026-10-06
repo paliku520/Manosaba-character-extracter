@@ -195,8 +195,12 @@
   on('export_error', (r) => {
     clearProgress();
     setErrorStatus();
-    setStatus(t('app.status.export_done', { name: r.name, count: 0 }));
-    toast(t('dialog.export_complete_msg', { name: r.name, count: 0, path: '' }) + '\n' + r.message, 'error');
+    setStatus(t('app.status.export_done', { name: r.name, count: r.count || 0 }));
+    toast(t('dialog.export_complete_msg', { name: r.name, count: r.count || 0, path: r.output_dir || '' }) + '\n' + r.message, 'error');
+    if (typeof r.export_count === 'number') {
+      App.exportCount = r.export_count;
+      refreshExportCount();
+    }
   });
 
   on('data_ready', (d) => {
@@ -287,10 +291,10 @@
   });
 
   on('update_result', (r) => {
-    clearProgress();
+    if (!r.silent) clearProgress();
     if (r.status === 'available') {
       showUpdateDialog(r);
-      setStatus(t('app.status.ready'));
+      if (!r.silent) setStatus(t('app.status.ready'));
     } else if (!r.silent && r.status === 'latest') {
       setStatus(t('app.status.ready'));
       toast(t('dialog.update_latest_msg', { current: r.current }), 'success');

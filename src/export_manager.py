@@ -114,7 +114,7 @@ def export_sprites(
     has_components: bool = False,
     progress_callback=None,
     cancel_check=None,
-) -> List[Dict]:
+) -> Dict:
     """
     从 bundle 中提取所有精灵并保存为 PNG。
 
@@ -126,7 +126,7 @@ def export_sprites(
         cancel_check:      可选取消检查 fn() -> bool，返回 True 时抛 LoadCancelled
 
     Returns:
-        [{ "name": str, "path_id": int, "file_path": str, "size": [w, h] }, ...]
+        {"files": [精灵记录...], "errors": [错误记录...], "count": 成功数量, "output_dir": 保存目录}
     """
     import UnityPy
 
@@ -143,6 +143,7 @@ def export_sprites(
     sprite_objs = [obj for obj in all_objects if obj.type.name == "Sprite"]
     total = len(sprite_objs)
     results = []
+    errors = []
 
     for idx, obj in enumerate(sprite_objs):
         if cancel_check and cancel_check():
@@ -150,7 +151,7 @@ def export_sprites(
         try:
             data = obj.read()
             if not hasattr(data, "image") or data.image is None:
-                continue
+                raise ValueError("Sprite has no image")
 
             sprite_name = getattr(data, "m_Name", f"sprite_{obj.path_id}")
             file_path = save_png(data.image, save_dir, sprite_name, overwrite=True)
@@ -164,12 +165,13 @@ def export_sprites(
             log("info", _("log.exported_sprite", name=file_path.stem))
         except Exception as e:
             log("error", _("log.sprite_extract_failed", id=obj.path_id, e=e))
+            errors.append({"path_id": obj.path_id, "message": str(e)})
 
         if progress_callback:
             progress_callback(idx + 1, total)
 
     log("info", _("log.export_done", file=bundle_path.name, count=len(results), dir=save_dir))
-    return results
+    return {"files": results, "errors": errors, "count": len(results), "output_dir": str(save_dir)}
 
 
 # ---------------------------------------------------------------------------
@@ -204,12 +206,13 @@ def save_composite(
 # 预览精灵导出
 # ---------------------------------------------------------------------------
 
-def export_preview_images(files: List[Path], output_dir: Path) -> int:
-    """把已生成的预览 PNG 平铺导出到 output_dir，返回成功数量（同名覆盖）。
+def export_preview_images(files: List[Path], output_dir: Path) -> Dict:
+    """把已生成的预览 PNG 平铺导出，返回实际成功数量和错误（同名覆盖）。
 
     预览图已由后台提取并按名称落盘，这里复用角色精灵一致的安全命名与落盘逻辑。
     """
     count = 0
+    errors = []
     for path in files:
         path = Path(path)
         try:
@@ -218,7 +221,8 @@ def export_preview_images(files: List[Path], output_dir: Path) -> int:
             count += 1
         except Exception as e:
             log("error", _("log.sprite_extract_failed", id=path.name, e=e))
-    return count
+            errors.append({"name": path.name, "message": str(e)})
+    return {"count": count, "errors": errors, "output_dir": str(output_dir)}
 
 
 # ---------------------------------------------------------------------------

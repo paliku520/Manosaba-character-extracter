@@ -88,7 +88,7 @@
     el.dataset.timer = timer;
   }
 
-  function showModal({ title, titleKey, body, footer, className }) {
+  function showModal({ title, titleKey, body, footer, className, onClose }) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     const modal = document.createElement('div');
@@ -130,7 +130,14 @@
       if (root && root.lastElementChild !== backdrop) return;
       close();
     };
-    const close = () => { backdrop.remove(); document.removeEventListener('keydown', onKey); };
+    let closed = false;
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      backdrop.remove();
+      document.removeEventListener('keydown', onKey);
+      if (onClose) onClose();
+    };
     document.addEventListener('keydown', onKey);
     // 点击模态外部不关闭，需通过按钮 / ✕ / Esc 显式操作
     x.addEventListener('click', close);
@@ -148,13 +155,14 @@
   function confirmDialog(title, message, okLabel, cancelLabel) {
     return new Promise((resolve) => {
       const footer = document.createElement('div');
-      const no = btn(cancelLabel || t('dialog.cancel'), 'btn sm', () => { close(); resolve(false); });
-      const yes = btn(okLabel || t('dialog.ok'), 'btn sm primary', () => { close(); resolve(true); });
+      const no = btn(cancelLabel || t('dialog.cancel'), 'btn sm', () => close());
+      const yes = btn(okLabel || t('dialog.ok'), 'btn sm primary', () => { resolve(true); close(); });
       footer.appendChild(no); footer.appendChild(yes);
       const { close } = showModal({
         title,
         body: '<div class="desc">' + escapeHtml(message) + '</div>',
         footer,
+        onClose: () => resolve(false),
       });
     });
   }

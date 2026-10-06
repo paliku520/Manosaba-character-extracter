@@ -53,6 +53,13 @@
       DetailPrint "Backup: ${FROM} is busy, copying..."
       nsExec::ExecToLog 'xcopy /E /I /H /R /Y /Q "${FROM}" "${TO}"'
       Pop $0
+      ${If} $0 != 0
+        DetailPrint "Backup failed ($0). Original data has been preserved at ${FROM}."
+        MessageBox MB_OK|MB_ICONSTOP "Cannot back up user data. Installation will stop. Original data is preserved at ${FROM}." /SD IDOK
+        Call MCE_RestoreOnAbort
+        SetErrorLevel 1
+        Quit
+      ${EndIf}
     ${EndIf}
   ${EndIf}
 !macroend
@@ -68,7 +75,12 @@
       DetailPrint "Restore: merging ${FROM}..."
       nsExec::ExecToLog 'xcopy /E /I /H /R /Y /Q "${FROM}" "${TO}"'
       Pop $0
-      RMDir /r "${FROM}"
+      ${If} $0 == 0
+        RMDir /r "${FROM}"
+      ${Else}
+        DetailPrint "Restore failed ($0). Backup has been preserved at ${FROM}."
+        MessageBox MB_OK|MB_ICONSTOP "Cannot fully restore user data. The backup has been preserved at ${FROM}." /SD IDOK
+      ${EndIf}
     ${EndIf}
   ${EndIf}
 !macroend

@@ -18,7 +18,11 @@
 
 import copy
 import json
+import os
 import sys
+import tempfile
+import threading
+from functools import wraps
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -66,6 +70,16 @@ def get_nameplate_dir() -> Path:
 
 # 配置文件路径
 CONFIG_FILE = _get_config_file()
+_settings_lock = threading.RLock()
+
+
+def _settings_transaction(fn):
+    """Serialize the entire read/modify/write transaction, including migration."""
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        with _settings_lock:
+            return fn(*args, **kwargs)
+    return wrapped
 
 
 def _set_file_attrs(path: Path, attrs: int) -> None:
@@ -156,13 +170,23 @@ def _default_settings() -> Dict[str, Any]:
 
 def _write_settings(data: Dict[str, Any]) -> None:
     """写入新版嵌套结构到配置文件（写前确保目录/文件可写，写入后恢复 settings.json 隐藏）"""
+    temporary = None
     try:
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=CONFIG_FILE.parent,
+                                         prefix=".settings-", suffix=".tmp", delete=False) as stream:
+            temporary = Path(stream.name)
+            json.dump(data, stream, indent=2, ensure_ascii=False)
+            stream.flush()
+            os.fsync(stream.fileno())
         _normalize_config_file()   # 写前清除文件隐藏/系统属性，确保可写
-        CONFIG_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(temporary, CONFIG_FILE)
         _apply_config_attrs()
     except OSError as e:
         log("warning", _("log.settings_save_failed", e=e))
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _normalize_settings(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
@@ -254,6 +278,7 @@ def _normalize_settings(raw: Dict[str, Any]) -> Tuple[Dict[str, Any], bool]:
     return data, data != raw
 
 
+@_settings_transaction
 def load_settings() -> Dict[str, Any]:
     """加载设置并归一化为新版嵌套结构（旧版扁平结构自动迁移；缺失/损坏时重建）"""
     _migrate_legacy()
@@ -287,13 +312,13 @@ def _repair_config() -> None:
         if CONFIG_FILE.exists() and not bak.exists():
             CONFIG_FILE.replace(bak)
         CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        CONFIG_FILE.write_text(json.dumps({}, indent=2, ensure_ascii=False), encoding="utf-8")
-        _apply_config_attrs()
+        _write_settings({})
         log("info", _("log.settings_repaired", path=str(bak)))
     except OSError as e:
         log("warning", f"Failed to repair settings: {e}")
 
 
+@_settings_transaction
 def save_settings(
     output_dir: Optional[Path] = None,
     lang: Optional[str] = None,
@@ -311,6 +336,7 @@ def save_settings(
     show_release_notes: Optional[bool] = None,
     tutorial_done: Optional[bool] = None,
     mode: Optional[str] = None,
+    window: Optional[Dict[str, Any]] = None,
 ) -> None:
     """保存设置到新版嵌套配置（只更新传入的字段，保留其余已有字段）
 
@@ -321,6 +347,12 @@ def save_settings(
     """
     data = load_settings()
     g = _global_section(data)
+    if window is not None:
+        g["window"] = {
+            "width": max(960, int(window.get("width", 1280))),
+            "height": max(640, int(window.get("height", 860))),
+            "maximized": bool(window.get("maximized", False)),
+        }
     if mode is not None and mode in GAME_MODES:
         g["mode"] = mode
     if lang is not None:

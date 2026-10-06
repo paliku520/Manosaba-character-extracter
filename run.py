@@ -303,7 +303,7 @@ def _sprite_thumb_data_url(path: Path, size=(96, 96)) -> Optional[str]:
         img.thumbnail(size, Image.Resampling.LANCZOS)
         canvas = Image.new("RGBA", size, (0, 0, 0, 0))
         offset = ((size[0] - img.width) // 2, (size[1] - img.height) // 2)
-        canvas.paste(img, offset, img)
+        canvas.alpha_composite(img, dest=offset)
         return _pil_to_data_url(canvas)
     except Exception:
         return None
@@ -374,6 +374,10 @@ class JsApi:
         self._debug_monitor = False             # 调试模式（仅本次运行有效，不持久化）：debug 日志 + 资源占用监视
         self._monitor: Optional[ResourceMonitor] = None  # 资源占用监视线程（调试模式开启时创建）
         self._char_gen = 0                      # 角色加载代号：递增以中断旧加载
+        self._state_lock = threading.RLock()   # 代号检查、状态更新和发送结果作为一个短事务
+        self._cache_ready = threading.Event()
+        self._cache_ready.set()
+        self._cache_clear_pending = 0
         self._char_busy = False                 # 是否正在加载角色/导出（读条中禁止切换）
         self._work_lock = threading.Lock()      # 提取类任务互斥锁：避免并发写 temp/（旧任务取消清理与新任务写入竞争）
         self._composite_lock = threading.Lock()  # 合成串行锁：共享画布/精灵缓存同一时刻仅一个 worker 使用
@@ -583,6 +587,37 @@ class JsApi:
 
     # ── 目录 / 设置 ────────────────────────────────────────
 
+    def save_native_settings(self, window: Optional[Dict] = None,
+                             last_directory: Optional[str] = None) -> dict:
+        """Electron 的设置也由后端持久化，避免两个进程读改写同一文件。"""
+        save_settings(window=window, last_directory=last_directory)
+        return {"ok": True}
+
+    def _begin_character_task(self) -> int:
+        with self._state_lock:
+            self._char_gen += 1
+            self._char_busy = True
+            return self._char_gen
+
+    def _emit_character(self, gen: int, event: str, payload: dict) -> None:
+        with self._state_lock:
+            if gen == self._char_gen:
+                self._emit(event, payload)
+
+    def _finish_export(self, name: str, result: Dict) -> None:
+        count = result.get("count", 0)
+        errors = result.get("errors", [])
+        if count > 0:
+            self._export_count += 1
+            save_settings(export_count=self._export_count)
+        payload = {"name": name, **result, "export_count": self._export_count}
+        if errors or not count:
+            payload["message"] = "\n".join(str(e.get("message", e)) for e in errors) or "No images exported"
+            self._emit("export_error", payload)
+        else:
+            log("info", _("log.export_complete", name=name, count=count))
+            self._emit("export_complete", payload)
+
     # 说明：文件/文件夹选择对话框由 Electron 主进程承担（preload 白名单拦截
     # `select_directory` / `select_output_dir` → `dialog:folder*`），因此本类不再提供
     # 这两个方法。若前端调用它们，会得到 "no such method" 错误 —— 这是刻意的显式失败，
@@ -629,6 +664,7 @@ class JsApi:
         def worker():
             payload = {"operation": operation}
             try:
+                self._cache_ready.wait()
                 with self._work_lock:
                     if self._background_cancel.is_set():
                         raise LoadCancelled()
@@ -837,33 +873,40 @@ class JsApi:
         # 取消正在进行的前一个任务（preview_bundle / export_sprites / load_char）：
         # 递增代号使其 cancel_check 触发 LoadCancelled 退出，避免并发写同一 preview 目录
         # 导致文件交错/被删（如快速重复选择角色时出现提取失败）
-        self._char_gen += 1
-        self._char_busy = False
-        # 清理上一个角色的内存临时数据
-        self._character_data = None
-        self._composite_image = None
-        self._preview_sprites = None
+        with self._state_lock:
+            self._char_gen += 1
+            gen = self._char_gen
+            self._composite_gen += 1
+            self._char_busy = False
+            self._character_data = None
+            self._composite_image = None
+            self._preview_sprites = None
         # 清理合成器缓存的精灵解码图/可复用画布（切换角色后旧精灵路径不再需要）
-        self._compositor.clear_cache()
-        if self._part_compositor is not None:
-            self._part_compositor.clear_cache()
+        with self._composite_lock:
+            self._compositor.clear_cache()
+            if self._part_compositor is not None:
+                self._part_compositor.clear_cache()
         # 切换角色时清理 preview 临时预览目录
         preview_dir = self._temp_dir / "preview"
-        if preview_dir.exists():
-            shutil.rmtree(preview_dir, ignore_errors=True)
-            log("info", _("log.preview_cleaned", path=str(preview_dir)))
+        # 目录删除由提取 worker 在 _work_lock 内执行，避免切换角色时删到正在写入的文件。
         import gc
         gc.collect()
 
         def worker():
+            self._cache_ready.wait()
+            with self._work_lock:
+                if gen != self._char_gen:
+                    return
+                if preview_dir.exists():
+                    shutil.rmtree(preview_dir, ignore_errors=True)
             bundle_path = Path(self._bundles.get(name, ""))
             if not bundle_path.exists():
-                self._emit("analyze_complete", {
+                self._emit_character(gen, "analyze_complete", {
                     "name": name, "has_components": False,
                     "error": _("dialog.bundle_not_found", path=str(bundle_path)),
                 })
                 return
-            self._emit("status", {"text": _("app.status.analyzing", name=name)})
+            self._emit_character(gen, "status", {"text": _("app.status.analyzing", name=name)})
             try:
                 # 优先使用加载目录时缓存的组件状态（不再重复解析 bundle）；无缓存时回退实时分析
                 has = self._char_has_component.get(name)
@@ -872,9 +915,9 @@ class JsApi:
                 log("info", _("log.analyze_has", name=name) if has else _("log.analyze_none", name=name))
             except Exception as e:
                 log("error", _("log.analyze_failed", name=name, e=e))
-                self._emit("analyze_error", {"name": name, "message": str(e)})
+                self._emit_character(gen, "analyze_error", {"name": name, "message": str(e)})
                 return
-            self._emit("analyze_complete", {
+            self._emit_character(gen, "analyze_complete", {
                 "name": name, "bundle_path": str(bundle_path), "has_components": has,
             })
         self._run_async(worker)
@@ -884,18 +927,20 @@ class JsApi:
 
     def preview_bundle(self, name: str):
         """提取无组件角色的精灵到临时预览目录（事件: progress / preview_ready / preview_error）"""
+        gen = self._begin_character_task()
         def worker():
-            gen = self._char_gen
-            self._char_busy = True
+            self._cache_ready.wait()
             bundle_path = Path(self._bundles.get(name, ""))
             target = self._temp_dir / "preview" / name
             def cb(cur, total):
-                self._emit("progress", {"current": cur, "total": total, "phase": "preview"})
+                self._emit_character(gen, "progress", {"current": cur, "total": total, "phase": "preview"})
             # 立即给出反馈（等待锁期间也显示，避免首次 UnityPy 解析 bundle 看似卡死）
-            self._emit("status", {"text": _("app.status.extracting", name=name)})
-            self._emit("progress", {"current": 0, "total": 1, "phase": "preview"})
+            self._emit_character(gen, "status", {"text": _("app.status.extracting", name=name)})
+            self._emit_character(gen, "progress", {"current": 0, "total": 1, "phase": "preview"})
             with self._work_lock:   # 等待前一个任务（含取消清理）完全退出，避免并发写 preview/ 目录
                 try:
+                    if gen != self._char_gen:
+                        return
                     existing = list(target.glob("*.png")) if target.exists() else []
                     if existing:
                         # 复用已提取的预览缓存（不重新解析 bundle）
@@ -920,25 +965,30 @@ class JsApi:
                             cb,
                             lambda: gen != self._char_gen,
                         )
+                    if gen != self._char_gen:
+                        raise LoadCancelled()
                 except LoadCancelled:
                     # 用户中断：清理预览临时数据（锁内执行，不会与新任务并发删除）
                     shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
-                    self._preview_sprites = None
                     log("info", _("log.char_load_cancelled"))
                     return
                 except Exception as e:
                     log("error", _("log.process_data_failed", e=e))
-                    self._emit("preview_error", {"name": name, "message": str(e)})
+                    self._emit_character(gen, "preview_error", {"name": name, "message": str(e)})
                     return
                 finally:
-                    self._char_busy = False
-                self._preview_sprites = sprites
-                log("info", _("log.preview_ready", name=name, count=len(sprites)))
-                self._emit("preview_ready", {
-                    "name": name,
-                    "count": len(sprites),
-                    "sprites": [{"name": s["name"], "size": s["size"]} for s in sprites],
-                })
+                    with self._state_lock:
+                        if gen == self._char_gen:
+                            self._char_busy = False
+                with self._state_lock:
+                    if gen != self._char_gen:
+                        return
+                    self._preview_sprites = sprites
+                    log("info", _("log.preview_ready", name=name, count=len(sprites)))
+                    self._emit("preview_ready", {
+                        "name": name, "count": len(sprites),
+                        "sprites": [{"name": s["name"], "size": s["size"]} for s in sprites],
+                    })
         self._run_async(worker)
         return True
 
@@ -948,55 +998,57 @@ class JsApi:
         每生成一张立即推送 preview_thumb，前端增量填充网格（避免一次生成全部再渲染导致卡顿）。
         缩略图分辨率随预览画质设置（_preview_thumb_side）。
         """
-        def worker():
+        with self._state_lock:
+            gen = self._char_gen
             sprites = self._preview_sprites or []
+        def worker():
             total = len(sprites)
             max_side = self._preview_thumb_side()
             for i, s in enumerate(sprites):
-                self._emit("progress", {"current": i + 1, "total": total, "phase": "preview_thumbs"})
+                if gen != self._char_gen:
+                    return
+                self._emit_character(gen, "progress", {"current": i + 1, "total": total, "phase": "preview_thumbs"})
                 url = _sprite_full_data_url(Path(s["file_path"]), max_side=max_side)
                 if url:
                     # 流式：逐张推送，前端立即显示该张
-                    self._emit("preview_thumb", {"name": s["name"], "data_url": url})
-            self._emit("preview_thumbs_ready", {"count": total})
+                    self._emit_character(gen, "preview_thumb", {"name": s["name"], "data_url": url})
+            self._emit_character(gen, "preview_thumbs_ready", {"count": total})
         self._run_async(worker)
         return True
 
     def export_preview(self, name: str, selected_names: Optional[List[str]] = None):
         """导出预览精灵到输出目录；selected_names 为空则导出全部（事件: progress / export_complete / export_error）"""
         def worker():
-            src_dir = self._temp_dir / "preview" / name
-            if not src_dir.exists():
-                self._emit("export_error", {"name": name, "message": "no_preview"})
-                return
-            out_dir = self._output_dir / name
-            files = sorted(src_dir.glob("*.png"))
-            if selected_names:
-                sel = set(selected_names)
-                files = [f for f in files if f.stem in sel]
-            count = export_preview_images(files, out_dir)
-            self._export_count += 1
-            save_settings(export_count=self._export_count)
-            log("info", _("log.export_complete", name=name, count=count))
-            self._emit("export_complete", {
-                "name": name, "count": count,
-                "output_dir": str(out_dir),
-                "export_count": self._export_count,
-            })
+            self._cache_ready.wait()
+            with self._work_lock:
+                src_dir = self._temp_dir / "preview" / name
+                if not src_dir.exists():
+                    self._emit("export_error", {"name": name, "message": "no_preview"})
+                    return
+                out_dir = self._output_dir / name
+                files = sorted(src_dir.glob("*.png"))
+                if selected_names:
+                    sel = set(selected_names)
+                    files = [f for f in files if f.stem in sel]
+                self._finish_export(name, export_preview_images(files, out_dir))
         self._run_async(worker)
         return True
 
     def cancel_character_load(self) -> dict:
         """中断当前角色加载/导出，并清理临时数据"""
-        self._char_gen += 1
-        self._char_busy = False
-        self._character_data = None
-        self._composite_image = None
-        self._preview_sprites = None
-        try:
-            shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
-        except Exception:
-            pass
+        with self._state_lock:
+            self._char_gen += 1
+            gen = self._char_gen
+            self._composite_gen += 1
+            self._char_busy = False
+            self._character_data = None
+            self._composite_image = None
+            self._preview_sprites = None
+        def cleanup():
+            with self._work_lock:
+                if gen == self._char_gen:
+                    shutil.rmtree(self._temp_dir / "preview", ignore_errors=True)
+        self._run_async(cleanup)
         import gc
         gc.collect()
         log("info", _("log.char_load_cancelled"))
@@ -1026,17 +1078,19 @@ class JsApi:
 
     def export_sprites(self, name: str, has_components: bool):
         """导出角色全部精灵（事件: progress / export_complete / export_error）"""
+        gen = self._begin_character_task()
         def worker():
-            gen = self._char_gen
-            self._char_busy = True
+            self._cache_ready.wait()
             bundle_path = Path(self._bundles.get(name, ""))
             def cb(cur, total):
-                self._emit("progress", {"current": cur, "total": total, "phase": "export"})
-            self._emit("status", {"text": _("app.status.exporting", name=name)})
-            self._emit("progress", {"current": 0, "total": 1, "phase": "export"})
+                self._emit_character(gen, "progress", {"current": cur, "total": total, "phase": "export"})
+            self._emit_character(gen, "status", {"text": _("app.status.exporting", name=name)})
+            self._emit_character(gen, "progress", {"current": 0, "total": 1, "phase": "export"})
             log("info", _("log.export_start", name=name))
             with self._work_lock:   # 与提取类任务互斥，避免并发读写临时/输出目录
                 try:
+                    if gen != self._char_gen:
+                        return
                     results = self._extract_via_worker(
                         "export_sprites",
                         {
@@ -1049,74 +1103,67 @@ class JsApi:
                     )
                 except LoadCancelled:
                     log("info", _("log.char_load_cancelled"))
-                    self._char_busy = False
                     return
                 except Exception as e:
                     log("error", _("log.export_failed", name=name, e=e))
-                    self._emit("export_error", {"name": name, "message": str(e)})
-                    self._char_busy = False
+                    self._emit_character(gen, "export_error", {"name": name, "message": str(e)})
                     return
-                # 累计导出次数（每次成功导出 +1，不按图片数量）
-                self._export_count += 1
-                save_settings(export_count=self._export_count)
-                self._char_busy = False
-                log("info", _("log.export_complete", name=name, count=len(results)))
-                self._emit("export_complete", {
-                    "name": name, "count": len(results),
-                    "output_dir": str(self._output_dir / name),
-                    "export_count": self._export_count,
-                })
+                finally:
+                    with self._state_lock:
+                        if gen == self._char_gen:
+                            self._char_busy = False
+                with self._state_lock:
+                    if gen == self._char_gen:
+                        self._finish_export(name, results)
         self._run_async(worker)
         return True
 
     def start_composite_mode(self, name: str):
         """进入拼接模式：提取角色数据（优先缓存）（事件: progress / data_ready / data_error）"""
+        gen = self._begin_character_task()
         def worker():
-            gen = self._char_gen
-            self._char_busy = True
+            self._cache_ready.wait()
             bundle_path = Path(self._bundles.get(name, ""))
             def cb(cur, total):
-                self._emit("progress", {"current": cur, "total": total, "phase": "extract"})
+                self._emit_character(gen, "progress", {"current": cur, "total": total, "phase": "extract"})
             # 立即给出反馈（等待锁期间也显示，避免首次 UnityPy 解析 bundle 看似卡死）
-            self._emit("status", {"text": _("app.status.extracting", name=name)})
-            self._emit("progress", {"current": 0, "total": 1, "phase": "extract"})
+            self._emit_character(gen, "status", {"text": _("app.status.extracting", name=name)})
+            self._emit_character(gen, "progress", {"current": 0, "total": 1, "phase": "extract"})
             with self._work_lock:   # 等待前一个任务（含取消清理）完全退出，避免并发写 temp/ 导致文件被删
-                cached = load_extracted_data(self._temp_dir, name)
-                if cached:
-                    self._character_data = cached
-                    log("info", _("log.extract_cache_hit", name=name))
-                    self._char_busy = False
-                    self._emit("data_ready", self._data_summary(cached))
-                    return
                 try:
-                    self._temp_dir.mkdir(parents=True, exist_ok=True)
-                    data = self._extract_via_worker(
-                        "extract_character",
-                        {
-                            "bundle_path": str(bundle_path),
-                            "output_dir": str(self._temp_dir),
-                        },
-                        cb,
-                        lambda: gen != self._char_gen,
-                    )
-                    save_extracted_data(data, self._temp_dir, name)
+                    if gen != self._char_gen:
+                        return
+                    data = load_extracted_data(self._temp_dir, name, bundle_path)
+                    if data is None:
+                        self._temp_dir.mkdir(parents=True, exist_ok=True)
+                        data = self._extract_via_worker(
+                            "extract_character",
+                            {"bundle_path": str(bundle_path), "output_dir": str(self._temp_dir)},
+                            cb, lambda: gen != self._char_gen,
+                        )
+                        if gen != self._char_gen:
+                            raise LoadCancelled()
+                        save_extracted_data(data, self._temp_dir, name, bundle_path)
                 except LoadCancelled:
                     # 用户中断：清理本次提取的内存与磁盘数据（锁内执行，不会与新任务并发删除）
-                    self._character_data = None
                     shutil.rmtree(self._temp_dir / name, ignore_errors=True)
                     log("info", _("log.char_load_cancelled"))
-                    self._char_busy = False
                     return
                 except Exception as e:
                     log("error", _("log.process_data_failed", e=e))
-                    self._emit("data_error", {"name": name, "message": str(e)})
-                    self._char_busy = False
+                    self._emit_character(gen, "data_error", {"name": name, "message": str(e)})
                     return
-                self._character_data = data
-                self._char_busy = False
-                count = len(data.get("transform_data", []))
-                log("info", _("log.extract_complete", name=name, count=count))
-                self._emit("data_ready", self._data_summary(data))
+                finally:
+                    with self._state_lock:
+                        if gen == self._char_gen:
+                            self._char_busy = False
+                with self._state_lock:
+                    if gen != self._char_gen:
+                        return
+                    self._character_data = data
+                    count = len(data.get("transform_data", []))
+                    log("info", _("log.extract_complete", name=name, count=count))
+                    self._emit("data_ready", self._data_summary(data))
         self._run_async(worker)
         return True
 
@@ -1170,7 +1217,8 @@ class JsApi:
         """
         data = self._character_data
         if not data or data.get("character_name") != name:
-            data = load_extracted_data(self._temp_dir, name)
+            bundle = self._bundles.get(name)
+            data = load_extracted_data(self._temp_dir, name, Path(bundle)) if bundle else None
         parts: List[Dict] = []
         if data:
             wanted = set(selected_names or [])
@@ -1222,6 +1270,7 @@ class JsApi:
         parts: Optional[List[Dict]] = None,
         game: str = "",
         overwrite: bool = False,
+        sketch: Optional[Dict] = None,
     ) -> dict:
         """导入预设（代码导入传 orders=[排序值…]；文件导入传 parts=[{name, sorting_order}]）。
 
@@ -1311,7 +1360,7 @@ class JsApi:
                         "error": "builtin" if existing.get("builtin") else "exists",
                         "name": target, "presets": preset_store.list_presets(current)}
         try:
-            entry = preset_store.save_preset(current, target, entries, None)
+            entry = preset_store.save_preset(current, target, entries, sketch)
         except preset_store.BuiltinPresetError:
             log("info", f"[preset] 拒绝导入内置预设名 {current}/{target}")
             return {"success": False, "error": "builtin", "name": target,
@@ -1330,14 +1379,18 @@ class JsApi:
 
     def get_thumbnails(self):
         """为当前角色所有部件生成缩略图 data URL（事件: thumbnails_ready）"""
+        with self._state_lock:
+            gen, data = self._char_gen, self._character_data
         def worker():
             result = {}
-            if self._character_data:
-                for part in self._character_data.get("transform_data", []):
+            if data:
+                for part in data.get("transform_data", []):
+                    if gen != self._char_gen:
+                        return
                     url = _sprite_thumb_data_url(Path(part["sprite_path"]), size=(96, 96))
                     if url:
                         result[part["name"]] = url
-            self._emit("thumbnails_ready", result)
+            self._emit_character(gen, "thumbnails_ready", result)
         self._run_async(worker)
         return True
 
@@ -1347,53 +1400,63 @@ class JsApi:
         sketch_text: Anan 素描本自定义文字（空则忽略）；sketch_size: 文字字号（像素）
         sketch_align: 文字对齐方式（left/center/right）
         """
+        with self._state_lock:
+            self._composite_gen += 1
+            gen, char_gen = self._composite_gen, self._char_gen
+            data = self._character_data
+
+        def send(event, payload):
+            with self._state_lock:
+                if gen == self._composite_gen and char_gen == self._char_gen:
+                    self._emit(event, payload)
+
         def worker():
-            if not self._character_data:
-                self._emit("composite_done", {"ok": False, "error": "no_data"})
+            if not data:
+                send("composite_done", {"ok": False, "error": "no_data"})
                 return
-            # 防抖/最新优先：每个新请求递增代号，旧请求（含等待锁期间）被取代后直接丢弃，
-            # 避免快速选择精灵时并发写共享画布/精灵缓存导致合成错乱。
-            gen = self._composite_gen + 1
-            self._composite_gen = gen
 
             def cb(cur, total):
                 if gen != self._composite_gen:
                     return  # 已被更新的请求取代，不再上报进度
-                self._emit("progress", {"current": cur, "total": total, "phase": "composite"})
+                send("progress", {"current": cur, "total": total, "phase": "composite"})
 
-            self._emit("status", {"text": _("app.status.compositing")})
+            send("status", {"text": _("app.status.compositing")})
             # 合成串行化：共享画布/精灵缓存同一时刻仅一个 worker 使用（防止并发写污染）
             with self._composite_lock:
-                if gen != self._composite_gen:
+                if gen != self._composite_gen or char_gen != self._char_gen:
                     return  # 等待锁期间已被更新的请求取代，丢弃
                 try:
                     img = self._compositor.composite(
-                        self._character_data["transform_data"],
+                        data["transform_data"],
                         selected_names=selected_names,
                         progress_callback=cb,
                         sketchbook_text=sketch_text or None,
                         sketch_font_size=int(sketch_size or 56),
                         sketch_align=(sketch_align or "center"),
-                        mask_mapping=self._character_data.get("mask_mapping"),
+                        mask_mapping=data.get("mask_mapping"),
                     )
+                    # The compositor returns a reusable canvas. Snapshot it before unlocking.
+                    if img is not None:
+                        img = img.copy()
                 except Exception as e:
                     log("error", _("log.composite_failed", e=e))
-                    self._emit("composite_done", {"ok": False, "error": str(e)})
+                    send("composite_done", {"ok": False, "error": str(e)})
                     return
-            if gen != self._composite_gen:
+            if gen != self._composite_gen or char_gen != self._char_gen:
                 return  # 合成期间被更新的请求取代，丢弃结果（不覆盖最新预览）
             if img is None:
-                self._emit("composite_done", {"ok": False, "error": "empty"})
+                send("composite_done", {"ok": False, "error": "empty"})
                 return
-            self._composite_image = img
             log("info", _("log.composite_done", size=f"{img.width}x{img.height}"))
             data_url, pv_size = _pil_preview(img, max_side=self._preview_max_side())
-            self._emit("composite_done", {
-                "ok": True,
-                "data_url": data_url,
-                "size": pv_size,              # 实际显示的预览尺寸（随预览画质变化）
-                "full_size": list(img.size),  # 完整合成尺寸（导出用，原画质）
-            })
+            with self._state_lock:
+                if gen != self._composite_gen or char_gen != self._char_gen:
+                    return
+                self._composite_image = img
+                self._emit("composite_done", {
+                    "ok": True, "data_url": data_url,
+                    "size": pv_size, "full_size": list(img.size),
+                })
         self._run_async(worker)
         return True
 
@@ -1404,8 +1467,10 @@ class JsApi:
         因此该精灵呈现在它在角色中的真实位置，而不是屏幕/画面中央。
         不套用 ClippingMask 裁剪（mask_mapping=None）：否则被裁剪的叠加层会被裁成空区域、完全看不到。
         """
-        def worker():
+        with self._state_lock:
+            gen = self._char_gen
             data = self._character_data
+        def worker():
             if not data:
                 self._emit("part_preview_ready", {"ok": False, "name": name, "error": "no_data"})
                 return
@@ -1430,6 +1495,8 @@ class JsApi:
                         mask_mapping=None,
                         canvas_size=size,
                     )
+                    if img is not None:
+                        img = img.copy()
                 except Exception as e:
                     log("error", _("log.composite_failed", e=e))
                     self._emit("part_preview_ready", {"ok": False, "name": name, "error": str(e)})
@@ -1439,7 +1506,7 @@ class JsApi:
                 self._emit("part_preview_ready", {"ok": False, "name": name, "error": "empty"})
                 return
             data_url, pv_size = _pil_preview(img, max_side=self._preview_max_side())
-            self._emit("part_preview_ready", {
+            self._emit_character(gen, "part_preview_ready", {
                 "ok": True,
                 "name": name,
                 "data_url": data_url,
@@ -1452,15 +1519,16 @@ class JsApi:
     def save_composite(self):
         """保存合成图（事件: save_complete）"""
         def worker():
-            if self._composite_image is None:
-                self._emit("save_complete", {"ok": False, "error": "no_image"})
-                return
-            char_name = (self._character_data or {}).get("character_name", "composite")
+            with self._state_lock:
+                if self._composite_image is None:
+                    self._emit("save_complete", {"ok": False, "error": "no_image"})
+                    return
+                out_img = self._composite_image.copy()
+                char_name = (self._character_data or {}).get("character_name", "composite")
             try:
-                out_img = self._composite_image
                 # 关闭“导出原始画质”时：导出与预览画质一致（按预览缩放比例降采样）
                 if not self._export_original_quality:
-                    out_img = _downscale_for_preview(self._composite_image, self._preview_max_side())
+                    out_img = _downscale_for_preview(out_img, self._preview_max_side())
                 path = save_composite(out_img, self._output_dir, char_name)
             except Exception as e:
                 self._emit("save_complete", {"ok": False, "error": str(e)})
@@ -1746,11 +1814,34 @@ class JsApi:
 
     def clear_cache(self, keep_preview: bool = False):
         """清空 temp 缓存（事件: cache_cleared）；keep_preview=True 时保留 preview 预览临时目录"""
+        with self._state_lock:
+            self._cache_clear_pending += 1
+            self._cache_ready.clear()
+            self._char_gen += 1
+            self._composite_gen += 1
+            self._char_busy = False
+            self._character_data = None
+            self._composite_image = None
+            self._preview_sprites = None
+        self._background_cancel.set()
         def worker():
-            with self._work_lock:
-                self._background_preview_cache.clear()
+            try:
+                self._clear_cache_files(keep_preview)
+            finally:
+                with self._state_lock:
+                    self._cache_clear_pending -= 1
+                    if self._cache_clear_pending == 0:
+                        self._cache_ready.set()
+        self._run_async(worker)
+        return True
+
+    def _clear_cache_files(self, keep_preview: bool) -> None:
+        with self._work_lock, self._composite_lock:
+            self._background_preview_cache.clear()
+            self._compositor.clear_cache()
+            if self._part_compositor is not None:
+                self._part_compositor.clear_cache()
             if keep_preview and self._temp_dir.exists():
-                # 保留预览临时目录，仅清理其余缓存（精灵/角色数据等）
                 for child in self._temp_dir.iterdir():
                     if child.name == "preview":
                         continue
@@ -1758,18 +1849,13 @@ class JsApi:
                         shutil.rmtree(child, ignore_errors=True)
                     else:
                         try:
-                            child.unlink()
-                        except Exception:
-                            pass
+                            child.unlink(missing_ok=True)
+                        except OSError as error:
+                            log("warning", f"Failed to remove cache file {child}: {error}")
             else:
                 shutil.rmtree(self._temp_dir, ignore_errors=True)
-            self._character_data = None
-            self._composite_image = None
-            self._preview_sprites = None
             log("info", _("log.cache_cleared"))
             self._emit("cache_cleared", {"temp_dir": str(self._temp_dir)})
-        self._run_async(worker)
-        return True
 
     def clear_output(self):
         """清空输出目录（事件: output_cleared）"""

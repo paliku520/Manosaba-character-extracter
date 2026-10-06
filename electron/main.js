@@ -59,6 +59,8 @@ const LOG_BUFFER_MAX = 2000;    // 控制台历史日志回放上限（行）
 const logBuffer = [];           // 最近日志（打开控制台时回放）
 const pending = new Map(); // id -> {resolve, reject}
 let seq = 0;
+let settingsSave = Promise.resolve();
+let backendError = null;
 
 /* ── Python 后端子进程 ───────────────────────────── */
 
@@ -82,9 +84,7 @@ function pyCommand() {
 
 function backendEnv() {
   const env = { ...process.env, PYTHONUNBUFFERED: '1' };
-  if (app.isPackaged) {
-    env.MCE_DATA_DIR = dataDir();
-  }
+  env.MCE_DATA_DIR = dataDir();
   return env;
 }
 
@@ -93,6 +93,7 @@ function backendEnv() {
 //   - 受保护目录（如 C:\Program Files\...）→ 普通权限不可写，自动回退到用户可写目录
 //     （%APPDATA%\Manosaba Character Extracter），保证 data/output/temp/logs 可读写。
 function dataDir() {
+  if (process.env.MCE_DATA_DIR) return path.resolve(process.env.MCE_DATA_DIR);
   if (!app.isPackaged) {
     return path.join(__dirname, '..');
   }
@@ -109,10 +110,9 @@ function dataDir() {
 }
 
 /* ── 窗口状态持久化（大小 / 位置 / 最大化） ────────── */
-// 与 Python settings.py 共用 data/settings.json；save_settings 只更新传入字段、保留其余，故 window 字段互不冲突
+// 后端是运行期间唯一的设置写入者；主进程仅在启动后端之前初始化配置。
 function settingsFilePath() {
-  const dataRoot = app.isPackaged ? dataDir() : path.join(__dirname, '..');
-  return path.join(dataRoot, 'data', 'settings.json');
+  return path.join(dataDir(), 'data', 'settings.json');
 }
 
 // 当前生效作品 mode（新版结构 global.mode）。已搁置多作品兼容（兼容新游戏工作量巨大），
@@ -194,13 +194,9 @@ function saveWindowState() {
       height: Math.round(b.height),
       maximized: win.isMaximized(),
     };
-    const file = settingsFilePath();
-    let data = {};
-    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-    if (typeof data !== 'object' || data === null) data = {};
-    if (typeof data.global !== 'object' || data.global === null) data.global = {};
-    data.global.window = state;   // 新版嵌套结构：window 存于 global
-    writeSettingsFile(file, JSON.stringify(data, null, 2));
+    settingsSave = settingsSave.then(() => callApi('save_native_settings', [state, null]))
+      .catch((e) => pushLog('[main] saveWindowState failed: ' + e.message));
+    return settingsSave;
   } catch (e) {
     try { pushLog('[main] saveWindowState failed: ' + (e && e.message)); } catch {}
   }
@@ -253,24 +249,16 @@ function getLastDirectory() {
   return undefined;
 }
 
-function saveLastDirectory(dir) {
+async function saveLastDirectory(dir) {
   try {
-    const file = settingsFilePath();
-    let data = {};
-    try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
-    if (typeof data !== 'object' || data === null) data = {};
-    if (typeof data.global !== 'object' || data.global === null) data.global = {};
-    const mode = activeMode(data);
-    if (typeof data.game !== 'object' || data.game === null) data.game = {};
-    if (typeof data.game[mode] !== 'object' || data.game[mode] === null) data.game[mode] = {};
-    data.game[mode].last_directory = dir;   // 新版 game.<mode>.last_directory
-    writeSettingsFile(file, JSON.stringify(data, null, 2));
+    await callApi('save_native_settings', [null, dir]);
   } catch (e) {
     try { pushLog('[main] saveLastDirectory failed: ' + (e && e.message)); } catch {}
   }
 }
 
 function startPython() {
+  backendError = null;
   const { cmd, args } = pyCommand();
   console.log('[main] start backend:', cmd, args.join(' '));
   pushLog('[main] start backend: ' + cmd);   // 后端启动失败时控制台也能看到原因
@@ -279,6 +267,25 @@ function startPython() {
     windowsHide: true,
     env: backendEnv(),
   });
+  const child = py;
+  let failed = false;
+  const failBackend = (error) => {
+    if (failed) return false;
+    failed = true;
+    backendError = error instanceof Error ? error : new Error(String(error));
+    pushLog('[main] backend failed: ' + backendError.message);
+    if (py === child) py = null;
+    for (const [, request] of pending) request.reject(backendError);
+    pending.clear();
+    // A broken pipe can leave a process alive. Close it as well as rejecting RPC.
+    try { child.stdin.destroy(); child.kill(); } catch {}
+    return true;
+  };
+  child.on('error', (error) => {
+    if (failBackend(error)) dialog.showErrorBox('Backend failed to start', backendError.message);
+  });
+  // A closed/broken stdin must reject RPC instead of raising an unhandled stream error.
+  child.stdin.on('error', failBackend);
 
   const rl = readline.createInterface({ input: py.stdout, crlfDelay: Infinity });
   rl.on('line', (line) => {
@@ -318,7 +325,7 @@ function startPython() {
   py.on('exit', (code) => {
     console.error('[py] backend exited', code);
     pushLog('[main] backend exited with code ' + code);
-    py = null;
+    if (py === child) py = null;
     // 拒绝所有挂起请求
     for (const [, p] of pending) p.reject(new Error('backend exited'));
     pending.clear();
@@ -327,13 +334,18 @@ function startPython() {
 
 function callApi(method, args = []) {
   return new Promise((resolve, reject) => {
-    if (!py || !py.stdin.writable) {
-      reject(new Error('backend not running'));
+    if (!py || !py.stdin.writable || py.stdin.destroyed) {
+      reject(backendError || new Error('backend not running'));
       return;
     }
     const id = ++seq;
     pending.set(id, { resolve, reject });
-    py.stdin.write(JSON.stringify({ id, method, args }) + '\n');
+    py.stdin.write(JSON.stringify({ id, method, args }) + '\n', (error) => {
+      if (error && pending.has(id)) {
+        pending.delete(id);
+        reject(error);
+      }
+    });
   });
 }
 
@@ -728,7 +740,7 @@ ipcMain.handle('dialog:folder', async () => {
     defaultPath: getLastDirectory(),
   });
   if (r.canceled || !r.filePaths[0]) return null;
-  saveLastDirectory(r.filePaths[0]);
+  await saveLastDirectory(r.filePaths[0]);
   return r.filePaths[0];
 });
 
@@ -777,35 +789,43 @@ let backendStopping = false;
 
 function stopBackend() {
   if (!py) return;
+  const child = py;
   // 关闭 stdin → backend 主循环收到 EOF → 自行输出退出日志并清理退出
   try {
-    py.stdin.end();
+    child.stdin.end();
   } catch {}
   // 兜底：8s 后仍存活则强杀（正常情况 backend 收到 EOF 会自动退出）
   const timer = setTimeout(() => {
     try {
-      py.kill();
+      child.kill();
     } catch {}
   }, 8000);
-  py.once('exit', () => clearTimeout(timer));
+  child.once('exit', () => clearTimeout(timer));
 }
 
-function stopBackendAndQuit() {
+async function stopBackendAndQuit() {
   if (backendStopping) return;
   backendStopping = true;
+  // Keep the backend alive until the queued window-state write has completed.
+  let saveTimer;
+  await Promise.race([settingsSave, new Promise((resolve) => {
+    saveTimer = setTimeout(resolve, 2000);
+  })]);
+  clearTimeout(saveTimer);
   if (!py) {
     app.quit();
     return;
   }
+  const child = py;
   stopBackend();
   // 窗口已关闭；主进程保持存活等待后端清理（收集完整退出日志），限时 4s
   const timer = setTimeout(() => {
     try {
-      py.kill();
+      child.kill();
     } catch {}
     app.quit();
   }, 4000);
-  py.once('exit', () => {
+  child.once('exit', () => {
     clearTimeout(timer);
     app.quit();
   });

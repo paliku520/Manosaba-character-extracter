@@ -891,6 +891,7 @@
       character: String(raw.character_name || raw.character || ''),
       name: String(raw.name || ''),
       parts,
+      sketch: raw.sketch && typeof raw.sketch === 'object' ? raw.sketch : null,
     };
   }
 
@@ -945,7 +946,7 @@
   // 返回 'ok' | 'cancel'（用户取消了覆盖确认）| 'fail'——调用方据此决定是否关闭模态
   async function runPresetImport(job) {
     const run = (overwrite) => api().import_preset(
-      App.characterData.name, job.pname, job.orders, job.parts, job.game, overwrite
+      App.characterData.name, job.pname, job.orders, job.parts, job.game, overwrite, job.sketch
     );
     let r = await run(false);
     if (r && r.error === 'exists') {
@@ -1173,7 +1174,8 @@
         return;
       }
       // 仅成功时关闭导入模态：取消覆盖确认 / 各种报错都保留输入，方便改完重试
-      if (await runPresetImport({ pname, orders, parts, game, character }) === 'ok') close();
+      const sketch = state.mode === 'file' ? state.fileParsed.sketch : null;
+      if (await runPresetImport({ pname, orders, parts, game, character, sketch }) === 'ok') close();
     }
   }
 
