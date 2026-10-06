@@ -1,5 +1,8 @@
 # 背景与小素材提取
 
+[![English](https://img.shields.io/badge/English-blue)](backgrounds.en.md)
+[![中文(简体)](https://img.shields.io/badge/中文(简体)-red)](backgrounds.md)
+
 在「素材提取」页选择游戏根目录、`backgrounds` 目录或其分类目录。程序自动定位背景和相邻的通用素材包，不依赖角色目录设置。支持从该页拖入游戏目录。
 
 ## 使用

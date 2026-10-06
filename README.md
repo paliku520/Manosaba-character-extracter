@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md) 
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
-从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 中提取角色精灵：自动检测组件数据、直接导出精灵或拼接完整立绘，还可按游戏原版排版合成角色名片。界面为 **Electron 无边框窗口**，核心逻辑由 **Python 后端**（子进程 + stdio JSON-RPC）承担。
+从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 中提取角色精灵：自动检测组件数据、直接导出精灵或拼接完整立绘，还可按游戏原版排版合成角色名片，并支持分类浏览导出背景与各类小素材。界面为 **Electron 无边框窗口**，核心逻辑由 **Python 后端**（子进程 + stdio JSON-RPC）承担。
 
 ## 相关项目
 >- **[Manosaba-Library](https://github.com/QwQSakuya/Manosaba-Library)** —— 同为《魔法少女的魔女审判》社区的项目，是一个玩家自发的非官方资料站，收录剧情节点图谱、证物图鉴、CG画廊、语音音乐与全素材库索引，并支持在线立绘预览。
@@ -236,6 +236,10 @@ UnityPy 提取在 `backend.py --worker` 独立子进程中执行（避免后端�
 ### 本工具作者
 
 **paliku520（云野 风云）** — 开发与维护
+
+### 贡献者
+
+**[Rainfrost2907](https://github.com/Rainfrost2907)** — 「素材提取」页（背景与小素材提取导出，详见 [docs/backgrounds.md](/docs/backgrounds.md)）
 
 ### 技术致谢
 

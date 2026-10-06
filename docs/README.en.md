@@ -3,7 +3,7 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md)
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
-Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**: auto-detect component data, export sprites directly, composite full illustrations, or render character nameplates in the game's original layout. The UI is an **Electron frameless window**, with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
+Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**: auto-detect component data, export sprites directly, composite full illustrations, render character nameplates in the game's original layout, and browse/export backgrounds & various small assets by category. The UI is an **Electron frameless window**, with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
 
 ## Related Projects
 >- **[Manosaba-Library](https://github.com/QwQSakuya/Manosaba-Library)** — Another project from the "Magical Girl's Witch Trial" community, it's a fan-made unofficial resource site that collects story node maps, evidence compendiums, CG galleries, voice and music files, and a full material library index, with support for online character illustration previews.
@@ -22,10 +22,10 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 **Background and Small Asset Export**
 
-- A dedicated **Assets** tab locates backgrounds, CGs, evidence, profiles, interface icons/buttons and all stage-bundle images, with categories, search and selection
+- A dedicated **Assets** tab locates backgrounds, CG illustrations, evidence, profiles, interface and all stage-bundle images, with categories, search and selection
 - Click rows to preview; checkboxes independently select exports. Prewarm all loaded assets, with bounded memory, disk thumbnails in temp and cancellation
 - Export native-size PNGs flat within `output/backgrounds/背景/` for original backgrounds and named folders such as `证物/`, `人物资料/`, `界面素材/` and `演出物件/` for small images; no per-bundle subfolders, and conflicts receive numeric suffixes
-- List atlas sprites individually and include independent textures, excluding duplicate sprite backing textures and empty runtime textures; see [asset documentation (Chinese)](backgrounds.md)
+- List atlas sprites individually and include independent textures, excluding duplicate sprite backing textures and empty runtime textures; see [asset documentation](backgrounds.en.md)
 
 **Part Presets**
 
@@ -236,6 +236,10 @@ The content extracted by this tool is from the game **"魔法少女ノ魔女裁�
 ### Author
 
 **paliku520 (Yunye Fengyun)** — Development and maintenance
+
+### Contributors
+
+**[Rainfrost2907](https://github.com/Rainfrost2907)** — the Asset Extraction page (background & small asset extraction/export, see [docs/backgrounds.en.md](/docs/backgrounds.en.md))
 
 ### Technical Acknowledgments
 
