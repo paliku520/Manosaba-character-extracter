@@ -588,6 +588,7 @@
         const steps = [
           ['refreshSettingsModal', refreshSettingsModal],
           ['renderInfoPage', renderInfoPage],
+          ['refreshBackgrounds', () => MCE.refreshBackgrounds()],
           ['renderAboutPage', renderAboutPage],
           ['renderCharList', renderCharList],
           ['renderParts', () => { if (App.characterData) renderParts(App.characterData); }],

@@ -28,6 +28,7 @@ import os
 import queue
 import shutil
 import sys
+import tempfile
 import threading
 import time
 import webbrowser
@@ -37,6 +38,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from PIL import Image
 
 from src.bundle_loader import BundleLoader
+from src.background_assets import BackgroundPreviewCache, scan_backgrounds
+from src.small_assets import OUTPUT_GROUPS
 from src.cache_manager import load_extracted_data, save_extracted_data
 from src.compositor import (
     LoadCancelled,
@@ -47,6 +50,7 @@ from src.export_manager import save_composite
 from src import nameplate
 from src import preset_store
 from src.worker_client import (
+    BackgroundPreviewWorker,
     LoadCancelledInWorker,
     WorkerTimeoutError,
     run_extract_worker,
@@ -369,6 +373,12 @@ class JsApi:
         self._composite_gen = 0                  # 合成代号：新请求递增，旧请求被取代（防抖/最新优先）
         self._char_has_component: Dict[str, bool] = {}  # 加载目录时缓存的角色组件状态（避免点击时重复解析 bundle）
 
+        self._background_bundles: Dict[str, dict] = {}
+        self._background_lock = threading.Lock()
+        self._background_cancel = threading.Event()
+        self._background_preview_worker = BackgroundPreviewWorker()
+        self._background_preview_cache = BackgroundPreviewCache(directory=self._temp_dir / "background-previews")
+
         # 名片合成（素材/字体见 src/nameplate.py；渲染器按素材路径缓存）
         self._nameplate_renderer: Optional["nameplate.NameplateRenderer"] = None
         self._nameplate_key: Optional[Tuple[str, str]] = None
@@ -593,6 +603,155 @@ class JsApi:
             log("warning", f"open url failed: {e}")
 
     # ── 目录加载 ──────────────────────────────────────────
+
+    def _start_background_job(self, operation: str, task) -> dict:
+        """Serialize background jobs and report completion even on failure/cancellation."""
+        if self._char_busy or self._loading_path is not None:
+            return {"ok": False, "error": _("background.busy")}
+        if not self._background_lock.acquire(blocking=False):
+            return {"ok": False, "error": _("background.busy")}
+        self._background_cancel.clear()
+
+        def worker():
+            payload = {"operation": operation}
+            try:
+                with self._work_lock:
+                    if self._background_cancel.is_set():
+                        raise LoadCancelled()
+                    payload.update(task())
+            except (LoadCancelled, LoadCancelledInWorker):
+                payload["cancelled"] = True
+            except Exception as exc:
+                payload["error"] = str(exc)
+                log("error", f"[background] {operation}: {exc}")
+            finally:
+                self._background_lock.release()
+            self._emit("background_complete", payload)
+
+        self._run_async(worker)
+        return {"ok": True}
+
+    def load_backgrounds(self, path: str) -> dict:
+        """Discover backgrounds and individual images independently of characters."""
+        def task():
+            result = scan_backgrounds(Path(path), self._background_cancel.is_set)
+            small = run_extract_worker(
+                "scan_small_assets", {"directory": result["directory"]},
+                progress_callback=lambda cur, total: self._emit("background_progress", {
+                    "operation": "scan", "current": cur, "total": total,
+                }), cancel_check=self._background_cancel.is_set,
+            )
+            result["bundles"].extend(small["bundles"])
+            result["count"] = len(result["bundles"])
+            result["errors"] = small["errors"]
+            if self._background_cancel.is_set():
+                raise LoadCancelled()
+            self._background_bundles = {item["id"]: item for item in result["bundles"]}
+            save_settings(last_directory=path)
+            # Import UnityPy in the preview process before the first preview click.
+            try:
+                self._background_preview_worker.warmup()
+            except Exception as exc:
+                log("warning", f"[background] preview warmup: {exc}")
+            return result
+        return self._start_background_job("scan", task)
+
+    def preview_background(self, background_id: str) -> dict:
+        """Reuse cached thumbnails or decode in the prewarmed preview process."""
+        item = self._background_bundles.get(background_id)
+        if item is None:
+            return {"ok": False, "error": _("background.invalid_selection")}
+
+        def task():
+            result = self._get_background_preview(item)
+            return {"id": background_id, **result}
+        return self._start_background_job("preview", task)
+
+    def _get_background_preview(self, item: dict) -> dict:
+        if self._background_cancel.is_set():
+            raise LoadCancelled()
+        path = Path(item["bundle_path"])
+        selector = {key: item[key] for key in ("object_id", "asset_type") if key in item}
+        key = self._background_preview_cache.key(path, **selector)
+        result = self._background_preview_cache.get(key)
+        if result is None:
+            result = self._background_preview_worker.preview(
+                path, cancel_check=self._background_cancel.is_set, **selector,
+            )
+            if self._background_cancel.is_set():
+                raise LoadCancelled()
+            if self._background_preview_cache.key(path, **selector) == key:
+                self._background_preview_cache.put(key, result)
+        return result
+
+    def prewarm_backgrounds(self) -> dict:
+        """Cache previews for every loaded asset, independently of UI filters."""
+        if not self._background_bundles:
+            return {"ok": False, "error": _("background.invalid_selection")}
+        items = list(self._background_bundles.values())
+
+        def task():
+            count, errors = 0, []
+            for index, item in enumerate(items):
+                if self._background_cancel.is_set():
+                    raise LoadCancelled()
+                try:
+                    self._get_background_preview(item)
+                    count += 1
+                except (LoadCancelled, LoadCancelledInWorker):
+                    raise
+                except Exception as exc:
+                    errors.append({"id": item["id"], "message": str(exc)})
+                self._emit("background_progress", {
+                    "operation": "prewarm", "current": index + 1, "total": len(items),
+                })
+            return {"count": count, "total": len(items), "errors": errors}
+        return self._start_background_job("prewarm", task)
+
+    def export_backgrounds(self, selected_ids: List[str]) -> dict:
+        """Export native PNGs into flat, named categories under backgrounds/."""
+        if (not isinstance(selected_ids, list) or not selected_ids
+                or any(not isinstance(key, str) or key not in self._background_bundles
+                       for key in selected_ids)):
+            return {"ok": False, "error": _("background.invalid_selection")}
+        items = [{**self._background_bundles[key], "output_group": OUTPUT_GROUPS.get(
+            self._background_bundles[key].get("group"), "背景",
+        )} for key in dict.fromkeys(selected_ids)]
+        output_dir = self._output_dir / "backgrounds"
+
+        def task():
+            result = self._extract_background_batch(items, output_dir, "export")
+            groups = {item["output_group"] for item in items}
+            if len(groups) == 1:
+                result["output_dir"] = str(output_dir / next(iter(groups)))
+            if result["count"] > 0:
+                self._export_count += 1
+                save_settings(export_count=self._export_count)
+            result["export_count"] = self._export_count
+            return result
+        return self._start_background_job("export", task)
+
+    def _extract_background_batch(self, items: List[dict], output_dir: Path, operation: str) -> dict:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # The parent owns staging cleanup even when the extraction process is killed.
+        with tempfile.TemporaryDirectory(prefix=".background-", dir=output_dir) as staging:
+            return run_extract_worker(
+                "export_backgrounds",
+                {"bundles": items, "output_dir": str(output_dir), "staging_dir": staging},
+                progress_callback=lambda cur, total: self._emit("background_progress", {
+                    "operation": operation, "current": cur, "total": total,
+                }), cancel_check=self._background_cancel.is_set,
+            )
+
+    def cancel_backgrounds(self) -> dict:
+        """Stop the active scan/preview/export; completed output files are retained."""
+        self._background_cancel.set()
+        return {"ok": True}
+
+    def _close_background_preview(self) -> None:
+        self._background_cancel.set()
+        self._background_preview_worker.close()
+        self._background_preview_cache.clear()
 
     def load_directory(self, path: str):
         """加载游戏目录（后台线程，事件: progress / load_complete）；新查找会打断上一次未完成的查找"""
@@ -1568,6 +1727,8 @@ class JsApi:
     def clear_cache(self, keep_preview: bool = False):
         """清空 temp 缓存（事件: cache_cleared）；keep_preview=True 时保留 preview 预览临时目录"""
         def worker():
+            with self._work_lock:
+                self._background_preview_cache.clear()
             if keep_preview and self._temp_dir.exists():
                 # 保留预览临时目录，仅清理其余缓存（精灵/角色数据等）
                 for child in self._temp_dir.iterdir():

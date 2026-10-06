@@ -208,7 +208,7 @@
   }
 
   // 标签页
-  const TAB_ORDER = ['info', 'parts', 'hierarchy', 'about'];
+  const TAB_ORDER = ['info', 'parts', 'hierarchy', 'backgrounds', 'about'];
 
   // active 指示条移动到当前 tab（左右滑动动画由 CSS transition 驱动）
   function moveTabIndicator() {

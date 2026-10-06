@@ -14,6 +14,8 @@
 from __future__ import annotations
 
 import json
+import os
+import queue
 import subprocess
 import sys
 import threading
@@ -30,13 +32,13 @@ class LoadCancelledInWorker(Exception):
     """用户取消（父进程 kill 子进程）"""
 
 
-def _spawn_worker() -> subprocess.Popen:
+def _spawn_worker(mode: str = "--worker") -> subprocess.Popen:
     """启动提取工作子进程（同一 backend.py/exe 的 --worker 模式）"""
     if getattr(sys, "frozen", False):
-        cmd = [sys.executable, "--worker"]
+        cmd = [sys.executable, mode]
     else:
         backend_py = str(Path(__file__).resolve().parent.parent / "backend.py")
-        cmd = [sys.executable, backend_py, "--worker"]
+        cmd = [sys.executable, backend_py, mode]
     return subprocess.Popen(
         cmd,
         stdin=subprocess.PIPE,
@@ -60,6 +62,17 @@ def _stderr_reader(proc: subprocess.Popen) -> None:
 
 
 def _kill(proc: subprocess.Popen) -> None:
+    # A Windows venv python.exe can launch a second Python process. Terminating
+    # only the launcher leaves that worker running and holding output files open.
+    if os.name == "nt" and proc.poll() is None:
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW, timeout=3,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            pass
     try:
         proc.kill()
     except Exception:
@@ -68,6 +81,98 @@ def _kill(proc: subprocess.Popen) -> None:
         proc.wait(timeout=3)
     except Exception:
         pass
+
+
+class BackgroundPreviewWorker:
+    """Reuse a preview-only worker; cancellation/timeouts discard its process."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._proc = None
+        self._messages = None
+        self._request_id = 0
+        self._closed = False
+
+    def _start(self) -> None:
+        if self._closed:
+            raise RuntimeError("background preview worker is closed")
+        if self._proc is not None and self._proc.poll() is None:
+            return
+        self._reset()
+        proc = _spawn_worker("--background-worker")
+        messages = queue.Queue()
+        self._proc, self._messages = proc, messages
+
+        def reader():
+            try:
+                for line in proc.stdout:
+                    try:
+                        messages.put(json.loads(line))
+                    except (ValueError, TypeError):
+                        continue
+            except (OSError, ValueError):
+                pass
+            finally:
+                messages.put(None)
+
+        threading.Thread(target=reader, daemon=True).start()
+        threading.Thread(target=_stderr_reader, args=(proc,), daemon=True).start()
+
+    def warmup(self) -> None:
+        """Start importing dependencies while the user browses the background list."""
+        with self._lock:
+            self._start()
+
+    def _reset(self) -> None:
+        proc, self._proc = self._proc, None
+        self._messages = None
+        if proc is not None:
+            _kill(proc)
+            for stream in (proc.stdin, proc.stdout, proc.stderr):
+                if stream is not None:
+                    stream.close()
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._reset()
+
+    def preview(self, bundle_path: Path, cancel_check=None, timeout: float = 45.0,
+                object_id=None, asset_type=None) -> dict:
+        with self._lock:
+            if cancel_check and cancel_check():
+                raise LoadCancelledInWorker()
+            self._start()
+            self._request_id += 1
+            rid = self._request_id
+            try:
+                self._proc.stdin.write(json.dumps({
+                    "id": rid, "kind": "preview_background",
+                    "args": {"bundle_path": str(bundle_path), "object_id": object_id,
+                             "asset_type": asset_type},
+                }) + "\n")
+                self._proc.stdin.flush()
+                deadline = time.monotonic() + timeout
+                while True:
+                    if cancel_check and cancel_check():
+                        raise LoadCancelledInWorker()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise WorkerTimeoutError("background preview worker timed out (killed)")
+                    try:
+                        msg = self._messages.get(timeout=min(0.05, remaining))
+                    except queue.Empty:
+                        continue
+                    if msg is None:
+                        raise WorkerTimeoutError("background preview worker exited without result")
+                    if msg.get("id") == rid:
+                        break
+            except Exception:
+                self._reset()
+                raise
+            if msg.get("error"):
+                raise RuntimeError(str(msg["error"]))
+            return msg["result"]
 
 
 def run_extract_worker(
