@@ -411,10 +411,12 @@
     actionRow.style.flexDirection = 'row';
     actionRow.style.flexWrap = 'wrap';
     actionRow.innerHTML =
+      '<button class="btn sm" id="set-tour" data-i18n="tour.replay" data-i18n-title="tour.replay_hint"></button>' +
       '<button class="btn sm" id="set-check-update" data-i18n="left.check_update"></button>' +
       '<button class="btn sm ghost" id="set-clear-cache" data-i18n="settings.clear_cache_btn"></button>' +
       '<button class="btn sm ghost" id="set-clear-output" data-i18n="settings.clear_output_btn"></button>' +
       '<button class="btn sm ghost" id="set-clear-log" data-i18n="settings.clear_log_btn"></button>';
+    actionRow.querySelector('#set-tour').textContent = t('tour.replay');
     actionRow.querySelector('#set-check-update').textContent = t('left.check_update');
     actionRow.querySelector('#set-clear-cache').textContent = t('settings.clear_cache_btn');
     actionRow.querySelector('#set-clear-output').textContent = t('settings.clear_output_btn');
@@ -598,6 +600,7 @@
           ['refreshPartsHeader', refreshPartsHeader],
           ['refreshNameDisplay', refreshNameDisplay],
           ['moveTabIndicator', moveTabIndicator],
+          ['refreshTourTexts', () => { if (MCE.refreshTourTexts) MCE.refreshTourTexts(); }],
           ['updateTitleBar', updateTitleBar],
           ['refreshExportCount', refreshExportCount],
           ['applyPreviewZoom', () => { if (App.previewSize) applyPreviewZoom(); }],
@@ -614,6 +617,10 @@
       }
     };
 
+    actionRow.querySelector('#set-tour').addEventListener('click', () => {
+      close();                                  // 先关闭设置弹窗，再打开教程菜单
+      if (MCE.openTourPicker) MCE.openTourPicker();
+    });
     actionRow.querySelector('#set-check-update').addEventListener('click', () => {
       setStatus(t('app.status.checking_update'), true);
       api().check_update(false);

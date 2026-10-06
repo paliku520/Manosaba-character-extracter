@@ -1,0 +1,117 @@
+/* ============================================================
+   tour.css — 首次使用引导浮层（webui/js/tour.js）
+   全屏遮罩用「高亮框 + 超大 box-shadow」实现挖空效果，
+   配色沿用 theme.css 的主题变量（深/浅色与角色主题色自动适配）。
+   ============================================================ */
+
+#tour-root {
+  position: fixed; inset: 0; z-index: 2147483500;   /* 高于弹窗(100)/拖拽遮罩(9999)/缩放手柄/启动页 */
+  pointer-events: auto;                             /* 拦截底层点击，避免误触 */
+  opacity: 0; transition: opacity .22s ease;
+}
+#tour-root.show { opacity: 1; }
+/* 居中卡片步骤（无高亮目标）时整屏压暗 */
+#tour-root.is-centered { background: rgba(0, 0, 0, .62); }
+/* 模态框弹出（如名片素材查找窗口）时引导让位：淡出并彻底不拦截点击，关闭后自动恢复 */
+#tour-root.tour-suspended { opacity: 0; }
+#tour-root.tour-suspended,
+#tour-root.tour-suspended * { pointer-events: none !important; }
+
+/* ── 可操作步骤（interactive）：高亮区之内可直接操作 ──
+   根层不再拦截点击，「洞」四周由四块透明层挡住，既保证可直接操作目标，又不会误触其它界面 */
+#tour-root.is-interactive { pointer-events: none; }
+.tour-blockers { position: fixed; inset: 0; pointer-events: none; }
+.tour-blockers[hidden] { display: none; }
+.tour-block { position: fixed; pointer-events: auto; }
+
+/* ── 高亮框：外发光与压暗靠 box-shadow 挖空 ── */
+.tour-spot {
+  position: fixed;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 30%, transparent),
+    0 0 0 9999px rgba(0, 0, 0, .62);
+  pointer-events: none;
+  transition: left .24s cubic-bezier(.4, 0, .2, 1), top .24s cubic-bezier(.4, 0, .2, 1),
+              width .24s cubic-bezier(.4, 0, .2, 1), height .24s cubic-bezier(.4, 0, .2, 1);
+}
+.tour-spot[hidden] { display: none; }
+
+/* ── 说明气泡 ── */
+.tour-tip {
+  position: fixed;
+  width: 340px; max-width: calc(100vw - 24px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 16px 18px 14px;
+  animation: popIn .18s ease;
+  pointer-events: auto;   /* 根层在可操作步骤为 none，气泡本身仍需可点 */
+}
+.tour-tip-close {
+  position: absolute; top: 8px; right: 8px;
+  background: none; border: none; color: var(--text-faint);
+  font-size: 16px; line-height: 1; padding: 3px 6px; border-radius: 6px; cursor: pointer;
+}
+.tour-tip-close:hover { background: var(--bg-hover); color: var(--text); }
+
+.tour-tip-head { margin-bottom: 6px; }
+.tour-tip-step {
+  font-size: 11px; letter-spacing: .04em; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.tour-tip-title {
+  margin: 0 0 8px; padding-right: 18px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+}
+.tour-tip-body {
+  margin: 0 0 14px;
+  font-size: 13px; line-height: 1.65; color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+/* 「可直接操作」提示（仅可操作步骤显示） */
+.tour-tip-try {
+  display: flex; align-items: center; gap: 6px;
+  margin: -6px 0 12px;
+  font-size: 12px; line-height: 1.5; color: var(--accent);
+}
+.tour-tip-try[hidden] { display: none; }
+.tour-tip-try::before {
+  content: '';
+  flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.tour-tip-body + .tour-tip-try { margin-top: -8px; }
+.tour-tip-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap;
+}
+.tour-tip-hint { font-size: 11px; color: var(--text-faint); }
+.tour-tip-actions { display: flex; gap: 6px; }
+.tour-tip-actions button[hidden] { display: none; }
+.tour-tip-actions button:disabled { opacity: .45; cursor: default; }
+
+/* ═══════════ 教程菜单（首页「查看使用教程」/ 设置「重新观看教程」） ═══════════ */
+.tour-menu { display: flex; flex-direction: column; gap: 8px; }
+.tour-menu-lead { margin: 0 0 2px; font-size: 12px; color: var(--text-faint); line-height: 1.6; }
+.tour-menu-item {
+  position: relative; display: flex; flex-direction: column; gap: 4px;
+  width: 100%; text-align: left; cursor: pointer;
+  padding: 11px 34px 11px 13px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--text); font: inherit;
+  transition: border-color .15s, background .15s;
+}
+.tour-menu-item:hover, .tour-menu-item:focus-visible {
+  border-color: var(--accent); background: var(--accent-soft);
+}
+.tour-menu-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.tour-menu-desc { font-size: 12px; line-height: 1.55; color: var(--text-dim); }
+.tour-menu-play {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 10px; color: var(--text-faint);
+}
+.tour-menu-item:hover .tour-menu-play, .tour-menu-item:focus-visible .tour-menu-play { color: var(--accent); }

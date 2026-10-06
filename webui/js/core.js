@@ -119,6 +119,7 @@
   const updateTitleBar = (...a) => MCE.updateTitleBar(...a);
   const setMaxState = (...a) => MCE.setMaxState(...a);
   const setTipText = (...a) => MCE.setTipText(...a);
+  const maybeAutoStartTour = (...a) => MCE.maybeAutoStartTour(...a);
   const applyTheme = (...a) => MCE.applyTheme(...a);
   const applyAnimations = (...a) => MCE.applyAnimations(...a);
   const renderCharList = (...a) => MCE.renderCharList(...a);
@@ -442,20 +443,25 @@
       const isPrerelease = /(pre|rc|beta|alpha)/i.test(info.version || '');
       vb.classList.toggle('prerelease', isPrerelease);
       document.title = 'Manosaba Character Extracter v' + info.version;
-      // 测试版：每次启动时提示
-      if (isPrerelease) {
-        const footer = document.createElement('div');
-        const ok = btn(t('dialog.ok'), 'btn sm primary', null);
-        footer.appendChild(ok);
-        const { close } = showModal({
-          title: t('dialog.prerelease_title'),
-          body: '<div class="desc">' + escapeHtml(t('dialog.prerelease_msg', { version: info.version })) + '</div>',
-          footer,
-        });
-        ok.addEventListener('click', close);
-      }
-      // 剧透提示（首次启动，或未勾选"不再提示"时）
-      showSpoilerNotice();
+      // 启动提示：测试版提示 + 剧透警告。
+      // 首次启动（tutorial_done=false）时让位给使用引导——引导结束（或跳过）后再弹出，
+      // 否则「先弹剧透框、关掉才轮到教程」会让教程显得姗姗来迟（见文件末尾 maybeAutoStartTour 调用）。
+      const showStartupNotices = () => {
+        if (isPrerelease) {
+          const footer = document.createElement('div');
+          const ok = btn(t('dialog.ok'), 'btn sm primary', null);
+          footer.appendChild(ok);
+          const { close } = showModal({
+            title: t('dialog.prerelease_title'),
+            body: '<div class="desc">' + escapeHtml(t('dialog.prerelease_msg', { version: info.version })) + '</div>',
+            footer,
+          });
+          ok.addEventListener('click', close);
+        }
+        showSpoilerNotice();   // 剧透提示（首次启动，或未勾选"不再提示"时）
+      };
+      const tourPending = !info.tutorial_done;   // 是否将自动播放首次使用引导
+      if (!tourPending) showStartupNotices();
       // 主题：settings.json（后端 get_app_info）为唯一权威，不接受 localStorage 等其他来源
       let theme = 'dark';
       if (info.theme === 'dark' || info.theme === 'light') theme = info.theme;
@@ -478,6 +484,8 @@
       refreshExportCount();
       window.pywebview.api.check_update(true); // 静默检查更新
       hideSplash();
+      // 首次启动：使用引导优先弹出，结束后再补启动提示；否则按原顺序即时提示
+      maybeAutoStartTour(tourPending ? showStartupNotices : null);
     } catch (e) {
       toast(t('app.init_failed', { msg: e }), 'error');
       hideSplash();

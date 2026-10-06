@@ -27,6 +27,15 @@
       '</div>' +
       '<h2>' + t('info.welcome_title', { version: ver }) + '</h2>' +
       '<p class="lead">' + t('info.welcome_lead') + '</p>' +
+      // 使用教程入口：随时重看首次使用引导（见 tour.js）
+      '<div class="info-hero-actions">' +
+      '  <button type="button" id="btn-info-tour" class="btn primary">' +
+      '    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '      <circle cx="12" cy="12" r="9"/><path d="M9.5 9.3a2.6 2.6 0 1 1 3.6 2.4c-.7.3-1.1.9-1.1 1.6v.3"/><path d="M12 17h.01"/>' +
+      '    </svg>' +
+      '    <span data-i18n="tour.open">' + t('tour.open') + '</span>' +
+      '  </button>' +
+      '</div>' +
       '<div class="guide-card">' +
       '  <h3>' + t('info.guide_title') + '</h3>' +
       '  <ol>' +
@@ -48,6 +57,8 @@
       // 名片合成卡片（由 nameplate.js 挂载：独立模块便于维护，语言切换时随本页重建）
       '<div id="np-mount"></div>' +
       '</div>';
+    const tourBtn = el.querySelector('#btn-info-tour');
+    if (tourBtn) tourBtn.addEventListener('click', () => { if (MCE.openTourPicker) MCE.openTourPicker(); });
     if (MCE.renderNameplateCard) MCE.renderNameplateCard();
   }
 

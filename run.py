@@ -94,6 +94,7 @@ from src.settings import (
     get_show_original_name,
     get_show_release_notes,
     get_theme,
+    get_tutorial_done,
     save_settings,
 )
 from src.updater import UpdateError, check_for_update
@@ -366,6 +367,7 @@ class JsApi:
         self._disable_animations = get_disable_animations()  # 是否禁用界面动画（低配 GPU 提速）
         self._auto_find_characters = get_auto_find_characters()  # 是否自动查找 characters 目录（False 时需手动指定 characters 目录）
         self._show_release_notes = get_show_release_notes()  # 更新弹窗是否展示 Release 更新内容（默认开启）
+        self._tutorial_done = get_tutorial_done()  # 是否已完成首次使用引导（False 时前端首次启动自动弹出）
         self._load_generation = 0               # 目录查找代号：新查找开始时递增，用于打断上一次未完成的查找
         self._loading_path: Optional[str] = None  # 当前进行中的加载目录（用于取消日志显示）
         self._load_cancel = threading.Event()   # 「取消加载」标志：用户中止正在进行的目录扫描（每次加载开始时复位）
@@ -441,6 +443,7 @@ class JsApi:
             "disable_animations": self._disable_animations,
             "auto_find_characters": self._auto_find_characters,
             "show_release_notes": self._show_release_notes,
+            "tutorial_done": self._tutorial_done,
             "debug": self._debug_monitor,
         }
 
@@ -529,6 +532,12 @@ class JsApi:
         save_settings(show_release_notes=self._show_release_notes)
         log("info", _("log.release_notes_on") if self._show_release_notes else _("log.release_notes_off"))
         return {"show_release_notes": self._show_release_notes}
+
+    def set_tutorial_done(self, done: bool) -> dict:
+        """保存首次使用引导是否已完成到 settings.json（完成后不再自动弹出）"""
+        self._tutorial_done = bool(done)
+        save_settings(tutorial_done=self._tutorial_done)
+        return {"tutorial_done": self._tutorial_done}
 
     def _preview_max_side(self) -> int:
         """预览 data URL 的最大边长（随预览画质缩放；100% → 1600px）"""

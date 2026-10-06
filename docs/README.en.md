@@ -47,6 +47,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 **UI & Experience**
 
 - **Drag & Drop Import** — drop a game directory or bundle file onto the window to load it; remembers the last used game directory
+- **Tutorials (3 topics)** — the first launch plays the "Composite sprites (main flow)" tutorial using fixed example characters for both paths: with components (`ema`) goes Composite character + check parts + Generate/Save composite, without components (`creatureema`) goes Preview sprites + tick + Export selected/all; two more tutorials cover "Nameplate" and "Assets". **Every highlighted step is interactive**, options inside dialogs (such as the two choices in the "Processing" dialog) get highlighted too, and the tour steps aside when an unrelated dialog opens. Replay any tutorial from the tutorial list on the home page ("View tutorials") or Settings → Data → Replay tutorial
 - **Multi-language / Theme** — Simplified Chinese / English / 日本語 / Magical Girl Language; dark/light theme + 17 character accent colors, persisted
 - **Low-end GPU Optimization** — can disable hardware acceleration (software rendering) and UI animations for smoother low-end devices
 - **Taskbar Effects** — shows progress during loading and flashes the taskbar when done
@@ -136,7 +137,7 @@ Previews have a 1280-pixel longest edge; exports preserve native dimensions inde
 
 ### Settings
 
-Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Auto-find characters directory** (when off, you must manually pick the folder that directly contains the character bundles), **Spoiler Notice**, **Preview Quality** (100 / 75 / 50 / 25 levels, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
+Configure: **Output Directory** (remembered automatically), **Language**, **Theme & Accent**, **Show Original File Names**, **Auto-find characters directory** (when off, you must manually pick the folder that directly contains the character bundles), **Spoiler Notice**, **Preview Quality** (100 / 75 / 50 / 25 levels, lower preview composite resolution to reduce load), **Export Original Quality** (when off, export matches preview), **Disable Hardware Acceleration** (software rendering, restart to apply), **Disable UI Animations** (low-end boost, applies immediately), **Show Release Notes** (on by default; shows the release notes for the new version in the update dialog, can be turned off inside that dialog), **Debug Mode**, **Check for Updates**, **Replay tutorial** (play the first-run tour again), **Cleanup** (`temp/` cache, `output/` directory, or `logs/` logs).
 
 > Settings are stored in `data/settings.json` under the program directory (hidden attribute).
 

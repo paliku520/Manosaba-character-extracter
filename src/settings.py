@@ -148,6 +148,7 @@ def _default_settings() -> Dict[str, Any]:
             "disable_animations": False,        # 禁用界面动画（淡入/过渡，低配 GPU 提速）
             "auto_find_characters": True,       # 加载时自动定位 characters 目录（False 时需手动指定）
             "show_release_notes": True,         # 更新弹窗中展示该版本的 Release 更新内容（默认开启）
+            "tutorial_done": False,             # 是否已完成首次使用引导（完成后不再自动弹出）
         },
         "game": {m: dict(_DEFAULT_GAME_SECTION) for m in GAME_MODES},
     }
@@ -308,13 +309,14 @@ def save_settings(
     disable_animations: Optional[bool] = None,
     auto_find_characters: Optional[bool] = None,
     show_release_notes: Optional[bool] = None,
+    tutorial_done: Optional[bool] = None,
     mode: Optional[str] = None,
 ) -> None:
     """保存设置到新版嵌套配置（只更新传入的字段，保留其余已有字段）
 
     - global：theme / lang / export_count / show_original_name / no_spoiler_notice / mode /
       preview_quality / disable_hardware_accel / export_original_quality / disable_animations /
-      auto_find_characters / show_release_notes
+      auto_find_characters / show_release_notes / tutorial_done
     - game.<当前 mode>（manosaba）：accent / last_directory / output_dir
     """
     data = load_settings()
@@ -343,6 +345,8 @@ def save_settings(
         g["auto_find_characters"] = bool(auto_find_characters)
     if show_release_notes is not None:
         g["show_release_notes"] = bool(show_release_notes)
+    if tutorial_done is not None:
+        g["tutorial_done"] = bool(tutorial_done)
 
     section = _game_section(data, _mode_from(data))
     if output_dir is not None:
@@ -431,6 +435,19 @@ def get_show_release_notes(default: bool = True) -> bool:
     """
     settings = load_settings()
     raw = _global_section(settings).get("show_release_notes")
+    if isinstance(raw, bool):
+        return raw
+    return default
+
+
+def get_tutorial_done(default: bool = False) -> bool:
+    """返回是否已完成首次使用引导（global.tutorial_done）。
+
+    首次启动（未设置）返回 default（False），前端据此自动弹出引导；
+    用户完成或跳过引导后写入 True，之后不再自动弹出（可在设置中手动重看）。
+    """
+    settings = load_settings()
+    raw = _global_section(settings).get("tutorial_done")
     if isinstance(raw, bool):
         return raw
     return default

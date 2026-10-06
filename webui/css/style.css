@@ -11,6 +11,12 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* 键盘导航焦点环：统一为主题色描边（inset，避免被容器 overflow 裁切）。
+   Chromium 默认 focus ring（outline: auto → -webkit-focus-ring-color）跟随系统强调色，
+   在部分机器上渲染为醒目的黄色/橙色方框，观感像浏览器调试框，故整体替换为与主题一致的描边。
+   放在文件靠前位置：后续各元素自带的 focus 样式（.search / .background-row / .clip-hint 等）按顺序正常覆盖。 */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
 html, body { height: 100%; }
 
 body {
@@ -303,6 +309,8 @@ img { -webkit-user-drag: none; }
 }
 .info-hero h2 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
 .info-hero .lead { color: var(--text-dim); font-size: 13px; line-height: 1.8; margin-bottom: 18px; }
+/* 首页「查看使用教程」入口（见 info.js / tour.js） */
+.info-hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .guide-card {
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 14px 18px; margin-bottom: 12px;
