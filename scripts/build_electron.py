@@ -91,9 +91,17 @@ def sync_electron_version(version: str) -> None:
         try:
             data = json.loads(p.read_text(encoding="utf-8"))
             old = data.get("version")
-            if old == version:
+            changed = old != version
+            if changed:
+                data["version"] = version
+            # package-lock.json（lockfileVersion 3）除顶层 version 外，还在 packages[""] 记录
+            # 根包版本，需一并同步；否则构建后 npm install 会再改一次 lock，造成版本脱节。
+            root_pkg = data.get("packages", {}).get("")
+            if isinstance(root_pkg, dict) and root_pkg.get("version") != version:
+                root_pkg["version"] = version
+                changed = True
+            if not changed:
                 continue
-            data["version"] = version
             p.write_text(
                 json.dumps(data, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",

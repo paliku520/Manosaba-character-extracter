@@ -100,6 +100,8 @@ cd electron && npm install             # Electron 依赖
 ```
 
 > 也可手动启动：`cd electron && npm start`
+>
+> `electron/.npmrc` 已把 Electron 二进制下载镜像指向 `npmmirror`（与 `electron-builder.yml` 的 `electronDownload.mirror` 一致），安装时无需访问 github.com，可避免国内网络下的下载 404 / TLS 证书校验失败。npm 11 会提示 `Unknown project config "electron_mirror"`，属正常无害提醒；如需换源，设置环境变量 `npm_config_electron_mirror` 即可覆盖。
 
 ### 清理开发缓存（`start.bat clean`）
 

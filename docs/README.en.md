@@ -100,6 +100,8 @@ cd electron && npm install             # Electron dependencies
 ```
 
 > Alternatively launch manually: `cd electron && npm start`
+>
+> `electron/.npmrc` points the Electron binary download at the `npmmirror` mirror (matching `electronDownload.mirror` in `electron-builder.yml`), so installation never needs to reach github.com and avoids download 404s / TLS certificate failures on restricted networks. npm 11 prints `Unknown project config "electron_mirror"` — a harmless notice; to use another mirror, set the `npm_config_electron_mirror` environment variable.
 
 ### Cleaning dev caches (`start.bat clean`)
 
