@@ -95,9 +95,10 @@
     });
   }
 
+  // 加载游戏目录（角色 bundle）：与当前所在页签无关——侧边栏「加载游戏目录」始终加载角色目录，
+  // 素材加载只走「素材提取」页自己的按钮 / 该页的目录拖入（见 handleDrop）。
   function loadDir(path) {
     if (App.backgroundBusy) { toast(t('background.busy'), 'warning'); return; }
-    if (App._activeTab === 'backgrounds') { MCE.loadBackgroundDirectory(path); return; }
     console.log(t('log.js_load_dir', { path }));
     setStatus(t('app.progress.loading_bundles'), true);
     api().load_directory(path);
@@ -169,6 +170,9 @@
     if (isDir) {
       const path = resolveFilePath(file);
       if (!path) { toast(t('left.drop_unsupported'), 'warning'); return; }
+      // 在「素材提取」页拖入目录 → 加载素材（该页专属交互，见 docs/backgrounds.md）；
+      // 其余页签拖入目录 → 加载角色目录
+      if (App._activeTab === 'backgrounds') { MCE.loadBackgroundDirectory(path); return; }
       loadDir(path);
       return;
     }
