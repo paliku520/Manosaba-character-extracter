@@ -839,7 +839,7 @@
   }
 
   // ── 预设导入 / 导出（模态窗口）─────────────────────────
-  // 代码格式: <游戏标识>,<角色标识>,<排序值>…   例: manosaba,hiro,1,52,97,130
+  // 代码格式: <游戏标识>,<角色标识>,<排序值>…[,sketch=<URI 编码的 JSON>]
   // 文件格式: 本工具导出的预设 .json（character_name / name / parts[{name, sorting_order}] / sketch）
 
   function presetGame() {
@@ -851,16 +851,33 @@
     const orders = (preset.parts || [])
       .map((p) => Number(p.sorting_order) || 0)
       .sort((a, b) => a - b);
-    return [presetGame(), App.characterData.name].concat(orders).join(',');
+    const segs = [presetGame(), App.characterData.name].concat(orders);
+    const sk = preset.sketch || {};
+    const sketch = { text: sk.text || '', size: sk.size || 56, align: sk.align || 'center' };
+    if (sketch.text || sketch.size !== 56 || sketch.align !== 'center') {
+      // 编码后逗号、空白和换行不会与旧格式的分隔符混淆。
+      segs.push('sketch=' + encodeURIComponent(JSON.stringify(sketch)));
+    }
+    return segs.join(',');
   }
 
-  // 代码文本 → {game, character, orders}；逗号/空白分隔均可，格式不对返回 null
+  // 代码文本 → {game, character, orders, sketch}；兼容没有素描参数的旧代码
   function parsePresetCode(text) {
     const segs = String(text || '').replace(/^\uFEFF/, '').trim().split(/[\s,]+/).filter(Boolean);
+    let sketch = null;
+    if (segs.length && segs[segs.length - 1].startsWith('sketch=')) {
+      try {
+        sketch = JSON.parse(decodeURIComponent(segs.pop().slice(7)));
+      } catch (e) { return null; }
+      if (!sketch || typeof sketch !== 'object' || Array.isArray(sketch)
+          || typeof sketch.text !== 'string' || !Number.isInteger(sketch.size)
+          || sketch.size < 12 || sketch.size > 200
+          || ['left', 'center', 'right'].indexOf(sketch.align) < 0) return null;
+    }
     if (segs.length < 2) return null;
     const orders = segs.slice(2).map((s) => Number(s));
     if (orders.some((n) => !Number.isFinite(n))) return null;
-    return { game: segs[0], character: segs[1], orders: orders.map((n) => Math.trunc(n)) };
+    return { game: segs[0], character: segs[1], orders: orders.map((n) => Math.trunc(n)), sketch };
   }
 
   // 预设 → JSON 文本（与 data/presets 里的文件同构；带 game 标识便于导入时校验）
@@ -1126,6 +1143,7 @@
       let parts = null;
       let game = '';
       let character = '';
+      let sketch = null;
       if (state.mode === 'code') {
         const parsed = parsePresetCode(codeArea.value);
         if (!parsed || !parsed.orders.length) {
@@ -1135,12 +1153,14 @@
         game = parsed.game;
         character = parsed.character;
         orders = parsed.orders;
+        sketch = parsed.sketch;
       } else {
         if (!state.fileParsed) { toast(t('parts.preset_import_need_file'), 'warning'); return; }
         // 旧文件可能没有 game 字段：视为当前作品（角色标识仍严格校验）
         game = state.fileParsed.game || presetGame();
         character = state.fileParsed.character;
         parts = state.fileParsed.parts;
+        sketch = state.fileParsed.sketch;
       }
 
       // ── 标识名匹配：游戏 / 角色必须与当前会话一致；不合法立即拦下 ──
@@ -1174,7 +1194,6 @@
         return;
       }
       // 仅成功时关闭导入模态：取消覆盖确认 / 各种报错都保留输入，方便改完重试
-      const sketch = state.mode === 'file' ? state.fileParsed.sketch : null;
       if (await runPresetImport({ pname, orders, parts, game, character, sketch }) === 'ok') close();
     }
   }
