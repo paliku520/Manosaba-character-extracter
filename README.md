@@ -7,6 +7,7 @@
 
 ## 相关项目
 >- **[Manosaba-Library](https://github.com/QwQSakuya/Manosaba-Library)** —— 同为《魔法少女的魔女审判》社区的项目，是一个玩家自发的非官方资料站，收录剧情节点图谱、证物图鉴、CG画廊、语音音乐与全素材库索引，并支持在线立绘预览。
+>- **[paliku520/Manosaba-nameplate-maker](https://github.com/paliku520/Manosaba-nameplate-maker)** —— 从本项目「名片合成」功能剥离出的**纯静态名片合成器**，**开箱即用**：纯静态页面（HTML + CSS + 原生 JavaScript），无需安装、无需后端与构建步骤，也没有外部 CDN 依赖，用浏览器打开即可在 Canvas 中完成合成。
 
 ## 功能
 

@@ -7,6 +7,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 
 ## Related Projects
 >- **[Manosaba-Library](https://github.com/QwQSakuya/Manosaba-Library)** — Another project from the "Magical Girl's Witch Trial" community, it's a fan-made unofficial resource site that collects story node maps, evidence compendiums, CG galleries, voice and music files, and a full material library index, with support for online character illustration previews.
+>- **[paliku520/Manosaba-nameplate-maker](https://github.com/paliku520/Manosaba-nameplate-maker)** — A **pure static nameplate compositor** extracted from this project's "Nameplate Compositing" feature, and it **works out of the box**: a pure static page (HTML + CSS + vanilla JavaScript) with no installation, backend, build step or external CDN dependency — just open it in a browser and compose right in Canvas.
 
 ## Features
 
