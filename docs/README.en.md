@@ -3,6 +3,8 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md)
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
+**Please read before use: [Full Disclaimer](../DISCLAIMER.md)**
+
 Extract character sprites from Unity bundle files of the game **"Magical Girl Witch Trials" (Manosaba)**: auto-detect component data, export sprites directly, composite full illustrations, render character nameplates in the game's original layout, and browse/export backgrounds & various small assets by category. The UI is an **Electron frameless window**, with core logic handled by a **Python backend** (child process + stdio JSON-RPC).
 
 ## Related Projects

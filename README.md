@@ -3,6 +3,8 @@
 [![English](https://img.shields.io/badge/English-README-blue)](/docs/README.en.md) 
 [![中文(简体)](https://img.shields.io/badge/中文(简体)-README-red)](/README.md)
 
+**使用前请务必阅读：[完整免责声明](DISCLAIMER.md)**
+
 从游戏「魔法少女的魔女审判」(manosaba) 的 Unity bundle 中提取角色精灵：自动检测组件数据、直接导出精灵或拼接完整立绘，还可按游戏原版排版合成角色名片，并支持分类浏览导出背景与各类小素材。界面为 **Electron 无边框窗口**，核心逻辑由 **Python 后端**（子进程 + stdio JSON-RPC）承担。
 
 ## 相关项目
