@@ -14,7 +14,7 @@
 
 使用者应自行确保其使用行为符合官方二次创作指南及相关法律法规。因使用本工具产生的一切后果，由使用者自行承担。
 
-本项目与游戏版权方、发行方无任何隶属或背书关系。若版权方认为本项目存在侵权或违反其使用指南之处，请通过 GitHub Issues 或 3088353487@qq.com 联系，我们将在核实后及时调整或下架相关内容。
+本项目与游戏版权方、发行方无任何隶属或背书关系。若版权方认为本项目存在侵权或违反其使用指南之处，请通过 GitHub Issues 联系维护者，核实后及时调整或下架相关内容。
 
 本工具不提供游戏本体，使用者需自行通过合法渠道获取游戏。
 
@@ -28,6 +28,20 @@ According to the official derivative-work guidelines of *Magical Girl's Witch Tr
 
 Users are responsible for ensuring that their use complies with the official derivative-work guidelines and applicable laws. Any consequences arising from the use of this tool are borne solely by the user.
 
-This project has no affiliation with, or endorsement from, the game's copyright holders or publisher. If a rights holder believes this project infringes their rights or violates their guidelines, please contact us via GitHub Issues or 3088353487@qq.com, and we will adjust or take down the relevant content after verification.
+This project has no affiliation with, or endorsement from, the game's copyright holders or publisher. If a rights holder believes this project infringes their rights or violates their guidelines, please contact the maintainer via GitHub Issues; the maintainer will adjust or take down the relevant content after verification.
 
 This tool does not provide the game itself; users must obtain the game through legitimate channels.
+
+---
+
+## 日本語
+
+本ツールは**技術研究およびフォーマット学習**を目的として開発され、Unity AssetBundle 内のスプライトとテクスチャの構造を理解するためのものです。本ツールは『魔法少女ノ魔女裁判』のゲーム原本素材を保管・提供・インデックス化するものではありません。
+
+『魔法少女ノ魔女裁判』公式の二次創作ガイドラインにより、**データ解析などの方法でゲーム内の原本データ（画像・音声・テキスト等）を抽出し、再利用・再配布することは禁止されています**。本ツールで抽出した内容は、二次創作・公開・再配布・商業利用のいずれにも使用できません。
+
+利用者は、自身の利用行為が公式の二次創作ガイドラインおよび関連法規に適合することを自ら確認する必要があります。本ツールの使用によって生じた一切の結果については、利用者が自ら責任を負うものとします。
+
+本プロジェクトは、ゲームの著作権者・発行元と一切の提携・推奨関係がありません。権利者様が本プロジェクトについて権利侵害またはガイドライン違反と判断された場合は、GitHub Issues にてメンテナーまでご連絡ください。確認のうえ、速やかに関連内容の修正または公開停止を行います。
+
+本ツールはゲーム本体を提供しません。ゲームは利用者ご自身で適法な手段により入手してください。

@@ -368,6 +368,8 @@
   }
 
   // 启动剧透提示（勾选"不再提示"并点"继续"后不再弹出，持久化到 settings.json）
+  // 弹窗内附完整免责声明；须阅读 SPOILER_HOLD_SEC 秒后才允许关闭（含 ✕ / Esc / 按钮）
+  const SPOILER_HOLD_SEC = 5;
   function showSpoilerNotice() {
     if (App.info && App.info.no_spoiler) return;
     const body = document.createElement('div');
@@ -375,6 +377,22 @@
     msg.className = 'desc';
     msg.textContent = t('dialog.spoiler_msg');
     body.appendChild(msg);
+
+    const noteTitle = document.createElement('div');
+    noteTitle.className = 'spoiler-note-title';
+    noteTitle.textContent = t('about.disclaimer_title');
+    body.appendChild(noteTitle);
+
+    const note = document.createElement('div');
+    note.className = 'spoiler-note';
+    ['about.disclaimer_p1', 'about.disclaimer_p2', 'about.disclaimer_p3',
+      'about.disclaimer_p4', 'about.disclaimer_p5'].forEach((key) => {
+      const p = document.createElement('p');
+      p.textContent = t(key);
+      note.appendChild(p);
+    });
+    body.appendChild(note);
+
     const label = document.createElement('label');
     label.className = 'form-row';
     label.style.flexDirection = 'row';
@@ -386,12 +404,45 @@
     label.appendChild(cb);
     label.appendChild(cbText);
     body.appendChild(label);
+
     const footer = document.createElement('div');
+    const hint = document.createElement('span');
+    hint.className = 'spoiler-wait';
     const quit = btn(t('dialog.spoiler_quit'), 'btn sm', null);
     const cont = btn(t('dialog.spoiler_continue'), 'btn sm primary', null);
+    quit.disabled = true;
+    cont.disabled = true;
+    footer.appendChild(hint);
     footer.appendChild(quit);
     footer.appendChild(cont);
-    const { close } = showModal({ title: t('dialog.spoiler_title'), body, footer });
+
+    let remaining = SPOILER_HOLD_SEC;
+    let timer = null;
+    let headClose = null;
+    const unlock = () => {
+      quit.disabled = false;
+      cont.disabled = false;
+      hint.hidden = true;
+      if (headClose) headClose.disabled = false;
+    };
+    const tick = () => {
+      remaining = Math.max(0, remaining - 1);
+      if (remaining === 0) { clearInterval(timer); unlock(); return; }
+      hint.textContent = t('dialog.spoiler_wait', { sec: remaining });
+    };
+    hint.textContent = t('dialog.spoiler_wait', { sec: remaining });
+
+    const { close, backdrop } = showModal({
+      title: t('dialog.spoiler_title'),
+      body,
+      footer,
+      canClose: () => remaining === 0,   // 倒计时结束前忽略 ✕ / Esc
+      onClose: () => { if (timer) clearInterval(timer); },
+    });
+    headClose = backdrop.querySelector('.modal-close');
+    if (headClose) headClose.disabled = true;
+    timer = setInterval(tick, 1000);
+
     quit.addEventListener('click', () => { api().quit_app(); });
     cont.addEventListener('click', () => {
       if (cb.checked) api().set_no_spoiler(true);

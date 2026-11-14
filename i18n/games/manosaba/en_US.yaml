@@ -9,7 +9,7 @@ about:
   disclaimer_p1: "This tool is developed for technical research and format-learning purposes, to study the structure of sprites and textures inside Unity AssetBundles. It does not host, provide, or index any original game assets from \"Magical Girl Witch Trials\" (Manosaba)."
   disclaimer_p2: "Per the official derivative-work guidelines of \"Magical Girl Witch Trials\", extracting original in-game data (images, audio, text, etc.) by means such as data parsing, and then reusing or redistributing it, is prohibited. None of the content produced with this tool may be used for derivative works, public release, redistribution, or any commercial purpose."
   disclaimer_p3: "Users are responsible for ensuring that their use complies with the official derivative-work guidelines and applicable laws. Any consequences arising from the use of this tool are borne solely by the user."
-  disclaimer_p4: "This project has no affiliation with, or endorsement from, the game's copyright holders or publisher. If a rights holder believes this project infringes their rights or violates their guidelines, please contact us via GitHub Issues or 3088353487@qq.com, and we will adjust or take down the relevant content after verification."
+  disclaimer_p4: "This project has no affiliation with, or endorsement from, the game's copyright holders or publisher. If a rights holder believes this project infringes their rights or violates their guidelines, please contact the maintainer via GitHub Issues; the maintainer will adjust or take down the relevant content after verification."
   disclaimer_p5: "This tool does not provide the game itself; users must obtain the game through legitimate channels."
   thanks_text: "Thanks to all players for your support and feedback"
 

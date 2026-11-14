@@ -88,7 +88,7 @@
     el.dataset.timer = timer;
   }
 
-  function showModal({ title, titleKey, body, footer, className, onClose }) {
+  function showModal({ title, titleKey, body, footer, className, onClose, canClose }) {
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop';
     const modal = document.createElement('div');
@@ -133,6 +133,8 @@
     let closed = false;
     const close = () => {
       if (closed) return;
+      // 关闭前校验：返回 false 时忽略本次关闭（如「须停留 N 秒」的强制阅读弹窗）
+      if (canClose && !canClose()) return;
       closed = true;
       backdrop.remove();
       document.removeEventListener('keydown', onKey);

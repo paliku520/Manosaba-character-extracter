@@ -140,6 +140,7 @@ dialog:
   spoiler_continue: "KaRause"
   spoiler_quit: "FineNd"
   spoiler_never: "Nii hAquEi again"
+  spoiler_wait: "Read the Disclaimer ({sec}s to FineNd)"
   analyze_error_msg: "AnxAn JIO '{name}' Baru:\n{msg}"
   ask_mode_composite: "gDie JIO"
   ask_mode_composite_hint: "gDie full JIO by pos & depth"

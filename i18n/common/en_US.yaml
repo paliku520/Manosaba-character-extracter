@@ -137,6 +137,7 @@ dialog:
   spoiler_continue: "Continue"
   spoiler_quit: "Quit"
   spoiler_never: "Don't show again"
+  spoiler_wait: "Please read the disclaimer ({sec}s before closing)"
   analyze_error_msg: "Error analyzing character '{name}':\n{msg}"
   ask_mode_composite: "Composite Character"
   ask_mode_composite_hint: "Assemble full character by position & depth"

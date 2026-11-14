@@ -137,6 +137,7 @@ dialog:
   spoiler_continue: "继续"
   spoiler_quit: "退出"
   spoiler_never: "不再提示"
+  spoiler_wait: "请阅读免责声明（{sec} 秒后可关闭）"
   analyze_error_msg: "分析角色【{name}】时出错:\n{msg}"
   ask_mode_composite: "拼接角色图像"
   ask_mode_composite_hint: "按组件的位置和深度信息合成完整立绘"

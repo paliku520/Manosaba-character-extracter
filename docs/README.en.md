@@ -51,6 +51,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Multi-language / Theme** — Simplified Chinese / English / 日本語 / Magical Girl Language; dark/light theme + 17 character accent colors, persisted
 - **Low-end GPU Optimization** — can disable hardware acceleration (software rendering) and UI animations for smoother low-end devices
 - **Taskbar Effects** — shows progress during loading and flashes the taskbar when done
+- **Startup Spoiler & Disclaimer Notice** — each launch (unless "Don't show again" was checked in the dialog) first shows the spoiler warning plus the full disclaimer, and can only be closed after 5 seconds
 - **Log Files / Console** — Console logs also written to `logs/`, one-click cleanup; plus a standalone log console window (level filtering, multi-line merging, save to file)
 
 **Data & Maintenance**
@@ -58,7 +59,7 @@ Extract character sprites from Unity bundle files of the game **"Magical Girl Wi
 - **Cache Reuse** — Extracted data cached in `temp/`, re-loading doesn't require re-unpacking
 - **Memory Reclaim** — Releases resources immediately with GC triggers; forced GC before exit
 - **Debug Mode** — Monitor memory/CPU/window resolution (current run only)
-- **Total Exports / About / Auto Update Check / Disclaimer** (third-party unofficial tool)
+- **Total Exports / About / Auto Update Check / Disclaimer** (third-party unofficial tool; shown in the startup dialog and on the About page — see [DISCLAIMER.md](../DISCLAIMER.md))
 
 ## Requirements
 

@@ -136,6 +136,7 @@ dialog:
   spoiler_continue: "続ける"
   spoiler_quit: "終了"
   spoiler_never: "今後表示しない"
+  spoiler_wait: "免責事項をお読みください（{sec} 秒後に閉じられます）"
   analyze_error_msg: "キャラクター【{name}】の分析中にエラーが発生しました:\n{msg}"
   ask_mode_composite: "キャラクター画像を合成"
   ask_mode_composite_hint: "パーツの位置と深度情報に基づいて完全な立ち絵を合成します"
