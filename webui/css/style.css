@@ -309,8 +309,6 @@ img { -webkit-user-drag: none; }
 }
 .info-hero h2 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
 .info-hero .lead { color: var(--text-dim); font-size: 13px; line-height: 1.8; margin-bottom: 18px; }
-/* 首页「查看使用教程」入口（见 info.js / tour.js） */
-.info-hero-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .guide-card {
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 14px 18px; margin-bottom: 12px;
