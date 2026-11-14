@@ -1488,9 +1488,9 @@ select.input {
   font-size: 10px; color: var(--text-faint); text-align: center;
   line-height: 1.5; padding: 0 2px; margin-top: 2px;
 }
-.about-disclaimer {
-  max-width: 720px; margin: 10px auto 0; color: var(--text-faint);
-  font-size: 12px; text-align: center; line-height: 1.7;
+.about-disclaimer-body {
+  display: flex; flex-direction: column; gap: 8px;
+  font-size: 12.5px; color: var(--text-dim); line-height: 1.75;
 }
 
 /* 彩蛋：致谢入口（可点击） */

@@ -78,7 +78,7 @@ about:
   sys_os: "OS: {os}（{arch}）"
 
 app:
-  disclaimer: "本ツールはサードパーティ製の非公式ツールであり、ゲーム公式とは無関係です。"
+  disclaimer: "本ツールはサードパーティ製の非公式ツールであり、ゲームの著作権者・発行元との提携・推奨関係はありません。"
   click_to_copy: "クリックでコピー"
   copied: "コピーしました: {text}"
   init_failed: "初期化に失敗しました: {msg}"

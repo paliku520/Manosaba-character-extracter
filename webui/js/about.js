@@ -27,6 +27,7 @@
     repo: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="1"/><circle cx="16" cy="12" r="1"/><circle cx="8" cy="18" r="1"/></svg>',
     bug: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>',
     heart: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8Z"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>',
     external: '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/></svg>',
   };
   const _aI = (k) => _aboutIcons[k] || '';
@@ -110,10 +111,19 @@
       '  <h3>' + _aI('heart') + t('about.thanks_title') + '</h3>' +
       '  <p class="about-thanks" id="about-thanks-easter">' + t('about.thanks_text') + '</p>' +
       '</div>' +
+      '<div class="about-section wide">' +
+      '  <h3>' + _aI('shield') + t('about.disclaimer_title') + '</h3>' +
+      '  <div class="about-disclaimer-body">' +
+      '    <p>' + t('about.disclaimer_p1') + '</p>' +
+      '    <p>' + t('about.disclaimer_p2') + '</p>' +
+      '    <p>' + t('about.disclaimer_p3') + '</p>' +
+      '    <p>' + t('about.disclaimer_p4') + '</p>' +
+      '    <p>' + t('about.disclaimer_p5') + '</p>' +
+      '  </div>' +
+      '</div>' +
       '</div>' +
       '<p class="about-copy">' + t('about.copyright') + '</p>' +
-      '<p class="about-note">' + t('about.license_note') + '</p>' +
-      '<p class="about-disclaimer">' + t('app.disclaimer') + '</p>';
+      '<p class="about-note">' + t('about.license_note') + '</p>';
 
     // 彩蛋入口：点击致谢文本触发
     const easterEl = el.querySelector('#about-thanks-easter');

@@ -255,9 +255,9 @@ On that basis, this project received a comprehensive technical upgrade:
 
 This project is licensed under the **GPL-3.0 License**. See the [LICENSE](LICENSE) file for details.
 
-**Disclaimer**: This tool is intended for learning and personal research purposes only. The copyright of the extracted content belongs to the original game developer.
+**Disclaimer**: This tool is intended solely for technical research and format learning. **Extracted content must not be used for derivative works, public release, redistribution, or any commercial purpose.** See [DISCLAIMER.md](../DISCLAIMER.md) for the full terms (including contact details).
 
-> This tool is a **third-party unofficial tool** and is not affiliated with the game official.
+> This tool is a **third-party unofficial tool** with no affiliation with, or endorsement from, the game's rights holders or publisher.
 
 ## Packaging as EXE
 

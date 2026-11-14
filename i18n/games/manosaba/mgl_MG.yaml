@@ -7,6 +7,12 @@ about:
   app_name: "Manosaba - eXi' Toim"
   description: "Toim to eXi' and gDie JIO MEif from Manosaba."
   license_note: "Toim eXi' MEif from \"Mahou Shoujo no Majo Saiban\" (Manosaba)\n© 2024 Re,AER LLC. / Acacia — Alte oF Taven"
+  disclaimer_title: "Disclaimer"
+  disclaimer_p1: "This tool is made for the technical study of the Manosaba asset format. It does not host, provide, or index any original game asset."
+  disclaimer_p2: "The official derivative-work guidelines of Manosaba prohibit extracting original in-game data (images, audio, text, etc.) and reusing or redistributing it. Content made with this tool must not be used for derivative works, public release, redistribution, or any commercial purpose."
+  disclaimer_p3: "You must make sure your use follows the official guidelines and the law. Any consequence of using this tool is on you."
+  disclaimer_p4: "This project has no tie with the game's copyright holders or publisher. If a rights holder believes it breaks their guidelines, contact us via GitHub Issues or 3088353487@qq.com; we will fix or take it down after checking."
+  disclaimer_p5: "This tool does not include the game. Get the game through legitimate channels."
   thanks_text: "gDie to Alte KyOhan for support and feedback"
 
 app:

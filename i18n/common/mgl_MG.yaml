@@ -82,7 +82,7 @@ about:
   sys_os: "OS: {os}（{arch}）"
 
 app:
-  disclaimer: "This tool is third-party, Nii oF game official."
+  disclaimer: "This tool is third-party, Nii oF game rights-holder or publisher."
   click_to_copy: "Alte to save"
   copied: "saved: {text}"
   init_failed: "Baru: {msg}"

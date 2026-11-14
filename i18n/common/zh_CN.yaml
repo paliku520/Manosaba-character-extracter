@@ -79,7 +79,7 @@ about:
   sys_os: "系统: {os}（{arch}）"
 
 app:
-  disclaimer: "本工具为第三方非官方工具，与游戏官方无关。"
+  disclaimer: "本工具为第三方非官方工具，与游戏版权方、发行方无隶属或背书关系。"
   click_to_copy: "点击复制"
   copied: "已复制: {text}"
   init_failed: "初始化失败：{msg}"

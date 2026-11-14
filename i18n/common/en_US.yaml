@@ -79,7 +79,7 @@ about:
   sys_os: "OS: {os} ({arch})"
 
 app:
-  disclaimer: "This tool is a third-party unofficial tool and is not affiliated with the game official."
+  disclaimer: "This tool is a third-party unofficial tool with no affiliation with, or endorsement from, the game's rights holders or publisher."
   click_to_copy: "Click to copy"
   copied: "Copied: {text}"
   init_failed: "Initialization failed: {msg}"
